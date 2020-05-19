@@ -198,7 +198,6 @@ class TrailStop(OrderConditionned):
         - ordType: un parmi 'Stop', 'StopLimit', 'MarketIfTouched', 'LimitIfTouched',
         - orderQty
         - stopPx
-        - symbol: XBTUSD,
         - execInst: parmi ParticipateDoNotInitiate; MarkPrice, LastPrice, IndexPrice; ReduceOnly; Close.
 
         Renvois le résultat de OC.send_order

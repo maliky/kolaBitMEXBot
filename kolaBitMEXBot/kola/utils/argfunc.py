@@ -145,9 +145,10 @@ def set_order_args(
     prix, _q, _tp, atype, brg, optype, tptype, recompute=True, side=None
 ):
     """
-    définie les valeurs pour le prix, la quantité, la taille, en se basant sur atype (argtype) et prix type (tRefPrice tail).
+    Définie les valeurs pour le prix, la quantité, la taille.
+
+    Se base sur atype (argtype) et prix type (tRefPrice tail).
     Si recompute is False, ne recalcule pas les pourcentages
-    
     """
     # renvois le prix de référence pour la queue selon le tptype et side
     tailPrixRef = brg.prices(tptype, side)
