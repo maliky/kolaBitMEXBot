@@ -1,11 +1,10 @@
 settings.py
-__*
 bin/
 include/
 lib/
 share/
 *pye
-.mypy_cache
+*_*cache*
 *.org
 core_program_files.txt
 build*

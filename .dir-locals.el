@@ -7,7 +7,7 @@
 
   (python-black--base-args . "--quiet --config ./setup.cfg")
   
-  (flycheck-python-mypy-ini . "./setup.cfg")
+  (flycheck-python-mypy-config . "./setup.cfg")
   (flycheck-flake8rc . "./setup.cfg")
 
   (python-shell-completion-native-enable . nil)))
