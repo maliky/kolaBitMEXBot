@@ -11,6 +11,7 @@ LIVE = False
 POST_ONLY = False
 
 URL = "https://www.bitmex.com/api/v1/"
+TEST_URL = "https://testnet.bitmex.com/api/v1/"
 
 # constante
 XBTSATOSHI = 10 ** -8
