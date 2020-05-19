@@ -7,14 +7,14 @@ from typing import Optional, Set
 from kolaBitMEXBot.kola.types import ordStatusT
 from kolaBitMEXBot.kola.custom_bitmex import BitMEX
 from kolaBitMEXBot.kola.secrets import (
-    LIVE_URL,
     LIVE_KEY,
     LIVE_SECRET,
-    TEST_URL,
     TEST_KEY,
-    TEST_SECRET,
+    TEST_SECRET
 )
 from kolaBitMEXBot.kola.settings import (
+    LIVE_URL,
+    TEST_URL,
     SYMBOL,
     ORDERID_PREFIX,
     TIMEOUT,

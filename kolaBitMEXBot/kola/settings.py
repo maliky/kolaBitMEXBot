@@ -11,6 +11,7 @@ LIVE = False
 POST_ONLY = False
 
 URL = "https://www.bitmex.com/api/v1/"
+LIVE_URL = "https://www.bitmex.com/api/v1/"
 TEST_URL = "https://testnet.bitmex.com/api/v1/"
 
 # constante
@@ -42,4 +43,10 @@ LOGFMT = "%(asctime)s %(threadName)s~%(levelno)s /%(filename)s@%(lineno)s@%(func
 
 LOGNAME = "kola"
 
-ordStatusTrans = {"N": "New", "C": "Canceled", "F": "Filled", "P": "PartiallyFilled", "T": "Triggered"}
+ordStatusTrans = {
+    "N": "New",
+    "C": "Canceled",
+    "F": "Filled",
+    "P": "PartiallyFilled",
+    "T": "Triggered",
+}

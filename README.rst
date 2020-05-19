@@ -162,23 +162,29 @@ directly with \`pip\`
 
    pip install kolaBitMEX
 
-but I would recommand doing it as a pip editable module with:
+would recommand doing it as a pip editable module with:
 
 .. code:: bash
 
    # build package with the setup.py
    python setup.py sdist bdist_wheel; twine check dist/*
+
    # if you used virtualenv wheel and twine will have been installed
 
    # install the package from local source
    pip install -e . 
 
-   # run progams ... edit them... have fun
-   run_multi_kola -h
-   multi_kola -h
+Add you API keys in \`kolaBitMEXBot/kola/secret.py\`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Edit `settings.py <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/kola/settings.py>`__ with your BitMEX keys
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+This file created and it should contain the 4 variable keys:
+
+::
+
+   LIVE_KEY = "zIKTHISISARANDOMKEYNHII3"
+   LIVE_SECRET = "HUMOI9OkK89aIoXDAND THIS IS A SECRET0KAthnauwKj0"
+   TEST_KEY = "THEn_XATESTgXOcfKEYbuttz"
+   TEST_SECRET = "ANDjmJ3tbACz12VERYnzJS7LONGrPKI3r4uSECRETMU2C4HO"
 
 Write your orders in the `morder.tsv <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/morders.tsv>`__
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -262,7 +268,7 @@ File Index
 Core program files
 ~~~~~~~~~~~~~~~~~~
 
-.. code:: bash
+::
 
    kolaBitMEXBot
    ├── cancel_all.py  ->  cancel and close all order on testnet
