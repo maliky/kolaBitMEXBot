@@ -53,7 +53,7 @@ class Bargain:
         """Initialisation dbo is a dummy bitMEX object used for testing."""
         self.logger = get_logger(logger, name=__name__, sLL="INFO")
 
-        self.symbol = SYMBOL
+        self.symbol = symbol
         self.last_check_time = now() - Timedelta(
             2, unit="D"
         )  # on s'assure d'être dans le passé.

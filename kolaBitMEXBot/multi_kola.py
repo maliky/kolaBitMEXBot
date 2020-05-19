@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8; mode: Python; blacken-line-length 83; -*-
 """Script qui gère une paire d'ordre et leur relance."""
 from queue import Queue
 from sys import exit
@@ -13,13 +13,19 @@ import numpy as np
 import pandas as pd
 
 
+from kolaBitMEXBot.kola.setting import SYMBOL
 from kolaBitMEXBot.kola.bargain import Bargain
 from kolaBitMEXBot.kola.chronos import Chronos
 from kolaBitMEXBot.kola.dummy_bitmex import DummyBitMEX
 from kolaBitMEXBot.kola.orders.hookorder import HookOrder
 from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
 from kolaBitMEXBot.kola.orders.trailstop import TrailStop
-from kolaBitMEXBot.kola.settings import HTTP_SIMPLE_RATE_LIMITE, LOGNAME, LOGFMT, ordStatusTrans
+from kolaBitMEXBot.kola.settings import (
+    HTTP_SIMPLE_RATE_LIMITE,
+    LOGNAME,
+    LOGFMT,
+    ordStatusTrans,
+)
 from kolaBitMEXBot.kola.utils.argfunc import set_order_args, price_type_trad, get_args
 from kolaBitMEXBot.kola.utils.conditions import cVraieTpsDeA, cVraiePrixDeA, cHook
 from kolaBitMEXBot.kola.utils.datefunc import now
@@ -34,11 +40,12 @@ time.tzset()
 
 
 class MarketAuditeur:
-    """Class du Market Auditeur."""
+    """Classe du Market Auditeur."""
 
-    def __init__(self, live: bool = False, dbo=None, logger=None):
+    def __init__(self, live: bool = False, dbo=None, logger=None, symbol=SYMBOL):
         """
         Une classe  pour placer un ordre conditionné et sa trace sur bitmex.
+        Place an order pair on symbol market. 
 
         Un auditeur de marché, c'est une connexion qui écoute les prix du marché
         - serveur chronos:  envoie les ordres au marché
@@ -46,16 +53,14 @@ class MarketAuditeur:
         - ordre de trace conditionné par le prix et qui sert aussi de stop loss.
         """
         self.live: bool = live  # connexion à live bitmex or test.bitmex
-        self.fileDattente: Optional[Queue] = None
-        self.fileDeConfirmation: Optional[Queue] = None
-        self.brg: Optional[Bargain] = None
-        self.chrs: Optional[Chronos] = None
         self.ocp: Optional[
             Union[OrderConditionned, HookOrder]
         ] = None  # ordre principal
-        self.oct: Optional[TrailStop] = None  # ordre de trace
         self.stop: Optional[bool] = False
-        self.dbo = dbo
+
+        self.symbol = symbol
+
+        self.dbo = dbo  # dummy bitmex for test
 
         # on garde un suivi de la balance ici pour further analysis
         self.resultats = pd.DataFrame(
@@ -66,7 +71,7 @@ class MarketAuditeur:
         prefix = "tma" + daynum if live else "fma" + daynum
         prefix += "-dum" if self.dbo is not None else ""
 
-        logfile = "./logs/kola_main.log"
+        logfile = "./Logs/multi_kola.org"
         if logger:
             self.logger = logger
         else:
@@ -78,7 +83,7 @@ class MarketAuditeur:
 
     def __repr__(self):
         """Représentation du Market auditeur."""
-        rep = f"Live={self.live}, log to {self.logger}"
+        rep = f"Live={self.live}-{self.symbol}, log to {self.logger}"
         if len(self.resultats):
             rep += "Resultats={self.resultats}"
 
@@ -87,15 +92,17 @@ class MarketAuditeur:
     def start_server(self):
         """Démarre les services."""
         # canal échange ordre, serveur dispacheur
-        self.fileDattente = Queue()
+        self.fileDattente: Queue = Queue()
 
         # canal échange ordre, serveur dispacheur
-        self.fileDeConfirmation = Queue()
+        self.fileDeConfirmation: Queue = Queue()
 
         # connexion avec Bitmex
-        self.brg = Bargain(live=self.live, logger=self.logger, dbo=self.dbo)
+        self.brg: Bargain = Bargain(
+            live=self.live, logger=self.logger, dbo=self.dbo, symbol=self.symbol
+        )
         # Serveur dispacheur d'ordre
-        self.chrs = Chronos(
+        self.chrs: Chronos = Chronos(
             self.brg, self.fileDattente, self.fileDeConfirmation, logger=self.logger
         )
         self.chrs.start()
@@ -283,7 +290,7 @@ class MarketAuditeur:
             self.logger.info(msg)
 
             # on accroche un stop (tail, trail) suiveur à l'ordre principal
-            self.oct = TrailStop(
+            self.oct: TrailStop = TrailStop(
                 self.ocp,
                 self.brg,
                 pegOffset_perc=_tp,
@@ -353,12 +360,15 @@ class MarketAuditeur:
 
     def fin_essai(self, i, n, close=False, dr_pause=None, dr_essai_theo=None):
         """
-        Affiche les infos de finalisation de l'esssai et close quantity close
+        Affiche les infos de finalisation de l'esssai et close quantity close.
+
+        # on fait varie le temps d'attente entre les essais.
+        # Il dépend du temps de l'essai
         """
-        # on fait varie le temps d'attente entre les essais.  Il dépend du temps de l'essai
         # info sur les résultats
         if close:
-            # self.brg.cancel_and_close(quantity=close)  # pourrai avoir un pb de timed out ici
+            # self.brg.cancel_and_close(quantity=close)
+            # pourrai avoir un pb de timed out ici
             # sleep(randint(1, 3))
             pass
 
@@ -431,15 +441,17 @@ class MarketAuditeur:
             sleep(dr_pause.seconds)
         except Exception as e:
             self.logger.error(
-                f"{e} with dr_pause={dr_pause}, dr_essai_theo={dr_essai_theo} pause={pause}"
+                f"{e} with dr_pause={dr_pause}, "
+                f"dr_essai_theo={dr_essai_theo} pause={pause}"
             )
 
 
 def go_multi(ma, arg_file=None, updatepause=None, logpause=None):
     """
-    Ici tout est dans la fichier de morders, pour chaque ligne du fichier configue on démarre un go.
-    """
+    Ici tout est dans la fichier de morders.
 
+    Pour chaque ligne du fichier configue on démarre un go.
+    """
     try:
         df = pd.read_csv(
             filepath_or_buffer=arg_file, sep="\t", comment="#", skip_blank_lines=True
@@ -451,7 +463,8 @@ def go_multi(ma, arg_file=None, updatepause=None, logpause=None):
         raise (e)
 
     logging.info(
-        f"Starting {len(df.index)} paire(s): update every={updatepause}s, log every={logpause}s"
+        f"Starting {len(df.index)} paire(s): update every={updatepause}s,"
+        " log every={logpause}s"
     )
 
     _ = threading.Thread(
@@ -545,7 +558,7 @@ def main_prg():
         name=LOGNAME, sLL=args.logLevel, logFile=args.logFile, fmt_=LOGFMT
     )
     dbo = DummyBitMEX(up=0, logger=rlogger) if args.dummy else None
-    tma = MarketAuditeur(live=args.liveRun, dbo=dbo, logger=rlogger)
+    tma = MarketAuditeur(live=args.liveRun, dbo=dbo, logger=rlogger, symbol=args.symbol)
     tma.start_server()
 
     try:

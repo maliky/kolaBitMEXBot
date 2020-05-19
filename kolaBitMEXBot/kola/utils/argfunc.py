@@ -44,8 +44,10 @@ def get_args():
     updatePause_def = 10
     sDelta_def = 2
     hook_def = ""
+    symbol_def = "XBTUSD"  # define the market to listent too
 
     name_help = f"Nom de l'ordre dans logs internes"
+    symbol_help = f"Market to listen too.  (default={symbol_def})"
     sDelta_help = (
         f"Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."
         "  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={sDelta_def})"
@@ -91,6 +93,9 @@ def get_args():
     )
     parser.add_argument(
         "--logLevel", "-l", type=str, default=logLevel_def, help=logLevel_help
+    )
+    parser.add_argument(
+        "--symbole", "-S", type=str, default=symbol_def, help=symbol_help
     )
     parser.add_argument(
         "--updatePause", "-U", type=int, default=updatePause_def, help=updatePause_help

@@ -6,7 +6,7 @@
   (flycheck-python-flake8-executable . "/home/mlk/.pyenv/shims/flake8")
 
   (python-black--base-args . "--quiet --config ./setup.cfg")
-  
+  (blacken-skip-string-normalization nil)
   (flycheck-python-mypy-config . "./setup.cfg")
   (flycheck-flake8rc . "./setup.cfg")
 
