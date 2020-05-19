@@ -13,7 +13,7 @@ with open("README.rst", "r") as f:
 
 setup(
     name="kolaBitMEXBot",
-    version="1.0.10",
+    version="1.0.13",
     description="Trading bot with trail stop and chained orders for pour Bitmex and maybe more...",
     long_description=long_description,
     long_description_content_type="text/x-rst",
@@ -23,17 +23,6 @@ setup(
     packages=find_packages(),
     zip_safe=False,
     python_requires=">=3.8",
-    # py_modules=[
-    #     "run_multi_kola",
-    #     "multi_kola",
-    #     "kola",
-    #     "kola.utils",
-    #     "kola.orders",
-    #     "kola.connexion",
-    #     "pos_test",
-    #     "cancel_all",
-    #     "tests",
-    # ],
     entry_points={
         "console_scripts": [
             "run_multi_kola=kolaBitMEXBot.run_multi_kola:main_prg",
@@ -62,4 +51,5 @@ setup(
         "Topic :: Utilities",
         "Topic :: System :: Monitoring",
     ],
+    package_data={"": ["*.txt"], "": ["README.rst"]},
 )

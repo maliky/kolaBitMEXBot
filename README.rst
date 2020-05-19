@@ -13,39 +13,30 @@ Each order enter the book based on conditions you set in
 Main conditions
 ~~~~~~~~~~~~~~~
 
-time condition
-   an order activate if the time enters the [dateA, dateB] range
-price condition
-   an order activate the market enters the [priceA, priceB] range
+-  time condition: an order activate if the time enters the [dateA,
+   dateB] range
+-  price condition: an order activate the market enters the [priceA,
+   priceB] range
 
 other conditions
 ~~~~~~~~~~~~~~~~
 
-But you can also set
-
-a timeout
-   an order will cancel after timeout minutes. Note this enable speed
-   conditions (eg. activate only if price rise by 60ø in 1 minute, else
-   cancel and restart)
-a repeat #
-   an order will repeat # times if canceled or filled
-a waitting time
-   if canceled or filled the order pair will wait before repeating (min
-   wait ~1 minute)
-a hook condition
-   (new not fully stable yet), an order will activate if a hooked order
-   reach a specified status (filled, partialy filled, canceled)
+-  a timeout: an order will cancel after timeout minutes. Note this
+   enable speed conditions (eg. activate only if price rise by 60ø in 1
+   minute, else cancel and restart)
+-  a repeat #: an order will repeat # times if canceled or filled
+-  a waitting time: if canceled or filled the order pair will wait
+   before repeating (min wait ~1 minute)
+-  a hook condition: (new not fully stable yet), an order will activate
+   if a hooked order reach a specified status (filled, partialy filled,
+   canceled)
 
 Units
 ~~~~~
 
-#. time units
-
-   They are generaly in minutes
-
-#. price units
-
-   Price unites can be:
+-  time units: they are generaly in minutes and for some command line
+   params, in seconds.
+-  price units can be:
 
    -  relative to market price (index, mark or last Price)
 
@@ -136,6 +127,8 @@ Installation
 Download or clone the repository
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Git Project URL: https://github.com/maliky/kolaBitMEXBot
+
 .. code:: bash
 
    git clone https://github.com/maliky/kolaBitMEXBot.git
@@ -151,7 +144,7 @@ system. *note To install mutliple python on your system, check
 
 .. code:: bash
 
-   virtualenv --python=</path/to/python3.8>  .
+   virtualenv --python=</path/to/python3>  .
    source ./bin/activate
    pip install -r requirements.txt
 
