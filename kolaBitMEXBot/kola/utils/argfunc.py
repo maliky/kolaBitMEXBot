@@ -46,7 +46,10 @@ def get_args():
     hook_def = ""
 
     name_help = f"Nom de l'ordre dans logs internes"
-    sDelta_help = f"Différence entre le prix de l'ordre et le prix déclencheur de l'ordre.""  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={sDelta_def})"
+    sDelta_help = (
+        f"Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."
+        "  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={sDelta_def})"
+    )
     tps_run_help = f"le temps en minute à partir du moment du lancement, doit être un tuple, indique la plage horaire pour laquelle l'ordre est valide. (default={tps_run_def})"
     tOut_help = f"Temps d'attente de vérification in minutes de la validation de l'order.  Pour les limites order peut être très long. (default le temps du run) (default temps d'attente théorique d'un ordre ie, durée du run / nb orders)"
     prix_help = f"Une fourchette de prix dans laquelle executer le ou les essais.  Si le prix sort de la fourchette rien faire.  La fourchette de prix peut être exprimer en %% du prix actuellent, en différentiel ou en valeur absolu. (default={prix_def})"

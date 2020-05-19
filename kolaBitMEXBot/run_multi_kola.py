@@ -6,8 +6,7 @@ from sys import exit
 from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
 from kolaBitMEXBot.kola.dummy_bitmex import DummyBitMEX
 import kolaBitMEXBot.kola.utils.exceptions as ke
-from kolaBitMEXBot.kola.settings import LOGNAME, LOGFMT
-from kolaBitMEXBot.kola.settings import LOGLEVELS, LOGFMT, LOGNAME, MAINLOGLEVEL
+from kolaBitMEXBot.kola.settings import LOGFMT, LOGNAME
 from kolaBitMEXBot.multi_kola import MarketAuditeur, go_multi
 
 
@@ -19,7 +18,7 @@ class argsO:
         self,
         argfile="./morders.tsv",
         loglevel="INFO",
-        logfile=f"./Logs/log.log",
+        logfile=f"./Logs/test.org",
         liverun=False,
         updatepause=10,
         logpause=600,
@@ -39,7 +38,7 @@ class argsO:
         """Represent the program."""
         # should find the commande to get all attributes of object
         obj = {
-            "argFile": self.argfile,
+            "argFile": self.argFile,
             "logLevel": self.logLevel,
             "logFile": self.logFile,
             "logPause": self.logPause,
@@ -70,7 +69,7 @@ def main_prg():
     try:
         go_multi(
             tma,
-            arg_file=defaultArgs.argFile,
+            arg_file=cmdArgs.argFile,
             logpause=defaultArgs.logPause,
             updatepause=defaultArgs.updatePause,
         )
@@ -88,8 +87,16 @@ def get_cmd_args():
     logLevel_help = "Le log level"
     dummy_help = "Si présent utilise un dummy bitmex"
     liveRun_help = "Si présent utilise live bitmex !"
+    morders_def = "./morders.tsv"
+    morders_help = (
+        f"Path to the 'tsv' file containing the market orders. (f{morders_def})."
+    )
 
     parser = argparse.ArgumentParser(description=description)
+    parser.add_argument(
+        "--morders", "-m", type=str, default=morders_def, help=morders_help
+    )
+
     parser.add_argument(
         "--logLevel", "-l", type=str, default=logLevel_def, help=logLevel_help
     )

@@ -13,14 +13,14 @@ with open("README.rst", "r") as f:
 
 setup(
     name="kolaBitMEXBot",
-    version="1.1.4",
+    version="1.1.5",
     description="Trading bot with trail stop and chained orders for pour Bitmex and maybe more...",
     long_description=long_description,
     long_description_content_type="text/x-rst",
     author="Malik Koné",
     author_email="malikykone@gmail.com",
     url="https://github.com/maliky/kolaBitMEXBot",
-    packages=find_packages(),
+    packages=find_packages(exclude='secrets.py'),
     zip_safe=False,
     python_requires=">=3.8",
     entry_points={
