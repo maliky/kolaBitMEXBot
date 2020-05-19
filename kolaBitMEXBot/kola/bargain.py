@@ -164,7 +164,7 @@ class Bargain:
     def get_multiplier(self):
         """Get multiplier."""
         # check market_maker
-        instrument = self.bto.instrument("XBTUSD")
+        instrument = self.bto.instrument(self.symbol)
 
         if instrument["underlyingToSettleMultiplier"] is None:
             multiplier = float(instrument["multiplier"]) / float(
@@ -429,7 +429,7 @@ class Bargain:
         'midPrice', 'ref_delta','market_maker' or None (for all instrument prices)
         """
         prices = {
-            k: v for (k, v) in self.bto.instrument("XBTUSD").items() if "rice" in k
+            k: v for (k, v) in self.bto.instrument(self.symbol).items() if "rice" in k
         }
         # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice', 'lowPrice',
         # 'lastPrice', 'lastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',

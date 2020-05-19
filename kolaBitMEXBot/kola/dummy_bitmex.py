@@ -25,6 +25,7 @@ class DummyBitMEX:
         self.current_dum_price = self.next_datum()
         self.availableMargin = 1e7
         self.dummyID = "dummyIDDIDIDIDI"
+        self.symbol= 'XBTUSD'
 
     def __repr__(self):
         rep = f"Dummy BitMEX object (dummy ø): url=local"
@@ -55,7 +56,7 @@ class DummyBitMEX:
     def margin(self):
         return {"availableMargin": self.availableMargin}
 
-    def instrument(self, symbol="XBTUSD"):
+    def instrument(self, symbol=self.symbol):
         refPrice = self.current_dum_price
         markPrice = refPrice + round_to_d5(rnd.normal())
 
@@ -70,7 +71,7 @@ class DummyBitMEX:
             "markPrice": markPrice,
             "markPrice": markPrice,
             "indicativeSettlePrice": refPrice,
-            "symbol": "XBTUSD",
+            "symbol": self.symbol,
             "askPrice": markPrice + 0.5,
             "bidPrice": markPrice - 1,
             "midPrice": markPrice - 0.25,
@@ -150,8 +151,8 @@ class DummyBitMEX:
     def position(self, symbol=None):
         data = {
             "account": "mlk",
-            "symbol": "XBTUSD",
-            "currency": "XBTUSD",
+            "symbol": self.symbol,
+            "currency": self.symbol,
             "underlying": None,
             "quoteCurrency": "USD",
             "commission": None,

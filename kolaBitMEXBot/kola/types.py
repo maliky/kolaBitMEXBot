@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """Types for bitmex Kola."""
-from typing import Literal
+from typing import Literal, Union
 
 sideT = Literal["buy", "sell"]
-symbT = Literal["XBTUSD"]
+symbT = Literal["ADAM20", "XBTUSD"]
 # majuscules importantes
 priceTT = Literal["LastPrice", "IndexPrice", "MarkPrice"]
 
