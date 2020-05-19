@@ -5,14 +5,76 @@ Presentation
 ------------
 
 KolaBot is a program to handle concurrently several pairs of orders in
-the BitMEX exchange. Each pair is made of an order to enter the market
-and one to exit. You can choose cancel the entrance or exit by using
-orders that will cancel automatically as they enter the book.
+the BitMEX exchange. A pair is a main order (amoung those allowed by
+BitMEX) and an opposite order (again among allowed) that acts as a stop.
+Each order enter the book based on conditions you set in
+`morders.tsv <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/morders.tsv>`__.
 
-Use the configuration file *morders.tsv*, you can set different pairs
-and the conditions for each pairs to trigger (and close).
+Main conditions
+~~~~~~~~~~~~~~~
 
-For example:
+time condition
+   an order activate if the time enters the [dateA, dateB] range
+price condition
+   an order activate the market enters the [priceA, priceB] range
+
+other conditions
+~~~~~~~~~~~~~~~~
+
+But you can also set
+
+a timeout
+   an order will cancel after timeout minutes. Note this enable speed
+   conditions (eg. activate only if price rise by 60ø in 1 minute, else
+   cancel and restart)
+a repeat #
+   an order will repeat # times if canceled or filled
+a waitting time
+   if canceled or filled the order pair will wait before repeating (min
+   wait ~1 minute)
+a hook condition
+   (new not fully stable yet), an order will activate if a hooked order
+   reach a specified status (filled, partialy filled, canceled)
+
+Units
+~~~~~
+
+#. time units
+
+   They are generaly in minutes
+
+#. price units
+
+   Price unites can be:
+
+   -  relative to market price (index, mark or last Price)
+
+      -  in %, of the activating price (eg. if price move by 5% from
+         order activation)
+      -  in differential of the activating price (eg if price move by
+         -80ø from order activation)
+
+   -  absolute, (eg. if price reach 3500ø)
+
+Options specific to the stop order
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By defaut kolaBitMEXBot runs an opening order (main) and a close order
+(secondary or tail or trail). If your main is a buy, the secondary will
+be a close and vice-versa. It is possible to run only one of the two
+order by setting automatic cancelation condition on the not wanted
+order.
+
+Here's a simple example: A buy at market (main order) with a stop at
+market (secondary order). You just need to set the price differential
+between the main order and the tail order. Like you want a tail at:
+
+-  100ø below the activating price (relative in differential),
+-  or at 2% below of the activating price (relative in %),
+-  or at 2500ø what ever the activating price (absolute)
+
+Example scenarios
+~~~~~~~~~~~~~~~~~
 
 -  you may want to buy 10% of your available balance if the index price
    goes down by 2% in 2 hours but this should only true for the next 24
@@ -34,8 +96,6 @@ For example:
    with a buy at stop 21000 USD and if the stop trigger wait 20 minutes
    before resetting the condition.
 
-(For more detail see `morders.tsv
-file <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/morders.tsv>`__)
 All this and more is feasible with this bot. I do not recommend using it
 to do trading below 1 order per minute unless you have special API
 arrangement with BitMEX and in that case you should have an improved
@@ -44,6 +104,7 @@ the websockets, I make REST call that increase with the number of order
 pairs to track.
 
 Hooks: Update <2020-05-05 mar.>
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can now use hooks or what was once called chained order in BitMEX. A
 hook condition is a condition that is true if the hooked order reach the
@@ -72,14 +133,6 @@ to define the hook condition is as follow \`<name>-[P|S]-[F|C|T|P]\`
 Installation
 ------------
 
-#. Download or clone the repository
-#. Install python dependencies
-#. Edit settings.py with your BitMEX keys (or find a better way to pass
-   them to the program)
-#. Write your orders in the morder.tsv
-#. Test your orders on testnet.BitMEX.com
-#. Satified? Run it live! and enjoy.
-
 Download or clone the repository
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -88,40 +141,63 @@ Download or clone the repository
    git clone https://github.com/maliky/kolaBitMEXBot.git
    cd kolaBitMexBot
 
-Install python3 and dependencies
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Install dependencies
+~~~~~~~~~~~~~~~~~~~~
 
-This will create a virtualen and install packages required by the
-program. You need to pip3 and python3.8 installed on your system. To
-install mutliple python on your system, check \`pyenv`.
+This will create a virtualenv and install packages required by the
+program. You need to \`pip3\` and \`python3.8\` installed on your
+system. *note To install mutliple python on your system, check
+\`pyenv`.*
 
 .. code:: bash
 
-   virtualenv --python=/path/to/python3.8  .
-   cd /path/to/your/virtualenv/dir
+   virtualenv --python=</path/to/python3.8>  .
    source ./bin/activate
-   pip install -r /path/to/requirements.txt
+   pip install -r requirements.txt
 
-Edit `settings.py <https://github.com/maliky/kolaBitMEXBot/blob/master/kola/settings.py>`__ with your BitMEX keys
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   # run main programmes
+   python -m  kolaBitMEXBot.run_multi_kola -h
+   python -m  kolaBitMEXBot.multi_kola -h
 
-Write your orders in the `morder.tsv <https://github.com/maliky/kolaBitMEXBot/blob/master/morders.tsv>`__
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+pip install
+~~~~~~~~~~~
 
-Check that file to see how to write orders.
-
-you can also get command line help with
+If you just want to use kolaBitMEXBot, you can install the module
+directly with \`pip\`
 
 .. code:: bash
 
-   python multi_kola.py -h 
+   pip install kolaBitMEX
+
+but I would recommand doing it as a pip editable module with:
+
+.. code:: bash
+
+   # build package with the setup.py
+   python setup.py sdist bdist_wheel; twine check dist/*
+   # if you used virtualenv wheel and twine will have been installed
+
+   # install the package from local source
+   pip install -e . 
+
+   # run progams ... edit them... have fun
+   run_multi_kola -h
+   multi_kola -h
+
+Edit `settings.py <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/kola/settings.py>`__ with your BitMEX keys
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Write your orders in the `morder.tsv <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/morders.tsv>`__
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Test your orders on testnet.BitMEX.com
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code:: bash
 
-   python run_multi_kola.py -l INFO
+   python -m kolaBitMEXBot.run_multi_kola -l INFO > testlog.org
+
+Check the testlog.org file
 
 Satified? Run it live!
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -130,17 +206,22 @@ Satified? Run it live!
 
    python run_multi_kola.py -l INFO --live
 
-TODO
-----
+Extension TODO
+--------------
 
--  [STRIKEOUT:linked orders] done called chained orders <2020-05-05
-   mar.>
+.. _make-chained-or-hooked-orders-2020-05-05-mar.:
 
-   -  That is you can an orders starting based on the state of one or
-      more other orders.
+DONE make chained (or hooked) orders <2020-05-05 mar.>
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
--  Extend dummy bargain to have a personnal test net
--  Write hyptothesis tests
+That is, you can an orders starting based on the state of one or more
+other orders.
+
+Extend dummy bargain to have a personnal test net
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Write hyptothesis tests
+~~~~~~~~~~~~~~~~~~~~~~~
 
 FAQ
 ---
@@ -191,42 +272,42 @@ Core program files
 .. code:: bash
 
    kolaBitMEXBot
-   ├── cancel_all.py
+   ├── cancel_all.py  ->  cancel and close all order on testnet
    ├── kola
-   │   ├── bargain.py
-   │   ├── chronos.py
+   │   ├── bargain.py  ->  handle connections to markets
+   │   ├── chronos.py  ->  handle timeouts and thread of active orders
    │   ├── connexion
-   │   │   ├── auth.py
-   │   │   ├── custom_ws_thread.py
+   │   │   ├── auth.py  ->  authentification to bitMEX
+   │   │   ├── custom_ws_thread.py  ->  websocket API
    │   │   └── __init__.py
    │   ├── custom_bitmex.py
    │   ├── dummy_bitmex.py
    │   ├── __init__.py
    │   ├── orders
-   │   │   ├── condition.py
-   │   │   ├── hookorder.py
+   │   │   ├── condition.py  ->  hold condition object to activate orders
+   │   │   ├── hookorder.py  ->  orders that can hook to other orders
    │   │   ├── __init__.py
-   │   │   ├── ordercond.py
-   │   │   ├── orders.py
-   │   │   └── trailstop.py
-   │   ├── price.py
-   │   ├── settings.py
-   │   ├── types.py
+   │   │   ├── ordercond.py  ->  basic order with condition. other orders inherit it
+   │   │   ├── orders.py  ->  functions to places limit, stop, limit if touched ...
+   │   │   └── trailstop.py  ->  orders that follow price variation and update 
+   │   ├── price.py  ->  object to follow the different prices indexes
+   │   ├── settings.py  ->  setting files (where your keys may be)
+   │   ├── types.py  ->  (new) types to start typing the programm
    │   └── utils
-   │       ├── argfunc.py
-   │       ├── conditions.py
-   │       ├── constantes.py
-   │       ├── datefunc.py
-   │       ├── exceptions.py
-   │       ├── general.py
+   │       ├── argfunc.py  ->  handle command line arguments
+   │       ├── conditions.py  ->  function to set conditions
+   │       ├── constantes.py  ->  constants
+   │       ├── datefunc.py  ->  function to handle dates
+   │       ├── exceptions.py  ->  customized exceptions
+   │       ├── general.py  ->  generic utils
    │       ├── __init__.py
-   │       ├── logfunc.py
-   │       ├── orderfunc.py
-   │       └── pricefunc.py
-   ├── morders.tsv
-   ├── multi_kola.py
-   ├── pos_test.py
-   ├── run_multi_kola.py
+   │       ├── logfunc.py  ->  log function
+   │       ├── orderfunc.py  ->  utils to set or check orders
+   │       └── pricefunc.py  ->  utils to set or get prices
+   ├── morders.tsv  ->  where you set your orders
+   ├── multi_kola.py  ->  handle the (multiple runs) of one pair of orders 
+   ├── pos_test.py  ->  (depreciated...)
+   ├── run_multi_kola.py  ->  handle multiple pairs of orders (parse morders.tsv)
    └── tests
        └── utils.py
 
@@ -248,6 +329,6 @@ LICENSE.txt
 README.rst
    this README
 requirements.txt
-   set of required modules (see `deps <#deps>`__)
+   set of required modules
 setup.py
    package file for python
