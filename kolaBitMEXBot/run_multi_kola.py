@@ -63,7 +63,9 @@ def main_prg():
 
     dbo = DummyBitMEX(up=0, logger=logger) if cmdArgs.dummy else None
 
-    tma = MarketAuditeur(live=cmdArgs.liveRun, dbo=dbo, logger=logger)
+    tma = MarketAuditeur(
+        live=cmdArgs.liveRun, dbo=dbo, logger=logger, symbol=cmdArgs.symbol
+    )
     tma.start_server()
 
     try:
@@ -91,10 +93,15 @@ def get_cmd_args():
     morders_help = (
         f"Path to the 'tsv' file containing the market orders. (f{morders_def})."
     )
+    symbol_def = "XBTUSD"  # define the market to listent too
+    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAM20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
 
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
         "--morders", "-m", type=str, default=morders_def, help=morders_help
+    )
+    parser.add_argument(
+        "--symbol", "-S", type=str, default=symbol_def, help=symbol_help
     )
 
     parser.add_argument(

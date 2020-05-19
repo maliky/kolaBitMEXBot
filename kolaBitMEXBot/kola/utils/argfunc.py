@@ -47,7 +47,7 @@ def get_args():
     symbol_def = "XBTUSD"  # define the market to listent too
 
     name_help = f"Nom de l'ordre dans logs internes"
-    symbol_help = f"Market to listen too.  (default={symbol_def})"
+    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAM20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
     sDelta_help = (
         f"Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."
         "  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={sDelta_def})"
