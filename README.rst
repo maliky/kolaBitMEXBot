@@ -285,6 +285,7 @@ Core program files
    │   │   └── trailstop.py  ->  orders that follow price variation and update 
    │   ├── price.py  ->  object to follow the different prices indexes
    │   ├── settings.py  ->  setting files (where your keys may be)
+   │   ├── secrets.py  ->  where API keys could be
    │   ├── types.py  ->  (new) types to start typing the programm
    │   └── utils
    │       ├── argfunc.py  ->  handle command line arguments
