@@ -149,6 +149,7 @@ def set_order_args(
 
     Se base sur atype (argtype) et prix type (tRefPrice tail).
     Si recompute is False, ne recalcule pas les pourcentages
+    -tptype: tail price type
     """
     # renvois le prix de référence pour la queue selon le tptype et side
     tailPrixRef = brg.prices(tptype, side)
@@ -165,7 +166,7 @@ def set_order_args(
         ordPrices = get_prices(ordPrixRef, prix, atype)
     except Exception as e:
         mlogger.exception(
-            f"Exception >>>> atype={atype} and tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
+            f"Exception >>>> atype={atype}, tptype={tptype} and tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
         )
         raise (e)
 

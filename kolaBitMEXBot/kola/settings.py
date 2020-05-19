@@ -50,3 +50,9 @@ ordStatusTrans = {
     "P": "PartiallyFilled",
     "T": "Triggered",
 }
+
+# to get price in bargain.price
+settlementPrices = {
+    "XBTUSD": ".BXBT",
+    "ADAM20": ".BADAXBT30M"
+}

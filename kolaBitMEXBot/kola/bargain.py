@@ -6,12 +6,7 @@ from typing import Optional, Set
 
 from kolaBitMEXBot.kola.types import ordStatusT
 from kolaBitMEXBot.kola.custom_bitmex import BitMEX
-from kolaBitMEXBot.kola.secrets import (
-    LIVE_KEY,
-    LIVE_SECRET,
-    TEST_KEY,
-    TEST_SECRET
-)
+from kolaBitMEXBot.kola.secrets import LIVE_KEY, LIVE_SECRET, TEST_KEY, TEST_SECRET
 from kolaBitMEXBot.kola.settings import (
     LIVE_URL,
     TEST_URL,
@@ -21,6 +16,7 @@ from kolaBitMEXBot.kola.settings import (
     POST_ONLY,
     XBTSATOSHI,
     CONTRACTS,
+    settlementPrices,
 )
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.general import round_to_d5, is_number, trim_dic, cdr, car
@@ -425,8 +421,8 @@ class Bargain:
         """
         Show summary of current prices.
         
-        typeprice can be 'delta', 'indexPrice', 'market', 'askPrice', 
-        'midPrice', 'ref_delta','market_maker' or None (for all instrument prices)
+        typeprice can be 'delta', 'indexPrice', 'market', 'askPrice',
+        'midPrice', 'ref_delta','market_maker', 'lastMidPrice' or None (for all instrument prices)
         """
         prices = {
             k: v for (k, v) in self.bto.instrument(self.symbol).items() if "rice" in k
@@ -450,7 +446,7 @@ class Bargain:
             if timeLaps > Timedelta(randint(2, 11), unit="s") or self.bto.dummy:
                 path = "trade"
                 query = {
-                    "symbol": ".BXBT",
+                    "symbol": priceQuery.get(self.symbol, self.symbol),
                     "count": 1,
                     "columns": "price",
                     "reverse": "true",
