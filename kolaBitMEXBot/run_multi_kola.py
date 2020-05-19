@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 """Lauch the program to run several order couple (main order and tail)."""
-from kola.utils.logfunc import get_logger, setup_logging
-from kola.dummy_bitmex import DummyBitMEX
-from multi_kola import MarketAuditeur, go_multi
-import kola.utils.exceptions as ke
 import argparse
-from kola.settings import LOGNAME, LOGFMT
-from kola.settings import LOGLEVELS, LOGFMT, LOGNAME, MAINLOGLEVEL
 from sys import exit
+
+from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
+from kolaBitMEXBot.kola.dummy_bitmex import DummyBitMEX
+import kolaBitMEXBot.kola.utils.exceptions as ke
+from kolaBitMEXBot.kola.settings import LOGNAME, LOGFMT
+from kolaBitMEXBot.kola.settings import LOGLEVELS, LOGFMT, LOGNAME, MAINLOGLEVEL
+from kolaBitMEXBot.multi_kola import MarketAuditeur, go_multi
+
 
 rlogger = setup_logging()
 
@@ -15,9 +17,9 @@ rlogger = setup_logging()
 class argsO:
     def __init__(
         self,
-        argfile='./morders.tsv',
-        loglevel='INFO',
-        logfile=f'./Logs/log.log',
+        argfile="./morders.tsv",
+        loglevel="INFO",
+        logfile=f"./Logs/log.log",
         liverun=False,
         updatepause=10,
         logpause=600,
@@ -37,15 +39,15 @@ class argsO:
         """Represent the program."""
         # should find the commande to get all attributes of object
         obj = {
-            'argFile': self.argfile,
-            'logLevel': self.logLevel,
-            'logFile': self.logFile,
-            'logPause': self.logPause,
-            'liveRun': self.liveRun,
-            'dummy': self.dummy,
-            'updatePause': self.updatePause,
+            "argFile": self.argfile,
+            "logLevel": self.logLevel,
+            "logFile": self.logFile,
+            "logPause": self.logPause,
+            "liveRun": self.liveRun,
+            "dummy": self.dummy,
+            "updatePause": self.updatePause,
         }
-        return f'argsO {obj}'
+        return f"argsO {obj}"
 
 
 def main_prg():
@@ -79,20 +81,20 @@ def main_prg():
 
 def get_cmd_args():
     """Parse the function's arguments."""
-    description = '''Lance les ordres du fichier morders.'''
+    description = """Lance les ordres du fichier morders."""
 
     # default
-    logLevel_def = 'INFO'
+    logLevel_def = "INFO"
     logLevel_help = "Le log level"
     dummy_help = "Si présent utilise un dummy bitmex"
     liveRun_help = "Si présent utilise live bitmex !"
 
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument(
-        '--logLevel', '-l', type=str, default=logLevel_def, help=logLevel_help
+        "--logLevel", "-l", type=str, default=logLevel_def, help=logLevel_help
     )
-    parser.add_argument('--liveRun', action="store_true", help=liveRun_help)
-    parser.add_argument('--dummy', '-D', action="store_true", help=dummy_help)
+    parser.add_argument("--liveRun", action="store_true", help=liveRun_help)
+    parser.add_argument("--dummy", "-D", action="store_true", help=dummy_help)
 
     return parser.parse_args()
 

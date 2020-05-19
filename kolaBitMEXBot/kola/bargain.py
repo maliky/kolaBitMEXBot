@@ -4,9 +4,9 @@ from pandas import Timedelta, DataFrame
 from numpy.random import randint
 from typing import Optional, Set
 
-from kola.types import ordStatusT
-from kola.custom_bitmex import BitMEX
-from kola.settings import (
+from kolaBitMEXBot.kola.types import ordStatusT
+from kolaBitMEXBot.kola.custom_bitmex import BitMEX
+from kolaBitMEXBot.kola.settings import (
     LIVE_URL,
     LIVE_KEY,
     LIVE_SECRET,
@@ -20,10 +20,10 @@ from kola.settings import (
     XBTSATOSHI,
     CONTRACTS,
 )
-from kola.utils.datefunc import now
-from kola.utils.general import round_to_d5, is_number, trim_dic, cdr, car
-from kola.utils.logfunc import get_logger
-from kola.utils.constantes import EXECOLS
+from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.utils.general import round_to_d5, is_number, trim_dic, cdr, car
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.constantes import EXECOLS
 
 # MULTIPLIER À CORRIGER
 # Trouver un moyen d'annuler juste les ordre passé dans ce bargain (prefix ?)
@@ -403,9 +403,9 @@ class Bargain:
         de la dernière execution du clOrdID_.
         """
         execOrders: DataFrame = self.execution(clOrdID_)
-        if 'triggered' in ordStatus_.lower():
+        if "triggered" in ordStatus_.lower():
             return bool(execOrders.iloc[-1].triggered == "StopOrderTriggered")
-        
+
         return bool(execOrders.iloc[-1].ordStatus == ordStatus_)
 
     def order_had_status(self, clOrdID_: str, ordStatus_: ordStatusT) -> bool:
@@ -436,8 +436,8 @@ class Bargain:
         # execInst, MarkPrice, LastPrice, IndexPrice
 
         ret = None
-        typeprice = '' if typeprice is None else typeprice
-        
+        typeprice = "" if typeprice is None else typeprice
+
         if typeprice == "delta":
             ret = prices["askPrice"] - prices["bidPrice"]
         elif typeprice.lower() == "indexprice":

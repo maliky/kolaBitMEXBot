@@ -17,8 +17,4 @@ EXECOLS = [
     "transactTime",
 ]
 
-EXECOLS_L = EXECOLS + [
-    "lastQty",
-    "lastPx",
-    "lastMkt",
-    "commission"]
+EXECOLS_L = EXECOLS + ["lastQty", "lastPx", "lastMkt", "commission"]

@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """To place orders."""
-from kola.settings import API_REST_INTERVAL, API_ERROR_INTERVAL
-from kola.utils.general import round_to_d5, trim_dic, log_args
-from kola.utils.pricefunc import setdef_stopPrice
-from kola.utils.datefunc import now
-from kola.utils.exceptions import InvalidOrdStatus
-from kola.utils.logfunc import get_logger
-from kola.settings import LOGNAME
-from kola.bargain import Bargain
+from kolaBitMEXBot.kola.settings import API_REST_INTERVAL, API_ERROR_INTERVAL
+from kolaBitMEXBot.kola.utils.general import round_to_d5, trim_dic, log_args
+from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
+from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.utils.exceptions import InvalidOrdStatus
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.settings import LOGNAME
+from kolaBitMEXBot.kola.bargain import Bargain
 from time import sleep
 import logging
 

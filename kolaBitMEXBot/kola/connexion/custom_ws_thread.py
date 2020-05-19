@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-from kola.connexion.auth import generate_nonce, generate_signature
-from kola.utils.logfunc import get_logger
-from kola.utils.general import round_half_up, trim_dic
-from kola.settings import SYMBOL, ORDERID_PREFIX, TEST_URL
+from kolaBitMEXBot.kola.connexion.auth import generate_nonce, generate_signature
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.general import round_half_up, trim_dic
+from kolaBitMEXBot.kola.settings import SYMBOL, ORDERID_PREFIX, TEST_URL
 from time import sleep
 from urllib.parse import urlparse
-import kola.utils.exceptions as ke
+import kolaBitMEXBot.kola.utils.exceptions as ke
 import decimal
 import json
 import ssl

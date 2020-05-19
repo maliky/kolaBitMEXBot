@@ -4,11 +4,11 @@ import numpy as np
 from pandas import DataFrame, concat, Timestamp, Series
 from typing import Set, Optional, Union
 
-from kola.utils.logfunc import get_logger
-from kola.utils.datefunc import now
-from kola.bargain import Bargain
-from kola.types import ordStatusL
-from kola.orders.orders import get_execPrice
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.bargain import Bargain
+from kolaBitMEXBot.kola.types import ordStatusL
+from kolaBitMEXBot.kola.orders.orders import get_execPrice
 
 
 class Condition:
@@ -356,15 +356,11 @@ class Condition:
 
         currentPrice = get_execPrice(self.brg, "sell", _pricetype)
 
-        self.logger.info(f'prices={prices}')
+        self.logger.info(f"prices={prices}")
 
         test = currentPrice <= max(prices.values) if len(prices) else True
-        
-        return (
-            currentPrice
-            if test
-            else get_execPrice(self.brg, "buy", _pricetype)
-        )
+
+        return currentPrice if test else get_execPrice(self.brg, "buy", _pricetype)
 
     def get_prices_where(self, pricetype_):
         """Renvoie les prix de type pricetype."""

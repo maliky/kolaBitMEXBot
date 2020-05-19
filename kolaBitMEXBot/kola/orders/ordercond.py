@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
-from kola.utils.logfunc import get_logger
-from kola.utils.orderfunc import newClID, toggle_order, get_order_from, remove_execInst
-from kola.utils.datefunc import now
-from kola.utils.general import trim_dic
-from kola.utils.datefunc import setdef_timedelta
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.orderfunc import (
+    newClID,
+    toggle_order,
+    get_order_from,
+    remove_execInst,
+)
+from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.utils.general import trim_dic
+from kolaBitMEXBot.kola.utils.datefunc import setdef_timedelta
 from time import sleep
 from threading import Thread
 import pandas as pd
@@ -52,7 +57,7 @@ class OrderConditionned(Thread):
 
         # self.logger.debug(f"#### Init fini for {self.__repr__(short=False)}")
 
-    def __repr__(self, short=True, suffix='----'):
+    def __repr__(self, short=True, suffix="----"):
         """Représenation."""
         rep = f"{suffix}OrderCond: {self.oclid[:10]}"
         if not short:

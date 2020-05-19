@@ -3,10 +3,10 @@
 from itertools import product
 from time import sleep
 
-from kola.utils.logfunc import get_logger
-from kola.utils.general import trim_dic
-from kola.orders.ordercond import OrderConditionned
-from kola.utils.datefunc import now
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.general import trim_dic
+from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
+from kolaBitMEXBot.kola.utils.datefunc import now
 
 
 class HookOrder(OrderConditionned):
@@ -132,9 +132,9 @@ class HookOrder(OrderConditionned):
 
         if self.is_hooked:
             return True
-        
+
         if self.condition.is_hooked():
-            self.logger.info(f'self.condition={self.condition}')
+            self.logger.info(f"self.condition={self.condition}")
             self.is_hooked = True
             self.startTime = now()
             self.logger.debug(f"* *Before update* * {self.__repr__(False)}")

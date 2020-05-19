@@ -1,10 +1,10 @@
 #  -*- coding: utf-8 -*-
 """A dummy class for testing my kola framework"""
 import numpy.random as rnd
-from kola.utils.general import round_to_d5
-from kola.utils.logfunc import get_logger
-from kola.utils.datefunc import now
-from kola.settings import XBTSATOSHI
+from kolaBitMEXBot.kola.utils.general import round_to_d5
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.settings import XBTSATOSHI
 import logging
 import pandas as pd
 from time import sleep

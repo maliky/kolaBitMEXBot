@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
-from kola.utils.general import confirm_path_existence_for
-from kola.utils.datefunc import now
-from kola.settings import LOGLEVELS, LOGFMT, LOGNAME, MAINLOGLEVEL
+from kolaBitMEXBot.kola.utils.general import confirm_path_existence_for
+from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.settings import LOGLEVELS, LOGFMT, LOGNAME, MAINLOGLEVEL
 import time
 
 

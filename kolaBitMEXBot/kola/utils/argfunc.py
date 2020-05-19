@@ -1,18 +1,17 @@
 # -*- coding: utf-8 -*-
 import argparse
-from kola.utils.pricefunc import get_prices, get_prix_decl
-from kola.utils.general import log_args
-from kola.utils.orderfunc import (
+import numpy as np
+import re
+
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.settings import LOGNAME
+from kolaBitMEXBot.kola.utils.pricefunc import get_prices, get_prix_decl
+from kolaBitMEXBot.kola.utils.orderfunc import (
     set_order_type,
     set_exec_instructions,
     set_price_type,
     is_valid_order_options,
 )
-import numpy as np
-import re
-import logging
-from kola.utils.logfunc import get_logger
-from kola.settings import LOGNAME
 
 mlogger = get_logger(name=f"{LOGNAME}.{__name__}")
 
@@ -44,10 +43,10 @@ def get_args():
     tps_run_def = [-1, 800]
     updatePause_def = 10
     sDelta_def = 2
-    hook_def = ''
+    hook_def = ""
 
     name_help = f"Nom de l'ordre dans logs internes"
-    sDelta_help = f"Différence entre le prix de l'ordre et le prix déclencheur de l'ordre.  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={sDelta})"
+    sDelta_help = f"Différence entre le prix de l'ordre et le prix déclencheur de l'ordre.""  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={sDelta_def})"
     tps_run_help = f"le temps en minute à partir du moment du lancement, doit être un tuple, indique la plage horaire pour laquelle l'ordre est valide. (default={tps_run_def})"
     tOut_help = f"Temps d'attente de vérification in minutes de la validation de l'order.  Pour les limites order peut être très long. (default le temps du run) (default temps d'attente théorique d'un ordre ie, durée du run / nb orders)"
     prix_help = f"Une fourchette de prix dans laquelle executer le ou les essais.  Si le prix sort de la fourchette rien faire.  La fourchette de prix peut être exprimer en %% du prix actuellent, en différentiel ou en valeur absolu. (default={prix_def})"
@@ -55,7 +54,7 @@ def get_args():
     side_help = f"côte de l'ordre (default={side_def})"
     quantity_help = f"quantité de l'ordre.  Doit toujours être positive ici.  Mais peut être exprimier en %% de la balance dispo ou en valeur Absolue (default={quantity_def})"
     tailPrice_help = f"C'est l'epaisseur de la queue (tail) qui suit le pri;  en %%, valeur absolu ou prix de départ (default={tailPrice_def})"
-    aType_help = f"définie comment interpréter les arguments --prix (p), --quantity (q), --tailPrice (t). Suivant les lettres ajouter A, D ou % pour en valeur Absolue, Differentiel ou pourcentage.  Exemple:  p%%qAt%% pour prix en pourcentage, quantité Absolue et t%% en pourcentage (default={aType_def})"
+    aType_help = f"définie comment interpréter les arguments --prix (p), --quantity (q), --tailPrice (t). Suivant les lettres ajouter A, D ou %% pour en valeur Absolue, Differentiel ou pourcentage.  Exemple:  p%%qAt%% pour prix en pourcentage, quantité Absolue et t%% en pourcentage (default={aType_def})"
     oType_help = f"Declenchement price type. One of one of indexPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop indexPrice,  markePrice (markPrice) et lastPrice (default ={oType_def})"
     logLevel_help = f"le niveau pour le log (default={logLevel_def})"
     logFile_help = f"Le fichier de sorti log. (default {logFile_def})"
@@ -114,7 +113,7 @@ def get_args():
     )
     parser.add_argument("--liveRun", "-L", action="store_true", help=liveRun_help)
     parser.add_argument("--dummy", "-D", action="store_true", help=dummy_help)
-    parser.add_argument("--hook", "-h", type=str, help=hook_help)
+    parser.add_argument("--Hook", "-H", type=str, help=hook_help)
 
     return parser.parse_args()
 

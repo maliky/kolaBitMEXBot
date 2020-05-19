@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 import threading
-from kola.utils.logfunc import get_logger
-from kola.utils.datefunc import now, setdef_timedelta
-from kola.utils.general import (
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.datefunc import now, setdef_timedelta
+from kolaBitMEXBot.kola.utils.general import (
     contains,
     log_args,
     trim_dic,
     sort_dic_list,
     opt_pop_if_in_,
 )
-from kola.utils.pricefunc import setdef_stopPrice
-from kola.utils.orderfunc import get_order_from
-from kola.orders.trailstop import TrailStop
-from kola.orders.orders import (
+from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
+from kolaBitMEXBot.kola.utils.orderfunc import get_order_from
+from kolaBitMEXBot.kola.orders.trailstop import TrailStop
+from kolaBitMEXBot.kola.orders.orders import (
     place,
     place_stop,
     place_at_market,
@@ -25,10 +25,10 @@ from kola.orders.orders import (
 )
 from time import sleep
 import pickle
-import kola.utils.exceptions as ke
+import kolaBitMEXBot.kola.utils.exceptions as ke
 import logging
 
-# from kola.orders import orders
+# from kolaBitMEXBot.kola.orders import orders
 import pandas as pd
 import queue
 
@@ -397,7 +397,11 @@ class Chronos(threading.Thread):
             )
 
         # ici il y a en fait le cas des reply error d'ammending
-        validation = reply if timeLeft and reply is not None and not reply.get('error', False) else False
+        validation = (
+            reply
+            if timeLeft and reply is not None and not reply.get("error", False)
+            else False
+        )
 
         self.logger.info(
             f"Attendu {timeOut - pd.Timedelta(timeLeft, unit='s')}."

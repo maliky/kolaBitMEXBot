@@ -13,20 +13,19 @@ import numpy as np
 import pandas as pd
 
 
-from kola.bargain import Bargain
-from kola.chronos import Chronos
-from kola.dummy_bitmex import DummyBitMEX
-from kola.orders.hookorder import HookOrder
-from kola.orders.ordercond import OrderConditionned
-from kola.orders.trailstop import TrailStop
-from kola.settings import HTTP_SIMPLE_RATE_LIMITE
-from kola.settings import LOGNAME, LOGFMT, ordStatusTrans
-from kola.utils.argfunc import set_order_args, price_type_trad, get_args
-from kola.utils.conditions import cVraieTpsDeA, cVraiePrixDeA, cHook
-from kola.utils.datefunc import now
-from kola.utils.logfunc import get_logger, setup_logging
-from kola.utils.orderfunc import create_order
-import kola.utils.exceptions as ke
+from kolaBitMEXBot.kola.bargain import Bargain
+from kolaBitMEXBot.kola.chronos import Chronos
+from kolaBitMEXBot.kola.dummy_bitmex import DummyBitMEX
+from kolaBitMEXBot.kola.orders.hookorder import HookOrder
+from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
+from kolaBitMEXBot.kola.orders.trailstop import TrailStop
+from kolaBitMEXBot.kola.settings import HTTP_SIMPLE_RATE_LIMITE, LOGNAME, LOGFMT, ordStatusTrans
+from kolaBitMEXBot.kola.utils.argfunc import set_order_args, price_type_trad, get_args
+from kolaBitMEXBot.kola.utils.conditions import cVraieTpsDeA, cVraiePrixDeA, cHook
+from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
+from kolaBitMEXBot.kola.utils.orderfunc import create_order
+import kolaBitMEXBot.kola.utils.exceptions as ke
 
 # harmonization de la timezone pour le script. Que ce passe-t-il au niveau du système?
 # os.environ["TZ"] = "GMT"
@@ -131,13 +130,13 @@ class MarketAuditeur:
         """
         Loop over three conditions.
 
-        - times interval in offset from now, 
+        - times interval in offset from now,
         - a prix interval in offset from now
         - and the number of essais.
         Will try to lauch a trailorder avec les même paramètres
         utiliser des nombres <0 si nécessaire
 
-        - atype define if price and quantity are set in %.  
+        - atype define if price and quantity are set in %.
         use the string %p%q to set price and/or q in %
         sinon le prix est définie en différentiel par rapport au indexPrice price
         q is in % of available margin in [0,100]

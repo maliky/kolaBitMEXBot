@@ -1,14 +1,18 @@
 #  -*- coding: utf-8 -*-
 """BitMEX API Connector."""
 from __future__ import absolute_import
-from kola.connexion.auth import APIKeyAuthWithExpires
-from kola.connexion.custom_ws_thread import BitMEXWebsocket
-from kola.utils.general import round_to_d5, trim_output
-from kola.settings import HTTP_SIMPLE_RATE_LIMITE, HTTP_BULK_RATE_LIMITE, ORDERID_PREFIX
-from kola.utils.orderfunc import newClID, split_ids, get_abbv_from_ID
-from kola.utils.datefunc import now, multiply_time_unit, TC
-from kola.utils.logfunc import get_logger
-import kola.utils.exceptions as ke
+from kolaBitMEXBot.kola.connexion.auth import APIKeyAuthWithExpires
+from kolaBitMEXBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
+from kolaBitMEXBot.kola.utils.general import round_to_d5, trim_output
+from kolaBitMEXBot.kola.settings import (
+    HTTP_SIMPLE_RATE_LIMITE,
+    HTTP_BULK_RATE_LIMITE,
+    ORDERID_PREFIX,
+)
+from kolaBitMEXBot.kola.utils.orderfunc import newClID, split_ids, get_abbv_from_ID
+from kolaBitMEXBot.kola.utils.datefunc import now, multiply_time_unit, TC
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+import kolaBitMEXBot.kola.utils.exceptions as ke
 from numpy import random
 from time import sleep, time
 import datetime as dt
@@ -206,11 +210,13 @@ class BitMEX(object):
                     self.logger.error(postdict)
                     self.exit()
 
-            # 404, can be thrown if order canceled or does not exist. 
+            # 404, can be thrown if order canceled or does not exist.
             elif response.status_code == 404:
                 if verb == "DELETE":
-                    self.logger.error(f'Order not found. postdict = {postdict} and load={load}')
-                    #self.logger.error("Order not found: %s" % postdict["orderID"])
+                    self.logger.error(
+                        f"Order not found. postdict = {postdict} and load={load}"
+                    )
+                    # self.logger.error("Order not found: %s" % postdict["orderID"])
                     return None
                 exit_or_throw(e, response, load)
 
@@ -648,7 +654,7 @@ class BitMEX(object):
             oID = postdict["orderID"]
             # on récupère l'abbrevation de l'ancien si possible
             nID = newClID(abbv_=get_abbv_from_ID(oID))
-            
+
             postdict.update({"orderID": nID})
 
         self.logger.warning(f"Changed old ID {oID} --> new ID {nID}")

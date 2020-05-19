@@ -36,8 +36,8 @@ setup(
     # ],
     entry_points={
         "console_scripts": [
-            "run_multi_kola=kolabitMEXBot.run_multi_kola.py:main_prg",
-            "multi_kola=kolabitMEXBot.multi_kola.py:main_prg",
+            "run_multi_kola=kolaBitMEXBot.run_multi_kola:main_prg",
+            "multi_kola=kolaBitMEXBot.multi_kola:main_prg",
         ]
     },
     install_requires=[

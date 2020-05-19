@@ -2,11 +2,12 @@
 from typing import Union, Literal, Tuple
 import logging
 
-from kola.utils.general import round_to_d5
+from kolaBitMEXBot.kola.utils.general import round_to_d5
 
 priceT = Union[float, int]
 sideT = Literal["buy", "sell"]
 bipriceT = Tuple[priceT, priceT]  # couple de price
+
 
 def set_new_price(base: priceT, per: float) -> priceT:
     """
@@ -14,15 +15,15 @@ def set_new_price(base: priceT, per: float) -> priceT:
     """
     logging.warning(f"Setting a new price with a percentage < 1% {per}. Are you sure?")
 
-    return round_to_d5(base * (1 + per / 100)) 
+    return round_to_d5(base * (1 + per / 100))
 
 
 def get_prices(refPrice: priceT, prix: bipriceT, atype) -> bipriceT:
     """
     Renvois les prix formatés selon atype
     """
-    assert any([p in atype for p in ['p%', 'pA', 'pD']]), f"atype={atype}"
-    
+    assert any([p in atype for p in ["p%", "pA", "pD"]]), f"atype={atype}"
+
     if "p%" in atype:
         # prix inf et prix sup
         newPrix = set_new_price(refPrice, prix[0]), set_new_price(refPrice, prix[1])

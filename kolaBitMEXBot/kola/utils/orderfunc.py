@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 from base64 import b64encode
 from uuid import uuid4
-from kola.utils.pricefunc import get_prix_decl, setdef_stopPrice
-from kola.utils.general import opt_add_to_, contains, log_args
-from kola.settings import LOGNAME, ORDERID_PREFIX
+from kolaBitMEXBot.kola.utils.pricefunc import get_prix_decl, setdef_stopPrice
+from kolaBitMEXBot.kola.utils.general import opt_add_to_, contains, log_args
+from kolaBitMEXBot.kola.settings import LOGNAME, ORDERID_PREFIX
 import re
-from kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
 
 mlogger = get_logger(name=f"{LOGNAME}.{__name__}")
 

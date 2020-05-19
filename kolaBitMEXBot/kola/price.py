@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 # a tester
-from kola.utils.general import round_to_d5
-from kola.utils.logfunc import get_logger
-from kola.utils.datefunc import now
-from kola.utils.general import contains
+from kolaBitMEXBot.kola.utils.general import round_to_d5
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.utils.general import contains
 import numpy as np
 import pandas as pd
 from collections import OrderedDict

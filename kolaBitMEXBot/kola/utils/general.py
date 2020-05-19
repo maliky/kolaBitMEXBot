@@ -7,7 +7,7 @@ import queue
 import threading
 import logging
 import functools
-from kola.settings import LOGLEVELS, LOGNAME
+from kolaBitMEXBot.kola.settings import LOGLEVELS, LOGNAME
 
 # mlogger = logging.getLogger('{LOGNAME}.{__name__}')
 # mlogger.setLevel('INFO')

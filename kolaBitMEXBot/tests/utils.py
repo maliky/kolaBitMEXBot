@@ -9,7 +9,7 @@ from collections import OrderedDict
 
 from multi_kola import MarketAuditeur
 
-from kola.orders.orders import (
+from kolaBitMEXBot.kola.orders.orders import (
     place,
     place_at_market,
     place_stop,
@@ -17,14 +17,14 @@ from kola.orders.orders import (
     place_MIT,
     place_LIT,
 )
-from kola.types import sideT, symbT, priceTT
-from kola.utils.general import trim_dic
-from kola.utils.pricefunc import setdef_stopPrice
-from kola.utils.orderfunc import toggle_order, split_ids
-from kola.utils.constantes import EXECOLS
-from kola.bargain import Bargain
-from kola.custom_bitmex import BitMEX
-from kola.connexion.custom_ws_thread import BitMEXWebsocket
+from kolaBitMEXBot.kola.types import sideT, symbT, priceTT
+from kolaBitMEXBot.kola.utils.general import trim_dic
+from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
+from kolaBitMEXBot.kola.utils.orderfunc import toggle_order, split_ids
+from kolaBitMEXBot.kola.utils.constantes import EXECOLS
+from kolaBitMEXBot.kola.bargain import Bargain
+from kolaBitMEXBot.kola.custom_bitmex import BitMEX
+from kolaBitMEXBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
 
 
 class Test:
@@ -34,7 +34,7 @@ class Test:
         """
         Regroupe quelques fonction pour faciliter les tests depuis ipython.
         
-        from kola.test.utils_test import Test; T = Test()
+        from kolaBitMEXBot.kola.test.utils_test import Test; T = Test()
         """
         self.qty: int = 40
         self.offset: float = 2
@@ -67,7 +67,7 @@ class Test:
         _price = self.brg.prices(self.priceType) + _offset
 
         reply = place(self.brg, side, _qty, price=_price, **opts)
-        
+
         oPlace = [trim_dic(o) for o in reply][0] if trim_ else reply
         self.Ods[f'{oPlace["orderID"]}'] = oPlace
         return None

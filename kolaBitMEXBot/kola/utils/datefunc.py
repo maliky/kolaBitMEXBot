@@ -4,6 +4,7 @@ import datetime as dt
 
 TC = {"1m": "60s", "5m": "300s", "1h": "1H", "1d": "1D"}
 
+
 def multiply_time_unit(factor, unit):
     """
     Takes a pandas timedelta unit et multiply it by factor
