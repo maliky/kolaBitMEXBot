@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 
-from kolaBitMEXBot.kola.setting import SYMBOL
+from kolaBitMEXBot.kola.settings import SYMBOL
 from kolaBitMEXBot.kola.bargain import Bargain
 from kolaBitMEXBot.kola.chronos import Chronos
 from kolaBitMEXBot.kola.dummy_bitmex import DummyBitMEX

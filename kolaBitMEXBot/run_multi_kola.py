@@ -71,7 +71,7 @@ def main_prg():
     try:
         go_multi(
             tma,
-            arg_file=cmdArgs.argFile,
+            arg_file=cmdArgs.morders,
             logpause=defaultArgs.logPause,
             updatepause=defaultArgs.updatePause,
         )

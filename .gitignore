@@ -1,4 +1,7 @@
 secrets.py
+adaorders.tsv
+morders.tsv*
+pyvenv.cfg
 bin/
 include/
 lib/
