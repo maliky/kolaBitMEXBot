@@ -13,7 +13,7 @@ with open("README.rst", "r") as f:
 
 setup(
     name="kolaBitMEXBot",
-    version="1.1.2",
+    version="1.1.4",
     description="Trading bot with trail stop and chained orders for pour Bitmex and maybe more...",
     long_description=long_description,
     long_description_content_type="text/x-rst",
@@ -51,5 +51,5 @@ setup(
         "Topic :: Utilities",
         "Topic :: System :: Monitoring",
     ],
-    package_data={"kolaBitMEX": ["*.txt", "*.tsv"]},
+    package_data={"kolaBitMEXBot": ["*.txt"], "kolaBitMEXBot": ["*.tsv"]},
 )
