@@ -1,7 +1,7 @@
 Kola BitMEX Bot
 ===============
 
-Présentation
+Presentation
 ------------
 
 KolaBot is a program to handle concurrently several pairs of orders in
@@ -188,20 +188,49 @@ File Index
 Core program files
 ~~~~~~~~~~~~~~~~~~
 
-kolaBitMEXBot ├── cancel\ :sub:`all`.py ├── kola │   ├── bargain.py │  
-├── chronos.py │   ├── connexion │   │   ├── auth.py │   │   ├──
-custom\ :sub:`wsthread`.py │   │   └── init.py │   ├──
-custom\ :sub:`bitmex`.py │   ├── dummy\ :sub:`bitmex`.py │   ├── init.py
-│   ├── orders │   │   ├── condition.py │   │   ├── hookorder.py │   │  
-├── init.py │   │   ├── ordercond.py │   │   ├── orders.py │   │   └──
-trailstop.py │   ├── price.py │   ├── settings.py │   ├── types.py │  
-└── utils │   ├── argfunc.py │   ├── conditions.py │   ├── constantes.py
-│   ├── datefunc.py │   ├── exceptions.py │   ├── general.py │   ├──
-init.py │   ├── logfunc.py │   ├── orderfunc.py │   └── pricefunc.py ├──
-morders.tsv ├── multi\ :sub:`kola`.py ├── pos\ :sub:`test`.py ├──
-run\ :sub:`multikola`.py └── tests └── utils.py
+.. code:: bash
 
-5 directories, 33 files
+   kolaBitMEXBot
+   ├── cancel_all.py
+   ├── kola
+   │   ├── bargain.py
+   │   ├── chronos.py
+   │   ├── connexion
+   │   │   ├── auth.py
+   │   │   ├── custom_ws_thread.py
+   │   │   └── __init__.py
+   │   ├── custom_bitmex.py
+   │   ├── dummy_bitmex.py
+   │   ├── __init__.py
+   │   ├── orders
+   │   │   ├── condition.py
+   │   │   ├── hookorder.py
+   │   │   ├── __init__.py
+   │   │   ├── ordercond.py
+   │   │   ├── orders.py
+   │   │   └── trailstop.py
+   │   ├── price.py
+   │   ├── settings.py
+   │   ├── types.py
+   │   └── utils
+   │       ├── argfunc.py
+   │       ├── conditions.py
+   │       ├── constantes.py
+   │       ├── datefunc.py
+   │       ├── exceptions.py
+   │       ├── general.py
+   │       ├── __init__.py
+   │       ├── logfunc.py
+   │       ├── orderfunc.py
+   │       └── pricefunc.py
+   ├── morders.tsv
+   ├── multi_kola.py
+   ├── pos_test.py
+   ├── run_multi_kola.py
+   └── tests
+       └── utils.py
+
+   5 directories, 33 files
 
 Setup and annexes program files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
