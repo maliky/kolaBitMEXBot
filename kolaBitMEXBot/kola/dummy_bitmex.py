@@ -56,7 +56,7 @@ class DummyBitMEX:
     def margin(self):
         return {"availableMargin": self.availableMargin}
 
-    def instrument(self, symbol=self.symbol):
+    def instrument(self, symbol=None):
         refPrice = self.current_dum_price
         markPrice = refPrice + round_to_d5(rnd.normal())
 
