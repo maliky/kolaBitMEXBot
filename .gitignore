@@ -10,3 +10,4 @@ core_program_files.txt
 build*
 dist*
 *.egg*
+morders.py
