@@ -446,7 +446,7 @@ class Bargain:
             if timeLaps > Timedelta(randint(2, 11), unit="s") or self.bto.dummy:
                 path = "trade"
                 query = {
-                    "symbol": priceQuery.get(self.symbol, self.symbol),
+                    "symbol": settlementPrices.get(self.symbol, self.symbol),
                     "count": 1,
                     "columns": "price",
                     "reverse": "true",
