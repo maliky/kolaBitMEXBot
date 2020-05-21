@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 """To place orders."""
-from kolaBitMEXBot.kola.settings import API_REST_INTERVAL, API_ERROR_INTERVAL
-from kolaBitMEXBot.kola.utils.general import round_to_d5, trim_dic, log_args
+from time import sleep
+import logging
+
+from kolaBitMEXBot.kola.settings import API_ERROR_INTERVAL
+from kolaBitMEXBot.kola.utils.general import round_price, trim_dic
 from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.exceptions import InvalidOrdStatus
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
+# from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.settings import LOGNAME
 from kolaBitMEXBot.kola.bargain import Bargain
-from time import sleep
-import logging
 
 mlogger = logging.getLogger("")
 mlogger.name = f"{LOGNAME}.{__name__}"
@@ -35,7 +37,7 @@ def place(brg, side, orderQty, price, **opts):
     - price
     """
     # by default ordType='Limit'
-    price = round_to_d5(price)
+    price = round_price(price)
     mlogger.debug(f"brg={brg}, orderQty:{orderQty}, side={side}, opts={opts}")
     return brg.bto.place(orderQty=orderQty, side=side, price=price, asBulk=True, **opts)
 
@@ -174,7 +176,7 @@ def amend_price(brg, orderID, newPrice):
     -newPrice <int>
     """
     #    mlogger.debug(f'orderID={orderID}, newStopPx={newStopPx}, opts={opts}')
-    newPrice = round_to_d5(newPrice)
+    newPrice = round_price(newPrice)
     try:
         order = {"orderID": orderID}  # format à vérifier pour harmonisation
         return brg.bto.amend(order, price=newPrice)
@@ -241,7 +243,7 @@ def amend_stop_price(brg, orderID, newStopPx):
 - orderID <str>: one existing bitmex order,
   -newStopPx <int>: new stop price."""
     #    mlogger.debug(f'orderID={orderID}, newStopPx={newStopPx}, opts={opts}')
-    newStopPx = round_to_d5(newStopPx)
+    newStopPx = round_price(newStopPx)
     try:
         order = {"orderID": orderID}  # format à vérifier pour harmonisation
         return brg.bto.amend(order, stopPx=newStopPx)
@@ -256,7 +258,7 @@ def amend_trailstop(brg, order, newPegOffsetValue):
     - pegOffsetValue <int>: le delta, si >0 trigger price au dessus, (donc orderQty doit être <0 ou side sell)."""
 
     mlogger.info(f"order={order}, newPegOffsetValue={newPegOffsetValue}")
-    newPegOffsetValue = round_to_d5(newPegOffsetValue)
+    newPegOffsetValue = round_price(newPegOffsetValue)
     return brg.bto.amend(
         order, pegOffsetValue=newPegOffsetValue, pegPriceType="TrailingStopPeg"
     )

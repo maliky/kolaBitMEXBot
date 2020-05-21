@@ -247,7 +247,7 @@ class MarketAuditeur:
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst
             order = create_order(side, _q, opType, ordType, execInst, oPrices, sDelta)
 
-            # On initialise les arguments condition pour les ordre principaux
+            # On initialise les arguments condition pour les ordres principaux
             kwargs = {
                 "send_queue": self.fileDattente,
                 "order": order,
@@ -258,7 +258,9 @@ class MarketAuditeur:
                 "logger": self.logger,
                 "nameT": f"{nameT}-PO",
                 "timeout": timeOut,
+                "symbol": self.symbol
             }
+            
             self.logger.debug(f"~~~~ Order = {order}")
             if hook:
                 _hSrc, _status = hook.split("_")

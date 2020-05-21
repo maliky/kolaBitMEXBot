@@ -16,12 +16,16 @@ from kolaBitMEXBot.kola.settings import (
     POST_ONLY,
     XBTSATOSHI,
     CONTRACTS,
-    settlementPrices,
 )
 from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.general import round_to_d5, is_number, trim_dic, cdr, car
+from kolaBitMEXBot.kola.utils.general import round_price, is_number, trim_dic, cdr, car
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.utils.constantes import EXECOLS
+from kolaBitMEXBot.kola.utils.constantes import (
+    EXECOLS,
+    SETTLEMENTPRICES,
+    PRICE_PRECISION,
+)
+
 
 # MULTIPLIER À CORRIGER
 # Trouver un moyen d'annuler juste les ordre passé dans ce bargain (prefix ?)
@@ -50,6 +54,7 @@ class Bargain:
         self.logger = get_logger(logger, name=__name__, sLL="INFO")
 
         self.symbol = symbol
+        self.precision = PRICE_PRECISION[symbol]
         self.last_check_time = now() - Timedelta(
             2, unit="D"
         )  # on s'assure d'être dans le passé.
@@ -125,7 +130,7 @@ class Bargain:
 
     def get_balance(self, atPrice="satoshi"):
         """
-        Calcule la balance en satoshi (def), usd ou xbt atPrice.  
+        Calcule la balance en satoshi (def), usd ou xbt atPrice.
 
         Si atPrice is None, use market buy sell or mid price
         Voir aussi abonnement "wallet"
@@ -143,14 +148,14 @@ class Bargain:
                     current_price = self.prices("market", "sell")
                 else:
                     current_price = self.prices("midPrice")
-                return round_to_d5(xbt_balance * current_price)
+                return round_price(xbt_balance * current_price, self.precision)
 
             elif "xbt" in atPrice:
                 return xbt_balance
 
         elif is_number(atPrice):
             # atPrice should be float
-            return round_to_d5(xbt_balance * atPrice)
+            return round_price(xbt_balance * atPrice)
 
         elif atPrice is not None:
             raise Exception("atPrice should be str number or None")
@@ -287,7 +292,7 @@ class Bargain:
     def execution(self, clOrdID_: Optional[str] = None) -> DataFrame:
         """
         Display the execution table.
-        
+
         Si clOrdID_ is None, Renvois tous mes ordres executés.
         Sinon renvois seulement les lignes clOrdID_ dans l'ordre
         transactTime ascendant.
@@ -343,7 +348,7 @@ class Bargain:
         Récupère les clOrdID associés à srcKey_ si ils existent.
 
         la srcKey ne contient pas le status que doit avoir exec
-        Si en trouve plusieurs IDS, les renvois dans l'ordre ascendant 
+        Si en trouve plusieurs IDS, les renvois dans l'ordre ascendant
         des transactTimes.
         """
         # Ordres exécutés et ordonnés dans l'ordre ascendant
@@ -397,7 +402,7 @@ class Bargain:
         """
         Test si l'ordre clOrdID_ à atteint ordStatus.
 
-        Regarde dans data['execution'] et vérifie le ordStatus 
+        Regarde dans data['execution'] et vérifie le ordStatus
         de la dernière execution du clOrdID_.
         """
         execOrders: DataFrame = self.execution(clOrdID_)
@@ -417,21 +422,33 @@ class Bargain:
         """Les trades récents?."""
         return self.bto.recent_trades()
 
+    def get_most_recent_settlement_price(self):
+        """Query the market for the last settlement price of symbol."""
+        path = "trade"
+        query = {
+            "symbol": SETTLEMENTPRICES.get(self.symbol, self.symbol),
+            "count": 1,
+            "columns": "price",
+            "reverse": "true",
+        }
+        # self.logger.debug(f'Got new price from curl {self.cached_refPrice}')
+        return self.bto._curl_bitmex(path, query)[0]["price"]
+
     def prices(self, typeprice=None, side="buy"):
         """
         Show summary of current prices.
-        
+
         typeprice can be 'delta', 'indexPrice', 'market', 'askPrice',
         'midPrice', 'ref_delta','market_maker', 'lastMidPrice' or None (for all instrument prices)
         """
         prices = {
             k: v for (k, v) in self.bto.instrument(self.symbol).items() if "rice" in k
         }
-        # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice', 'lowPrice',
+        # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice',
+        # 'lowPrice', IndexPrice
         # 'lastPrice', 'lastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',
-        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'markPrice', 'markPrice',
-        # 'indicativeSettlePrice'
-        # execInst, MarkPrice, LastPrice, IndexPrice
+        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'markPrice',
+        # 'markPrice','indicativeSettlePrice', execInst, MarkPrice, LastPrice,
 
         ret = None
         typeprice = "" if typeprice is None else typeprice
@@ -444,26 +461,13 @@ class Bargain:
             # minisytème de cache  jusquà 11s avant nouvel appel au broker
             timeLaps = now() - self.last_check_time
             if timeLaps > Timedelta(randint(2, 11), unit="s") or self.bto.dummy:
-                path = "trade"
-                query = {
-                    "symbol": settlementPrices.get(self.symbol, self.symbol),
-                    "count": 1,
-                    "columns": "price",
-                    "reverse": "true",
-                }
-                self.cached_refPrice = self.bto._curl_bitmex(path, query)[0]["price"]
-                # self.logger.debug(f'Got new price from curl {self.cached_refPrice}')
-
+                self.cache_refPrice = self.get_most_recent_settlement_price()
                 self.last_check_time = now()
 
             ret = self.cached_refPrice
-        # return self.bto.instrument('.BXBT')['markPrice']
 
         elif typeprice.lower() == "lastprice":
             # askPrice > bidPrice
-            # j'ai 1 BTC je veux demande dollars. le prix d'offre (bid) des dollars pour 1 BTC est < à l'autre
-            # j'ai des dollars, je veux des BTC. le prix d'achat de demande (ask) du BTC est ..
-            # prix d'ask 1 BTC, prix de bid (vente) 1 BTC.  valuer nominale le BTC
             ret = prices["askPrice"] if side == "buy" else prices["bidPrice"]
         elif typeprice == "market_maker":
             ret = prices["bidPrice"] if side == "buy" else prices["askPrice"]
@@ -477,7 +481,7 @@ class Bargain:
         elif typeprice:
             ret = prices[typeprice]
 
-        return prices if not ret else round_to_d5(ret)
+        return prices if not ret else round_price(ret)
 
     def set_leverage(self, leverage):
         return self.bto.isolate_margin(self.symbol, leverage)

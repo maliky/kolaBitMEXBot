@@ -2,7 +2,7 @@
 from typing import Union, Literal, Tuple
 import logging
 
-from kolaBitMEXBot.kola.utils.general import round_to_d5
+from kolaBitMEXBot.kola.utils.general import round_price
 
 priceT = Union[float, int]
 sideT = Literal["buy", "sell"]
@@ -15,7 +15,7 @@ def set_new_price(base: priceT, per: float) -> priceT:
     """
     logging.warning(f"Setting a new price with a percentage < 1% {per}. Are you sure?")
 
-    return round_to_d5(base * (1 + per / 100))
+    return round_price(base * (1 + per / 100))
 
 
 def get_prices(refPrice: priceT, prix: bipriceT, atype) -> bipriceT:
@@ -32,7 +32,7 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype) -> bipriceT:
         newPrix = prix[0], prix[1]
     elif "pD" in atype:
         # prix en différentiel par rapport au prix de référence
-        newPrix = round_to_d5(refPrice + prix[0]), round_to_d5(refPrice + prix[1])
+        newPrix = round_price(refPrice + prix[0]), round_price(refPrice + prix[1])
 
     return newPrix
 

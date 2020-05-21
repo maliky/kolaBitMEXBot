@@ -37,9 +37,8 @@ MAINLOGLEVEL = "DEBUG"
 
 # fmt = '%(asctime)s-%(levelname)s-%(filename)s@%(lineno)s(%(threadName)s): %(message)s'
 # LOGFMT = '%(threadName)s~%(levelno)s /%(filename)s@%(lineno)s@%(funcName)s/ %(message)s'
-LOGFMT = "%(asctime)s %(threadName)s~%(levelno)s /%(filename)s@%(lineno)s@%(funcName)s/ %(message)s"
-
 # LOGFMT = '%(asctime)s (%(threadName)s~%(name)s~%(levelno)s) /%(filename)s@%(lineno)s@%(funcName)s/ %(message)s'
+LOGFMT = "%(asctime)s %(threadName)s~%(levelno)s /%(filename)s@%(lineno)s@%(funcName)s/ %(message)s"
 
 LOGNAME = "kola"
 
@@ -49,10 +48,4 @@ ordStatusTrans = {
     "F": "Filled",
     "P": "PartiallyFilled",
     "T": "Triggered",
-}
-
-# to get price in bargain.price
-settlementPrices = {
-    "XBTUSD": ".BXBT",
-    "ADAM20": ".BADAXBT30M"
 }

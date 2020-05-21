@@ -24,6 +24,7 @@ class HookOrder(OrderConditionned):
         timeout,
         logger=None,
         excludeIDs_=None,
+        symbol='XBTUSD'
     ):
         """
         Init a Hook ordre object.
@@ -37,7 +38,9 @@ class HookOrder(OrderConditionned):
         self.hStatus = hStatus
         self.is_hooked: bool = False
         self.excludeIDs = excludeIDs_
+        self.symbol = symbol
 
+        # for the symbol need some change to hook on other symbols
         OrderConditionned.__init__(
             self,
             send_queue=send_queue,
@@ -47,6 +50,7 @@ class HookOrder(OrderConditionned):
             logger=logger,
             nameT=nameT,
             timeout=timeout,
+            symbol=symbol
         )
 
         self.init_cond_frame = self.condition.cond_frame.copy()
