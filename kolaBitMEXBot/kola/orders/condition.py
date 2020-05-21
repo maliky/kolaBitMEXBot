@@ -7,7 +7,7 @@ from typing import Set, Optional, Union
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.bargain import Bargain
-from kolaBitMEXBot.kola.types import ordStatusL
+from kolaBitMEXBot.kola.kolatypes import ordStatusL
 from kolaBitMEXBot.kola.orders.orders import get_execPrice
 
 

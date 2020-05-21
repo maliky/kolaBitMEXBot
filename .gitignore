@@ -14,3 +14,5 @@ build*
 dist*
 *.egg*
 morders.py
+.python-version
+get-pip.py

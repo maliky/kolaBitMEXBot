@@ -1,9 +1,9 @@
 ;; config file for my editor IDE (emacs)
 ((python-mode
-  (python-black-command . "/home/mlk/.pyenv/shims/black")
-  (python-shell-interpreter . "/home/mlk/.pyenv/shims/python3.8")
-  (flycheck-python-mypy-executable . "/home/mlk/.pyenv/shims/mypy")
-  (flycheck-python-flake8-executable . "/home/mlk/.pyenv/shims/flake8")
+  (python-black-command . "~/kolaBitMEXBot/bin/black")
+  (python-shell-interpreter . "~/kolaBitMEXBot/bin/python3.8")
+  (flycheck-python-mypy-executable . "~/kolaBitMEXBot/bin/mypy")
+  (flycheck-python-flake8-executable . "~/kolaBitMEXBot/bin/flake8")
 
   (python-black--base-args . "--quiet --config ./setup.cfg")
   (blacken-skip-string-normalization nil)
