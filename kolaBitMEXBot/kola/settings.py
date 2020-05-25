@@ -56,3 +56,9 @@ settlementPrices = {
     "XBTUSD": ".BXBT",
     "ADAM20": ".BADAXBT30M"
 }
+
+# to round prices
+roundPrices = {
+    'XBTUSD': round_to_d5
+    'ADAM20': lambda x: round(x, 8)
+}

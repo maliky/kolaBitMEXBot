@@ -142,7 +142,7 @@ def check_args(func):
 
 # @log_args(logopt=__name__)
 def set_order_args(
-    prix, _q, _tp, atype, brg, optype, tptype, recompute=True, side=None
+        prix, _q, _tp, atype, brg, optype, tptype, recompute=True, side=None, symbol=None
 ):
     """
     Définie les valeurs pour le prix, la quantité, la taille.
@@ -150,6 +150,7 @@ def set_order_args(
     Se base sur atype (argtype) et prix type (tRefPrice tail).
     Si recompute is False, ne recalcule pas les pourcentages
     -tptype: tail price type
+    - symbol: XBTUSD ou ADAM20 for exemple. used to set rounding
     """
     # renvois le prix de référence pour la queue selon le tptype et side
     tailPrixRef = brg.prices(tptype, side)

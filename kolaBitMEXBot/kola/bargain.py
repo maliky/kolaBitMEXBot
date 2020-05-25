@@ -422,15 +422,17 @@ class Bargain:
         Show summary of current prices.
         
         typeprice can be 'delta', 'indexPrice', 'market', 'askPrice',
-        'midPrice', 'ref_delta','market_maker', 'lastMidPrice' or None (for all instrument prices)
+
+        'midPrice', 'ref_delta','market_maker', 'lastMidPrice' or None
+        (for all instrument prices)
         """
         prices = {
             k: v for (k, v) in self.bto.instrument(self.symbol).items() if "rice" in k
         }
-        # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice', 'lowPrice',
+        # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice',
         # 'lastPrice', 'lastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',
-        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'markPrice', 'markPrice',
-        # 'indicativeSettlePrice'
+        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'markPrice',
+        # 'markPrice', 'indicativeSettlePrice', 'lowPrice',
         # execInst, MarkPrice, LastPrice, IndexPrice
 
         ret = None

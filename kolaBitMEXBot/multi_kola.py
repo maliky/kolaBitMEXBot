@@ -85,7 +85,7 @@ class MarketAuditeur:
         """Représentation du Market auditeur."""
         rep = f"Live={self.live}-{self.symbol}, log to {self.logger}"
         if len(self.resultats):
-            rep += "Resultats={self.resultats}"
+            rep += f"Resultats={self.resultats}"
 
         return rep
 

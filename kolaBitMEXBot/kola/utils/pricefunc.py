@@ -10,15 +10,13 @@ bipriceT = Tuple[priceT, priceT]  # couple de price
 
 
 def set_new_price(base: priceT, per: float) -> priceT:
-    """
-    crée un prix à partir d'un prix de base et d'un pourcentage
-    """
-    logging.warning(f"Setting a new price with a percentage < 1% {per}. Are you sure?")
+    """Crée un prix à partir d'un prix de base et d'un pourcentage."""
+    logging.info(f"Setting a new price with a percentage < 1% {per}. Are you sure?")
 
-    return round_to_d5(base * (1 + per / 100))
+    return base * (1 + per / 100)
 
 
-def get_prices(refPrice: priceT, prix: bipriceT, atype) -> bipriceT:
+def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT:
     """
     Renvois les prix formatés selon atype
     """
@@ -32,9 +30,11 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype) -> bipriceT:
         newPrix = prix[0], prix[1]
     elif "pD" in atype:
         # prix en différentiel par rapport au prix de référence
-        newPrix = round_to_d5(refPrice + prix[0]), round_to_d5(refPrice + prix[1])
+        newPrix = refPrice + prix[0], refPrice + prix[1]
 
-    return newPrix
+    if symbol is not None:
+        round_func = 
+        return newPrix
 
 
 def setdef_stopPrice(price: priceT, side: sideT, absdelta: float = 2) -> priceT:
