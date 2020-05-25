@@ -1,24 +1,27 @@
 #  -*- coding: utf-8 -*-
 """BitMEX API Connector."""
 from __future__ import absolute_import
+from time import sleep, time
+
+from json import dumps
+from numpy import random
+import datetime as dt
+import requests as rq
+import pandas as pd
+
 from kolaBitMEXBot.kola.connexion.auth import APIKeyAuthWithExpires
 from kolaBitMEXBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
-from kolaBitMEXBot.kola.utils.general import round_to_d5, trim_output
+from kolaBitMEXBot.kola.utils.general import round_price, trim_output
 from kolaBitMEXBot.kola.settings import (
     HTTP_SIMPLE_RATE_LIMITE,
     HTTP_BULK_RATE_LIMITE,
     ORDERID_PREFIX,
 )
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.utils.orderfunc import newClID, split_ids, get_abbv_from_ID
 from kolaBitMEXBot.kola.utils.datefunc import now, multiply_time_unit, TC
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 import kolaBitMEXBot.kola.utils.exceptions as ke
-from numpy import random
-from time import sleep, time
-import datetime as dt
-from json import dumps
-import requests as rq
-import pandas as pd
 
 # https://www.bitmex.com/api/explorer/
 
@@ -43,6 +46,7 @@ class BitMEX(object):
         self.logger = get_logger(logger, name=__name__, sLL="INFO")
         self.base_url = base_url
         self.symbol = symbol
+        self.prec = PRICE_PRECISION[symbol]
         self.postOnly = postOnly
 
         if apiKey is None:
@@ -635,11 +639,11 @@ class BitMEX(object):
         tps3 = random.uniform(20, 80) if self.retries > 6 else 0
         self.logger.warning(
             f"retry {verb} {path} {self.retries}/{max_retries}: "
-            f"Pause de {round_to_d5(tps1+tps2+tps3)} sec:"
+            f"Pause de {round_price(tps1+tps2+tps3, self.prec)} sec:"
             f' postdict={dumps(postdict or "")}'
         )
         # going to sleep
-        sleep(tps1) if fast else sleep(round_to_d5(tps1 + tps2 + tps3))
+        sleep(tps1) if fast else sleep(round_price(tps1 + tps2 + tps3, self.prec))
 
         return self._curl_bitmex(
             path, query, postdict, timeout, verb, rethrow_errors, max_retries

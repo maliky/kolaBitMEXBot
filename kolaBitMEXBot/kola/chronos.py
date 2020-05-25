@@ -89,10 +89,12 @@ class Chronos(threading.Thread):
                 # 'StopLimit', 'LimitIfTouched'
                 side = rcvOrder.pop("side")
                 orderQty = rcvOrder.pop("orderQty")
-
+                symbol = rcvOrder.pop('symbol')
+                
                 # pop le prix si dans le rcvOrder
                 # sinon le prix du marché en fonction du side, en market_maker
                 price = self.pop_price_from_(rcvOrder, side, execInst)
+
 
                 # renvois un stopPx par défaut si ordType le nécessite
                 stopPx = self.pop_stopPx_from_(rcvOrder, price, side, ordType)

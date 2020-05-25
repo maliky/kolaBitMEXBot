@@ -1,14 +1,17 @@
 #  -*- coding: utf-8 -*-
 """A dummy class for testing my kola framework"""
+import logging
+from time import sleep
+from json import dumps
+
+import pandas as pd
 import numpy.random as rnd
-from kolaBitMEXBot.kola.utils.general import round_to_d5
+
+from kolaBitMEXBot.kola.utils.general import round_price
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.settings import XBTSATOSHI
-import logging
-import pandas as pd
-from time import sleep
-from json import dumps
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 
 
 class DummyBitMEX:
@@ -26,6 +29,7 @@ class DummyBitMEX:
         self.availableMargin = 1e7
         self.dummyID = "dummyIDDIDIDIDI"
         self.symbol= 'XBTUSD'
+        self.prec = PRICE_PRECISION['XBTUSD']
 
     def __repr__(self):
         rep = f"Dummy BitMEX object (dummy ø): url=local"
@@ -58,7 +62,7 @@ class DummyBitMEX:
 
     def instrument(self, symbol=None):
         refPrice = self.current_dum_price
-        markPrice = refPrice + round_to_d5(rnd.normal())
+        markPrice = refPrice + round_price(rnd.normal(), self.prec)
 
         return {
             "multiplier": 1,
@@ -138,11 +142,11 @@ class DummyBitMEX:
         tps3 = rnd.uniform(10, 30) if self.retries > 6 else 0
         self.logger.warning(
             f"retry {verb} {path} {self.retries}/{max_retries}: "
-            f"Pause de {round_to_d5(tps1+tps2+tps3)} sec:"
+            f"Pause de {round_price(tps1+tps2+tps3, self.prec)} sec:"
             f' postdict={dumps(postdict or "")}'
         )
         # going to sleep
-        sleep(tps1) if fast else sleep(round_to_d5(tps1 + tps2 + tps3))
+        sleep(tps1) if fast else sleep(round_price(tps1 + tps2 + tps3, self.prec))
 
         return self._curl_bitmex(
             path, query, postdict, timeout, verb, rethrow_errors, max_retries

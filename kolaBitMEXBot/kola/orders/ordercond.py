@@ -26,6 +26,7 @@ class OrderConditionned(Thread):
         logger=None,
         nameT=None,
         timeout=None,
+        symbol='XBTUSD'
     ):
         """
         Une queue, pour passer les ordres, un ordre à passer si la condition est validée.
@@ -35,11 +36,12 @@ class OrderConditionned(Thread):
         def 2 jours
         - hook : nom du hook, ou de l'abbrevation qui sert de hook.
         - sLL= debug level
+        -symbol: symbol for this order, def. XBTUSD
         """
         Thread.__init__(self, name=nameT)
 
         self.logger = get_logger(logger, sLL="INFO", name=__name__)
-
+        self.symbol = symbol
         self.send_queue = send_queue
         self.valid_queue = valid_queue
 
@@ -72,9 +74,9 @@ class OrderConditionned(Thread):
     def timed_out(self):
         """
         Say if ordre timed_out or not.
-        
+
         Deux raisons peuvent le time-out.
-        1) Il y a une condition de temps qui ne peut plus être vraie, 
+        1) Il y a une condition de temps qui ne peut plus être vraie,
         2) Le paramètre timeOut de l'orderCondition est arrivé à expiration
         """
         return (self.elapsed_time() >= self.timeOut) or self.condition.timed_out()
@@ -143,7 +145,8 @@ class OrderConditionned(Thread):
     def get_load(self, order=None):
         """Set the default load pour this order."""
         # un identifiant pour le suivi
-        load = {"sender": self, "timeOut": self.timeOut}
+        assert self.symbol is not None, f"order={order}"
+        load = {"sender": self, "timeOut": self.timeOut, 'symbol': self.symbol}
         _order = order if order else self.order
         load["order"] = _order
         return load, _order
@@ -151,13 +154,13 @@ class OrderConditionned(Thread):
     def send_order(self, order=None):
         """
         Passe l'ordre au serveur chronos chargé de le faire executer.
-    
+
         l'ordre et d'en vérifier la validation.
         """
         load, _order = self.get_load(order)
 
         ordType = _order.get("ordType", None)
-        assert ordType, f"Should have an order Type here."
+        assert ordType, f"Should have an order Type here but order={order}"
 
         # check the execInst:
         execInst = _order.get("execInst", None)
@@ -171,7 +174,7 @@ class OrderConditionned(Thread):
 
     def wait_for_broker_reply(self):
         """
-        Wait for the borker reply.  
+        Wait for the borker reply.
 
         Should only get a validated orders but if we get error we could cancel."""
         self.logger.debug(f"{self} waiting for validation")
@@ -182,7 +185,7 @@ class OrderConditionned(Thread):
             try:
                 order = get_order_from(rcvLoad["exgLoad"])
             except Exception as e:
-                self.exception(f"{self}, rcvLoad={rcvLoad}")
+                self.logger.error(f"{self}, rcvLoad={rcvLoad}")
                 raise (e)
 
             if self.oclid == order["clOrdID"]:
@@ -198,9 +201,9 @@ class OrderConditionned(Thread):
 
     def finalise(self, close=False, reason=None):
         """lorsque le thread s'arrête.
-        Retourne faux si il s'arrête pour une raison autre que l'atteinte 
+        Retourne faux si il s'arrête pour une raison autre que l'atteinte
         de la condition
-        - close(False) n'envois pas d'orde de cloture à chrs.  Utile que 
+        - close(False) n'envois pas d'orde de cloture à chrs.  Utile que
         si il y a un pb sur le réseau"""
         reason = f"{self}" if reason is None else f"{reason}"
         # the closing order.  Will reduce only.. Attention si execInst dans order

@@ -7,16 +7,19 @@ import queue
 import threading
 import logging
 import functools
-from kolaBitMEXBot.kola.settings import LOGLEVELS, LOGNAME
-
-# mlogger = logging.getLogger('{LOGNAME}.{__name__}')
-# mlogger.setLevel('INFO')
+from kolaBitMEXBot.kola.constantes import PRICE_PRECISION
+from kolaBitMEXBot.kola.settings import LOGLEVELS
 
 
 def log_args(logopt=None, level="INFO"):
     """
-    Decorator to log arguments of a function.  Passe the logger, level or logger name as logopt. if the level is passed will use the root logger with that level, if name passe will get the logger with that name and default to the root logger,  else use the logger passed.
-Returns as decorator to log the function's arguments
+    Decorator to log arguments of a function.
+
+    Passe the logger, level or logger name as logopt.
+    if the level is passed will use the root logger with that level,
+    if name passe will get the logger with that name and default
+    to the root logger,  else use the logger passed.
+    Returns as decorator to log the function's arguments
     """
 
     def decorator(func):
@@ -51,6 +54,7 @@ Returns as decorator to log the function's arguments
 def confirm_path_existence_for(filename):
     """
     S'assure que le path de filename exist et sinon le crée.
+
     filename is './bar/foo/baz.tex' for example
     """
     # récupère juste le path
@@ -62,7 +66,10 @@ def confirm_path_existence_for(filename):
 # #### Math functions
 def in_interval(x, a, b, bornes="="):
     """
-    borne can be =, a=, b=, 'strict' pour respectivement ab inclus, a,b uniquement inclus, strict
+    Interval check.  x in [a,b]
+
+    - Bornes can be =, a=, b=, 'strict'
+    pour respectivement ab inclus, a,b uniquement inclus, strict.
     """
     if bornes == "=":
         return a <= x and x <= b
@@ -75,44 +82,65 @@ def in_interval(x, a, b, bornes="="):
 
 
 def get_precision(x):
-    """
-    Renvois la précision décimale avec laquelle a été écrite x
-    """
+    """Renvois la précision décimale avec laquelle a été écrite x."""
     if isinstance(x, int):
         return 0
 
-    # l'odre des chiffres est préservés
+    # l'ordre des chiffres est préservés
     s = pd.Series(list(str(x)))
 
-    return int(
-        sum(  # somme des conditions suivantes vraies
-            # que les valeurs dont l'index est plus grand que celui du point
-            s.index
-            > (s.loc[s == "."].index.values[0])
-        )
-    )  # juste récupérer la valeur
+    # case of scientific notation
+    if sum(s.isin(['e', '-'])) == 2:
+        main_prec = get_precision(float(''.join(s.iloc[:-4])))
+        sprec_ = int(''.join(s.iloc[-2:]))
+        return int(main_prec + sprec_)
+
+    # somme des conditions suivantes vraies
+    # que les valeurs dont l'index est plus grand que celui du point
+    # juste récupérer la valeur
+    return int(sum(s.index > (s.loc[s == "."].index.values[0])))
 
 
-def round_half_up(x: float, y: float) -> float:
+def round_price(price: float, precision_=0.5) -> float:
+    """Set defaut to round an XBT price. see round_half_up"""
+    assert precision_ is not None
+    assert price > 0
+    return round_half_up(price, precision_)
+
+
+def round_sprice(x, symbol_=None):
     """
-    round x to the y precision. y can be .2 for example
+    Renvois une fonction qui arrondie à l'unité de la précision passée.
+
+    Par exemple: x=234.7 -> arrondira au dixème
+    x=.00005 -> au millionnième
+    """
+    sprecision = PRICE_PRECISION.get(symbol_, get_precision(x))
+    return round_price(x, sprecision)
+
+
+def round_half_up(x: float, precision_: float) -> float:
+    """
+    Round x to the precision_.
+
+    Given a number, round it to the nearest tick.
+    - precision_ can be .2
     !! Attention arrondis 5.665 à .01 doit être 5.67 et non 5.66
-    Given a number, round it to the nearest tick. Very useful for sussing float error
-       out of numbers: e.g. toNearest(401.46, 0.01) -> 401.46, whereas processing is
-       normally with floats would give you 401.46000000000004.
-       Use this after adding/subtracting/multiplying numbers.
     """
-
-    assert y, f"y must be set to not divide by zero but it is {y}"
+    assert precision_, f"y must be set but it is {precision_}"
     # p = get_precision(y)
     getcontext().prec = 28  # i think it's to trigger some precision stuff
-    x, y = to_decimal(x), to_decimal(y)
-    return float((x / y).quantize(Decimal(1), rounding=ROUND_HALF_UP) * y)
+    prec_ = to_decimal(precision_)
+    return float(
+        (to_decimal(x) / prec_).quantize(Decimal(1), rounding=ROUND_HALF_UP) * prec_
+    )
 
 
-def to_decimal(x) -> Decimal:
+def to_decimal(x: float) -> Decimal:
     """
-    convert number x to Decimal. using str remove unecessary presion errors
+    Convert float x to Decimal.
+
+    using str remove unecessary precision errors.
     """
     try:
         return Decimal(str(x))
@@ -121,9 +149,7 @@ def to_decimal(x) -> Decimal:
 
 
 def round_to_d5(n: float) -> float:
-    """
-    round number n with precision .5 (decimal 5)
-    """
+    """Round number n with precision .5 (decimal 5)"""
     return round_half_up(n, 0.5)
 
 

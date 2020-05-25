@@ -50,7 +50,8 @@ class TrailStop(OrderConditionned):
         self.brg = brg
         self.pegOffset_perc = pegOffset_perc
         self.ordType = ordtype
-
+        self.symbol = self.main_oc.symbol
+        
         # trouver une façon de définir ça on the fly basé la volatilité
         self.timeBin = 361
 
@@ -105,6 +106,7 @@ class TrailStop(OrderConditionned):
             valid_queue=self.main_oc.valid_queue,
             logger=self.logger,
             nameT=nameT,
+            symbol=self.main_oc.symbol
         )
 
     def __repr__(self, tracing=False, short=True, cond=False):
@@ -214,6 +216,7 @@ class TrailStop(OrderConditionned):
             updatepause=self.updatePause,
             timeBin=self.timeBin,
             logger=self.logger,
+            symbol=self.symbol
         )
 
         # on met à jour la condition car déjà crée dans OCT

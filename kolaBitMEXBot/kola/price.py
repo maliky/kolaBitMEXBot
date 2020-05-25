@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 # a tester
-from kolaBitMEXBot.kola.utils.general import round_to_d5
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.general import contains
+from collections import OrderedDict
+
 import numpy as np
 import pandas as pd
-from collections import OrderedDict
+
+from kolaBitMEXBot.kola.utils.general import round_price, contains
+from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 
 
 class PriceObj:
@@ -25,24 +27,42 @@ class PriceObj:
         logger=None,
         max_var=2.6,
         min_flex=0.2,
+        symbol='XBTUSD'
     ):
-        """head is the direction, need a price (market price and ref price) and
-        tail_perct_init (%): default.  Le nb_enregistrement est la longeur de la bd des prix \n
-        - Une tête sur la prix du marché référence et trois queues (tails ou tails).\n
-        - La queue bleu (Qbleue) elle suit le prix du marché toujours à la même distance (même épaisseur)\n
-        - La queue rouge, c'est le stop, elle ne bouge pas tant qu'il n'y a pas de bénéf.
-        - La queue verte (flexTail) elle est d'épaisseur variable, son prix est passé au brokeur si au dessus du refPrice
-        - min_flex est le pourcentage de la refTail jusqu'ou on peux réduire la flexTail ex. 80 de la ref tail
-        - main_window_size c'est la taille de l'historique de ce prixObject, doit être calcule en fonction de la taille de la bin voulue et de la fréquence des mis à jour
+        """
+        Head is the direction, need a price (market price and ref price) and
+        tail_perct_init (%): default.  Le nb_enregistrement est la longeur 
+        de la bd des prix 
+        - Une tête sur la prix du marché référence et trois queues 
+        (tails ou tails).
+        - La queue bleu (Qbleue) elle suit le prix du marché toujours à la même
+        distance (même épaisseur)
+        - La queue rouge, c'est le stop, elle ne bouge pas tant qu'il n'y a pas 
+        de bénéf.
+        - La queue verte (flexTail) elle est d'épaisseur variable, 
+        son prix est passé au brokeur si au dessus du refPrice
+        - min_flex est le pourcentage de la refTail jusqu'ou 
+        on peux réduire la flexTail ex. 80 de la ref tail
+        - main_window_size c'est la taille de l'historique de ce prixObject, 
+        doit être calcule en fonction de la taille de la bin voulue 
+        et de la fréquence des mis à jour
         - updatepause c'est le nombre moyen de secondes entre deux mise à jour
-        - timeBin c'est la taille de la fenêtre utilisé pour calculer la variation de prix.
+        - timeBin c'est la taille de la fenêtre utilisé pour calculer 
+        la variation de prix.
         avec la updatepause permet d'estimer la main_window_size
-        - max_var en quoi? et min_flex determine la flexibilité des queue.  max_var est une statistique décrivant la variation nécessaire pour que la queue se réduise à min_flex.  Elle est issue d'obeservation du marché voir getting_data.ipyng.  la var à un très long mais fine queue. 90% < .22
+        - max_var en quoi? et min_flex determine la flexibilité des queue.  
+        max_var est une statistique décrivant la variation nécessaire 
+        pour que la queue se réduise à min_flex.  Elle est issue d'obeservation
+        du marché voir getting_data.ipyng.  la var à un très long mais fine queue.
+        90% < .22
+        - symbol: keep track of price symbol to format and round price correctly
         """
         self.logger = get_logger(logger, sLL="INFO", name=__name__)
 
         self.head = head
         self.refPrice = refPrice
+        self.symbol = symbol
+        self.prec = PRICE_PRECISION[symbol]
 
         self.tail_perct_init = tail_perct_init  # tail percent sera appliqué au prix de référence nombre entre 0 et 100
         self.timeBin = timeBin
@@ -66,7 +86,7 @@ class PriceObj:
         self.data = self.__init_price_df(price, refPrice)
 
         # on définie l'épaisseur du stop
-        self.tail_base_width = round_to_d5(
+        self.tail_base_width = round_price(
             abs(self.data.refPrice.init - self.data.refTail.init)
         )
 
@@ -188,7 +208,7 @@ class PriceObj:
         S'assure que les prix sont définis"""
         refPrice = self.get_refPrice(refPrice)
         tail = self.get_data(nomElt="stopTail", default_ret=stopTail)
-        offset = round_to_d5(tail - refPrice)
+        offset = round_price(tail - refPrice)
         return offset
 
     def flexTail_offset_delta(self, refPrice=None):
@@ -204,7 +224,7 @@ class PriceObj:
         #           f' flexOfs={flexOfs}, refPrice={refPrice}')
 
         # self.logger.debug(logmsg)
-        return round_to_d5(flexOfs), round(scale * 100, 2)
+        return round_price(flexOfs), round(scale * 100, 2)
 
     def get_refTail(self, refPrice=None):
         """Renvois la queue de référence.  (la bleue).  Celle ci ne change pas d'épaisseur mais suit le prix de reférence dans ses variations.
@@ -215,7 +235,7 @@ class PriceObj:
         epaisseur = refPrice * self.tail_perct_init / 100
         ofs = -sens * epaisseur
 
-        refTail = round_to_d5(refPrice + ofs)
+        refTail = round_price(refPrice + ofs)
 
         # logmsg = f'refPrice={refPrice}, refOfs={round(ofs,2)}, sens={sens}, direction head={self.head} --> refTail={refTail}'
         # self.logger.debug(logmsg)
@@ -241,7 +261,7 @@ class PriceObj:
             flexOfs, scale = self.flexTail_offset_delta()
             flexTail = refPrice + flexOfs
 
-            return round_to_d5(flexTail)
+            return round_price(flexTail)
         else:
             return refTail
 

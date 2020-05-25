@@ -1,3 +1,7 @@
+# for tests
+kolaBitMEXBot
+*ipynb*
+
 secrets.py
 adaorders.tsv
 morders.tsv*
@@ -14,3 +18,5 @@ build*
 dist*
 *.egg*
 morders.py
+.python-version
+get-pip.py

@@ -2,26 +2,33 @@
 from typing import Union, Literal, Tuple
 import logging
 
-from kolaBitMEXBot.kola.utils.general import round_to_d5
+from kolaBitMEXBot.kola.utils.general import round_sprice
 
 priceT = Union[float, int]
 sideT = Literal["buy", "sell"]
 bipriceT = Tuple[priceT, priceT]  # couple de price
 
 
-def set_new_price(base: priceT, per: float) -> priceT:
+def set_new_price(base: priceT, per: float, symbol="XBTUSD") -> priceT:
     """Crée un prix à partir d'un prix de base et d'un pourcentage."""
     logging.info(f"Setting a new price with a percentage < 1% {per}. Are you sure?")
+    def _round(x):
+        """Set default symbol"""
+        return round_sprice(x, symbol)
 
-    return base * (1 + per / 100)
+    return _round(base * (1 + per / 100))
 
 
-def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT:
+def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol="XBTUSD") -> bipriceT:
     """
     Renvois les prix formatés selon atype
     """
     assert any([p in atype for p in ["p%", "pA", "pD"]]), f"atype={atype}"
 
+    def _round(x):
+        """Set default symbol"""
+        return round_sprice(x, symbol)
+    
     if "p%" in atype:
         # prix inf et prix sup
         newPrix = set_new_price(refPrice, prix[0]), set_new_price(refPrice, prix[1])
@@ -30,11 +37,7 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT
         newPrix = prix[0], prix[1]
     elif "pD" in atype:
         # prix en différentiel par rapport au prix de référence
-        newPrix = refPrice + prix[0], refPrice + prix[1]
-
-    if symbol is not None:
-        round_func = 
-        return newPrix
+        newPrix = _round(refPrice + prix[0]), _round(refPrice + prix[1])
 
 
 def setdef_stopPrice(price: priceT, side: sideT, absdelta: float = 2) -> priceT:
@@ -64,3 +67,5 @@ def get_prix_decl(prices: Tuple[priceT, priceT], side: sideT) -> priceT:
     """
 
     return prices[0] if side == "buy" else prices[1]
+
+

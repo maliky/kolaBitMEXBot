@@ -17,7 +17,7 @@ from kolaBitMEXBot.kola.orders.orders import (
     place_MIT,
     place_LIT,
 )
-from kolaBitMEXBot.kola.types import sideT, symbT, priceTT
+from kolaBitMEXBot.kola.kolatypes import sideT, symbT, priceTT
 from kolaBitMEXBot.kola.utils.general import trim_dic
 from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
 from kolaBitMEXBot.kola.utils.orderfunc import toggle_order, split_ids
