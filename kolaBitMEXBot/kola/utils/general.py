@@ -7,7 +7,7 @@ import queue
 import threading
 import logging
 import functools
-from kolaBitMEXBot.kola.constantes import PRICE_PRECISION
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.settings import LOGLEVELS
 
 

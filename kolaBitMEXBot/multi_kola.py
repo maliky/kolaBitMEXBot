@@ -1,4 +1,4 @@
-# -*- coding: utf-8; mode: Python; blacken-line-length 83; -*-
+# -*- coding: utf-8; mode: Python; blacken-line-length: 83; -*-
 """Script qui gère une paire d'ordre et leur relance."""
 from queue import Queue
 from sys import exit
@@ -175,7 +175,7 @@ class MarketAuditeur:
             "tType": tType,
             "sDelta": sDelta,
             "dr_pause": dr_pause,
-            "timeOut": f"{timeout}m",
+            "timeout": f"{timeout}m",
             "balance": self.balance(),
         }
         self.logger.info(f"#### Go with args :\n{pd.Series(_info)}")
@@ -552,7 +552,7 @@ def main_prg():
         "sDelta": args.sDelta,
         "arg_file": args.argFile,
         "name": args.name,
-        "hook": args.hook,
+        "hook": args.Hook,
     }
 
     rlogger = setup_logging()
