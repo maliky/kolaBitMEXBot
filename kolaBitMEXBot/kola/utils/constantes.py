@@ -23,5 +23,4 @@ EXECOLS_L = EXECOLS + ["lastQty", "lastPx", "lastMkt", "commission"]
 SETTLEMENTPRICES = {"XBTUSD": ".BXBT", "ADAM20": ".BADAXBT30M"}
 
 # used to round price before passing orders
-PRICE_PRECISION = {'XBTUSD': 0.5, 'ADAM20': 1e-8}
-
+PRICE_PRECISION = {"XBTUSD": 0.5, "ADAM20": 1e-8}

@@ -8,8 +8,8 @@ from kolaBitMEXBot.kola.utils.general import round_price, trim_dic
 from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.exceptions import InvalidOrdStatus
+
 # from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.settings import LOGNAME
 from kolaBitMEXBot.kola.bargain import Bargain
 
@@ -406,15 +406,16 @@ def is_newPrice_valide(brg, side, newPrice):
         return newPrice > brg.prices("market", side)
 
 
-def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice"):
+def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice", symbol=None):
     """
     Return the current market price defined by the typeprice (def. lastMidPrice).
     
     typeprice can be a dictionary with execInst.  
     Will check for the price type in execInst.
+    - symbol: the symbol to get the price for
     """
     if typeprice is None:
-        #'lastMidPrice'  # == markPrice ?
+        # 'lastMidPrice'  # == markPrice ?
         typePrice = deftypeprice
     elif isinstance(typeprice, dict):
         typePrices = [
@@ -428,7 +429,7 @@ def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice"):
 
     # print(f"1 > typeprice={typeprice}, typePrice={typePrice},  brg.prices(deftypeprice, side)={brg.prices(deftypeprice, side)}")
     try:
-        return brg.prices(typeprice=typePrice, side=side)
+        return brg.prices(typeprice=typePrice, side=side, symbol_=symbol)
     except AttributeError as ex:
         # print(f"2 > typeprice={typeprice}, typePrice={typePrice},  brg.prices(deftypeprice, side)={brg.prices(deftypeprice, side)}")
         raise (ex)

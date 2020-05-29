@@ -24,7 +24,7 @@ class HookOrder(OrderConditionned):
         timeout,
         logger=None,
         excludeIDs_=None,
-        symbol='XBTUSD'
+        symbol="XBTUSD",
     ):
         """
         Init a Hook ordre object.
@@ -50,7 +50,7 @@ class HookOrder(OrderConditionned):
             logger=logger,
             nameT=nameT,
             timeout=timeout,
-            symbol=symbol
+            symbol=symbol,
         )
 
         self.init_cond_frame = self.condition.cond_frame.copy()

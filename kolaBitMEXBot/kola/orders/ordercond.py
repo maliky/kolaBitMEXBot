@@ -26,7 +26,7 @@ class OrderConditionned(Thread):
         logger=None,
         nameT=None,
         timeout=None,
-        symbol='XBTUSD'
+        symbol="XBTUSD",
     ):
         """
         Une queue, pour passer les ordres, un ordre à passer si la condition est validée.
@@ -146,7 +146,7 @@ class OrderConditionned(Thread):
         """Set the default load pour this order."""
         # un identifiant pour le suivi
         assert self.symbol is not None, f"order={order}"
-        load = {"sender": self, "timeOut": self.timeOut, 'symbol': self.symbol}
+        load = {"sender": self, "timeOut": self.timeOut, "symbol": self.symbol}
         _order = order if order else self.order
         load["order"] = _order
         return load, _order

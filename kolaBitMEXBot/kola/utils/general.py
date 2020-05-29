@@ -90,9 +90,9 @@ def get_precision(x):
     s = pd.Series(list(str(x)))
 
     # case of scientific notation
-    if sum(s.isin(['e', '-'])) == 2:
-        main_prec = get_precision(float(''.join(s.iloc[:-4])))
-        sprec_ = int(''.join(s.iloc[-2:]))
+    if sum(s.isin(["e", "-"])) == 2:
+        main_prec = get_precision(float("".join(s.iloc[:-4])))
+        sprec_ = int("".join(s.iloc[-2:]))
         return int(main_prec + sprec_)
 
     # somme des conditions suivantes vraies

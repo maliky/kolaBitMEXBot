@@ -12,6 +12,7 @@ bipriceT = Tuple[priceT, priceT]  # couple de price
 def set_new_price(base: priceT, per: float, symbol="XBTUSD") -> priceT:
     """Crée un prix à partir d'un prix de base et d'un pourcentage."""
     logging.info(f"Setting a new price with a percentage < 1% {per}. Are you sure?")
+
     def _round(x):
         """Set default symbol"""
         return round_sprice(x, symbol)
@@ -28,7 +29,7 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol="XBTUSD") -> bipr
     def _round(x):
         """Set default symbol"""
         return round_sprice(x, symbol)
-    
+
     if "p%" in atype:
         # prix inf et prix sup
         newPrix = set_new_price(refPrice, prix[0]), set_new_price(refPrice, prix[1])
@@ -49,7 +50,6 @@ def setdef_stopPrice(price: priceT, side: sideT, absdelta: float = 2) -> priceT:
 
     pour buy orders les stpPx > price d'entrée
     Renvois le stopPrice ou stopPx
-
     """
     # stpPx < price si side sell
     assert absdelta > 0, f"abs delta doit être positif strictement."
@@ -67,5 +67,3 @@ def get_prix_decl(prices: Tuple[priceT, priceT], side: sideT) -> priceT:
     """
 
     return prices[0] if side == "buy" else prices[1]
-
-

@@ -1,6 +1,5 @@
 #  -*- coding: utf-8 -*-
 """A dummy class for testing my kola framework"""
-import logging
 from time import sleep
 from json import dumps
 
@@ -28,8 +27,8 @@ class DummyBitMEX:
         self.current_dum_price = self.next_datum()
         self.availableMargin = 1e7
         self.dummyID = "dummyIDDIDIDIDI"
-        self.symbol= 'XBTUSD'
-        self.prec = PRICE_PRECISION['XBTUSD']
+        self.symbol = "XBTUSD"
+        self.prec = PRICE_PRECISION["XBTUSD"]
 
     def __repr__(self):
         rep = f"Dummy BitMEX object (dummy ø): url=local"

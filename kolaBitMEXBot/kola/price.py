@@ -27,7 +27,7 @@ class PriceObj:
         logger=None,
         max_var=2.6,
         min_flex=0.2,
-        symbol='XBTUSD'
+        symbol="XBTUSD",
     ):
         """
         Head is the direction, need a price (market price and ref price) and

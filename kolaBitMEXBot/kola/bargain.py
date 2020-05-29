@@ -434,7 +434,7 @@ class Bargain:
         # self.logger.debug(f'Got new price from curl {self.cached_refPrice}')
         return self.bto._curl_bitmex(path, query)[0]["price"]
 
-    def prices(self, typeprice=None, side="buy"):
+    def prices(self, typeprice=None, side="buy", symbol_=None):
         """
         Show summary of current prices.
 
@@ -442,9 +442,12 @@ class Bargain:
 
         'midPrice', 'ref_delta','market_maker', 'lastMidPrice' or None
         (for all instrument prices)
+        - symbol if not user bargain symbol but maybe could want other price
         """
+        _symbol = self.symbol if symbol_ is None else symbol_
+        
         prices = {
-            k: v for (k, v) in self.bto.instrument(self.symbol).items() if "rice" in k
+            k: v for (k, v) in self.bto.instrument(_symbol).items() if "rice" in k
         }
         # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice',
         # 'lastPrice', 'lastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',

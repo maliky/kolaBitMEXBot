@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 import threading
+from typing import Dict, Any
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now, setdef_timedelta
 from kolaBitMEXBot.kola.utils.general import (
     contains,
-    log_args,
     trim_dic,
     sort_dic_list,
     opt_pop_if_in_,
@@ -23,14 +23,15 @@ from kolaBitMEXBot.kola.orders.orders import (
     get_execPrice,
     cancel_order,
 )
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
+
 from time import sleep
 import pickle
 import kolaBitMEXBot.kola.utils.exceptions as ke
-import logging
 
 # from kolaBitMEXBot.kola.orders import orders
 import pandas as pd
-import queue
+from queue import Queue, Empty
 
 
 class Chronos(threading.Thread):
@@ -45,7 +46,7 @@ class Chronos(threading.Thread):
         self.brg = brg
         self.recpt_queue = recpt_queue
         self.valid_queue = valid_queue
-        self.reply_queue = queue.Queue()
+        self.reply_queue: Queue = Queue()
         self.stop = False
         self.logger = get_logger(logger, name=__name__, sLL="INFO")
 
@@ -89,15 +90,14 @@ class Chronos(threading.Thread):
                 # 'StopLimit', 'LimitIfTouched'
                 side = rcvOrder.pop("side")
                 orderQty = rcvOrder.pop("orderQty")
-                symbol = rcvOrder.pop('symbol')
-                
+                symbol = rcvOrder.pop("symbol")
+
                 # pop le prix si dans le rcvOrder
                 # sinon le prix du marché en fonction du side, en market_maker
-                price = self.pop_price_from_(rcvOrder, side, execInst)
-
+                price = self.pop_price_from_(rcvOrder, side, execInst, symbol)
 
                 # renvois un stopPx par défaut si ordType le nécessite
-                stopPx = self.pop_stopPx_from_(rcvOrder, price, side, ordType)
+                stopPx = self.pop_stopPx_from_(rcvOrder, price, side, ordType, symbol)
 
                 if ordType == "Market":
                     rcvOrder["execInst"] = opt_pop_if_in_("price", rcvOrder["execInst"])
@@ -200,7 +200,7 @@ class Chronos(threading.Thread):
 
             except (ke.InvalidOrdStatus, ke.InvalidOrderID) as e:
                 if ordType.startswith("amend"):
-                    self.logger.error(f"Amending failed.  No validation!")
+                    self.logger.error("Amending failed.  No validation!")
                     self.valid_queue.put(
                         {
                             "brokerReply": False,
@@ -212,21 +212,22 @@ class Chronos(threading.Thread):
                     raise (e)
 
             except ke.InvalidOrderQty:
-                self.logger.error(f"Canceling order and closing the essai.")
+                self.logger.error("Canceling order and closing the essai.")
                 self.valid_queue.put(
                     {"brokerReply": False, "exgLoad": rcvLoad, "execValidation": False}
                 )
 
             except ke.InsufficientBalance:
-                self.logger.error(f"Insufficient Balance, Closing the essai.")
+                self.logger.error("Insufficient Balance, Closing the essai.")
                 # we do so because to keep consistency with attached stop tail
                 self.logger.warning(f"Replacing 80% of the rcvLoad {rcvLoad}")
-                # attention chronos pourrait traiter un autre ordre que celui générant l'erreur, non ?
+                # attention chronos pourrait traiter un autre ordre
+                # que celui générant l'erreur, non ?
                 sender = rcvLoad["sender"]
                 overQty = sender.order.get("orderQty", 0)
                 reducedQty = round(overQty * 0.8)
                 if reducedQty < 31:
-                    self.logger.exception(f"Canceling order.  Closing the essai?")
+                    self.logger.exception("Canceling order.  Closing the essai?")
                     self.valid_queue.put(
                         {
                             "brokerReply": False,
@@ -281,7 +282,7 @@ class Chronos(threading.Thread):
                 reply = reply[0]
 
             return reply
-        except queue.Empty:
+        except Empty:
             self.logger.error(
                 f"reply={trim_dic(reply, trimid=12) if reply is not None else 'reply is None'},"
                 f" timeout={timeout}, block={block}"
@@ -307,11 +308,11 @@ class Chronos(threading.Thread):
         Boucle qui attend de recevoir dans order execution from ws.
 
         ordertype: orderstatus.
-        - timeout doit être un pd.Timedelta, 
+        - timeout doit être un pd.Timedelta,
         - waitStep en second
         ordertype is 'ordStatus our triggered et ordstatus is
         """
-        self.logger.debug(f"Thread started.")
+        self.logger.debug("Thread started.")
 
         # defaults
         timeOut = setdef_timedelta(timeout, default=pd.Timedelta(60, unit="m"))
@@ -327,7 +328,7 @@ class Chronos(threading.Thread):
         def update_timeleft(timeout=timeOut, starttime=startTime, now_=None):
             """
             Update time left
-            
+
             -now_: is sometime set by default.
             """
             _now = now_ if now_ else now()
@@ -362,7 +363,7 @@ class Chronos(threading.Thread):
                 else self.get_ID_from(reply, "clOrdID")
             )
 
-        seenReplyIDs = {}
+        seenReplyIDs: Dict[Any, Any] = {}
 
         while replyID != clOrdID and timeLeft:
             # saving ID already seen to avoid clutering logs
@@ -463,8 +464,6 @@ class Chronos(threading.Thread):
         # On filtre les orders par ID
         oidWstatus = [o for o in ordWstatus if ID in [o["orderID"], o["clOrdID"]]]
 
-        # logOrders = [trim_dic(o, trimid=12, droptime=True) for o in self.brg.bto.exec_orders()]
-        # self.logger.debug(f'logOrders={logOrders}, ID={ID}, orderstatus={orderstatus}, exectype={exectype}')
         def latest(ordList):
             """ given a list of orders return the one with latest transtime"""
             assert isinstance(ordList, list), f"{ordList} should be a list of orders"
@@ -484,30 +483,31 @@ class Chronos(threading.Thread):
                 self.logger.exception(f"Returning -1 of oidWstatus={oidWstatus},")
                 return oidWstatus[-1]
 
-    def pop_price_from_(self, rcvOrder, side, execInst):
+    def pop_price_from_(self, rcvOrder, side, execInst, symbol=None):
         """
         Get price from rcvOrder.
 
-        Renvois le prix si renseigné, 
-        sinon le prix marché de type execInst, 
+        Renvois le prix si renseigné,
+        sinon le prix marché de type execInst,
         sinon lastMidprice
         """
         return rcvOrder.pop(
-            "price", get_execPrice(self.brg, side, {"execInst": execInst})
+            "price", get_execPrice(self.brg, side, {"execInst": execInst}, symbol)
         )
 
-    def pop_stopPx_from_(self, rcvOrder, price, side, ordtype, absdelta=2):
+    def pop_stopPx_from_(self, rcvOrder, price, side, ordtype, absdelta=2, symbol=None):
         """
-        Pop the stopPx from the rcvOrder.  
+        Pop the stopPx from the rcvOrder.
 
         Use class method to facilitate eventual logging.
-        if stopPx not in rcvOrder, 
+        if stopPx not in rcvOrder,
         set de default stopPx based on price side, ordType and absdelta
         """
         stopPx = rcvOrder.pop("stopPx", None)
-        # probably not necessary as stop should be set
-        absdelta = rcvOrder.pop("sDelta", 2)
         if stopPx is None and contains(["Stop", "Touched"], ordtype):
+            # probably not necessary as stop should be set
+            # defaut to 2 for XBTUSD
+            absdelta = rcvOrder.pop("sDelta", PRICE_PRECISION[symbol] * 4)
             stopPx = setdef_stopPrice(price, side, absdelta)
 
         return stopPx

@@ -142,7 +142,7 @@ def check_args(func):
 
 # @log_args(logopt=__name__)
 def set_order_args(
-        prix, _q, _tp, atype, brg, optype, tptype, recompute=True, side=None, symbol=None
+    prix, _q, _tp, atype, brg, optype, tptype, recompute=True, side=None, symbol=None
 ):
     """
     Définie les valeurs pour le prix, la quantité, la taille.

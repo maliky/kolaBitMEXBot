@@ -258,9 +258,9 @@ class MarketAuditeur:
                 "logger": self.logger,
                 "nameT": f"{nameT}-PO",
                 "timeout": timeOut,
-                "symbol": self.symbol
+                "symbol": self.symbol,
             }
-            
+
             self.logger.debug(f"~~~~ Order = {order}")
             if hook:
                 _hSrc, _status = hook.split("_")
