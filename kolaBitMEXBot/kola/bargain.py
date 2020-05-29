@@ -4,7 +4,7 @@ from pandas import Timedelta, DataFrame
 from numpy.random import randint
 from typing import Optional, Set
 
-from kolaBitMEXBot.kola.types import ordStatusT
+from kolaBitMEXBot.kolatypes import ordStatusT
 from kolaBitMEXBot.kola.custom_bitmex import BitMEX
 from kolaBitMEXBot.kola.secrets import LIVE_KEY, LIVE_SECRET, TEST_KEY, TEST_SECRET
 from kolaBitMEXBot.kola.settings import (
