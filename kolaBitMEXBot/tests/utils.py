@@ -7,7 +7,7 @@ from pandas import DataFrame
 from time import sleep
 from collections import OrderedDict
 
-from multi_kola import MarketAuditeur
+from kolaBitMEXBot.multi_kola import MarketAuditeur
 
 from kolaBitMEXBot.kola.orders.orders import (
     place,

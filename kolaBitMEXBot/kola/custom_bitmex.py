@@ -71,7 +71,7 @@ class BitMEX(object):
         self.session.headers.update({"accept": "application/json"})
 
         # Create websocket for streaming data
-        ws = BitMEXWebsocket(self.apiKey, self.apiSecret, logger=self.logger)
+        ws = BitMEXWebsocket(self.apiKey, self.apiSecret, logger=self.logger, symbol=symbol)
         self.ws = ws
         self.logger.debug(f"ws={ws}")
         self.ws.connect(base_url, symbol, shouldAuth=shouldWSAuth)
