@@ -29,7 +29,7 @@ class BitMEXWebsocket:
     # Don't grow a table larger than this amount. Helps cap memory usage.
     MAX_TABLE_LEN = 1000
 
-    def __init__(self, apiKey, apiSecret, logger=None):
+    def __init__(self, apiKey, apiSecret, logger=None, symbol=None):
         self.__reset()
         self.apiKey = apiKey
         self.apiSecret = apiSecret
@@ -37,7 +37,7 @@ class BitMEXWebsocket:
         self.retries = 1
         # not goog practice as it will be only for one symbol can't do ...arbitrage
         self.wsURL = None  # will contain the wsURL after first connection
-        self.symbol = None  # will contain the wsURL after first connection
+        self.symbol = symbol
         self.logger.debug(f"Init {self}")
 
     def __repr__(self):
