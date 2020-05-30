@@ -5,7 +5,7 @@ from collections import OrderedDict
 import numpy as np
 import pandas as pd
 
-from kolaBitMEXBot.kola.utils.general import round_price, contains
+from kolaBitMEXBot.kola.utils.general import round_sprice, contains
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
@@ -86,8 +86,8 @@ class PriceObj:
         self.data = self.__init_price_df(price, refPrice)
 
         # on définie l'épaisseur du stop
-        self.tail_base_width = round_price(
-            abs(self.data.refPrice.init - self.data.refTail.init)
+        self.tail_base_width = round_sprice(
+            abs(self.data.refPrice.init - self.data.refTail.init), symbol
         )
 
     def __init_price_df(self, price, refPrice):
@@ -208,7 +208,7 @@ class PriceObj:
         S'assure que les prix sont définis"""
         refPrice = self.get_refPrice(refPrice)
         tail = self.get_data(nomElt="stopTail", default_ret=stopTail)
-        offset = round_price(tail - refPrice)
+        offset = round_sprice(tail - refPrice, self.symbol)
         return offset
 
     def flexTail_offset_delta(self, refPrice=None):
@@ -224,7 +224,7 @@ class PriceObj:
         #           f' flexOfs={flexOfs}, refPrice={refPrice}')
 
         # self.logger.debug(logmsg)
-        return round_price(flexOfs), round(scale * 100, 2)
+        return round_sprice(flexOfs, self.symbol), round(scale * 100, 2)
 
     def get_refTail(self, refPrice=None):
         """Renvois la queue de référence.  (la bleue).  Celle ci ne change pas d'épaisseur mais suit le prix de reférence dans ses variations.
@@ -235,7 +235,7 @@ class PriceObj:
         epaisseur = refPrice * self.tail_perct_init / 100
         ofs = -sens * epaisseur
 
-        refTail = round_price(refPrice + ofs)
+        refTail = round_sprice(refPrice + ofs, self.symbol)
 
         # logmsg = f'refPrice={refPrice}, refOfs={round(ofs,2)}, sens={sens}, direction head={self.head} --> refTail={refTail}'
         # self.logger.debug(logmsg)
@@ -261,7 +261,7 @@ class PriceObj:
             flexOfs, scale = self.flexTail_offset_delta()
             flexTail = refPrice + flexOfs
 
-            return round_price(flexTail)
+            return round_sprice(flexTail, self.symbol)
         else:
             return refTail
 

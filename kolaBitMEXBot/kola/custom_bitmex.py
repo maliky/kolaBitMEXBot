@@ -11,7 +11,7 @@ import pandas as pd
 
 from kolaBitMEXBot.kola.connexion.auth import APIKeyAuthWithExpires
 from kolaBitMEXBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
-from kolaBitMEXBot.kola.utils.general import round_price, trim_output
+from kolaBitMEXBot.kola.utils.general import round_sprice, trim_output
 from kolaBitMEXBot.kola.settings import (
     HTTP_SIMPLE_RATE_LIMITE,
     HTTP_BULK_RATE_LIMITE,
@@ -639,11 +639,11 @@ class BitMEX(object):
         tps3 = random.uniform(20, 80) if self.retries > 6 else 0
         self.logger.warning(
             f"retry {verb} {path} {self.retries}/{max_retries}: "
-            f"Pause de {round_price(tps1+tps2+tps3, self.prec)} sec:"
+            f"Pause de {round_sprice(tps1+tps2+tps3, self.symbol)} sec:"
             f' postdict={dumps(postdict or "")}'
         )
         # going to sleep
-        sleep(tps1) if fast else sleep(round_price(tps1 + tps2 + tps3, self.prec))
+        sleep(tps1) if fast else sleep(round_sprice(tps1 + tps2 + tps3, self.symbol))
 
         return self._curl_bitmex(
             path, query, postdict, timeout, verb, rethrow_errors, max_retries

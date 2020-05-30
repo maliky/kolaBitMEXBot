@@ -18,7 +18,7 @@ from kolaBitMEXBot.kola.settings import (
     CONTRACTS,
 )
 from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.general import round_price, is_number, trim_dic, cdr, car
+from kolaBitMEXBot.kola.utils.general import round_sprice, is_number, trim_dic, cdr, car
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.constantes import (
     EXECOLS,
@@ -148,14 +148,14 @@ class Bargain:
                     current_price = self.prices("market", "sell")
                 else:
                     current_price = self.prices("midPrice")
-                return round_price(xbt_balance * current_price, self.precision)
+                return round_sprice(xbt_balance * current_price, self.symbol)
 
             elif "xbt" in atPrice:
                 return xbt_balance
 
         elif is_number(atPrice):
             # atPrice should be float
-            return round_price(xbt_balance * atPrice)
+            return round_sprice(xbt_balance * atPrice, self.symbol)
 
         elif atPrice is not None:
             raise Exception("atPrice should be str number or None")
@@ -486,7 +486,7 @@ class Bargain:
         elif typeprice:
             ret = prices[typeprice]
 
-        return prices if not ret else round_price(ret)
+        return prices if not ret else round_sprice(ret, self.symbol)
 
     def set_leverage(self, leverage):
         return self.bto.isolate_margin(self.symbol, leverage)
