@@ -115,8 +115,7 @@ def round_sprice(x, symbol_=None):
     Par exemple: x=234.7 -> arrondira au dixème
     x=.00005 -> au millionnième
     """
-    sprecision = PRICE_PRECISION.get(symbol_, 1/get_precision(x))
-    
+    sprecision = PRICE_PRECISION.get(symbol_, 10**-get_precision(x))
     return round_price(x, sprecision)
 
 
