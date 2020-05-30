@@ -75,7 +75,7 @@ class MarketAuditeur:
         if logger:
             self.logger = logger
         else:
-            self.logger = get_logger(logger, name=__name__, sLL="INFO", logFile=logfile)
+            self.logger = get_logger(logger, name=__name__, sLL="DEBUG", logFile=logfile)
 
         # to cache the hooks
         self.hookedIDs: Set[str] = set()

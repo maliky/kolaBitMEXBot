@@ -51,7 +51,7 @@ class Bargain:
         dbo=None,
     ):
         """Initialisation dbo is a dummy bitMEX object used for testing."""
-        self.logger = get_logger(logger, name=__name__, sLL="INFO")
+        self.logger = get_logger(logger, name=__name__, sLL="DEBUG")
 
         self.symbol = symbol
         self.precision = PRICE_PRECISION[symbol]

@@ -95,7 +95,7 @@ def get_args():
         "--logLevel", "-l", type=str, default=logLevel_def, help=logLevel_help
     )
     parser.add_argument(
-        "--symbole", "-S", type=str, default=symbol_def, help=symbol_help
+        "--symbol", "-S", type=str, default=symbol_def, help=symbol_help
     )
     parser.add_argument(
         "--updatePause", "-U", type=int, default=updatePause_def, help=updatePause_help

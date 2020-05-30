@@ -15,7 +15,7 @@ from kolaBitMEXBot.kola.bargain import Bargain
 
 mlogger = logging.getLogger("")
 mlogger.name = f"{LOGNAME}.{__name__}"
-mlogger.setLevel("INFO")
+mlogger.setLevel("DEBUG")
 # logging = logging.get
 # mlogger = get_logger(name=f"{LOGNAME}.{__name__}")
 
