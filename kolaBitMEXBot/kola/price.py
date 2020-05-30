@@ -57,7 +57,7 @@ class PriceObj:
         90% < .22
         - symbol: keep track of price symbol to format and round price correctly
         """
-        self.logger = get_logger(logger, sLL="INFO", name=__name__)
+        self.logger = get_logger(logger, sLL="DEBUG", name=__name__)
 
         self.head = head
         self.refPrice = refPrice

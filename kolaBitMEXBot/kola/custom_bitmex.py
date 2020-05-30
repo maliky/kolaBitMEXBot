@@ -43,7 +43,7 @@ class BitMEX(object):
     ):
         """Init connector."""
         self.dummy = False  # to flag this as not dummy
-        self.logger = get_logger(logger, name=__name__, sLL="INFO")
+        self.logger = get_logger(logger, name=__name__, sLL="DEBUG")
         self.base_url = base_url
         self.symbol = symbol
         self.prec = PRICE_PRECISION[symbol]
