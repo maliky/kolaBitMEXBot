@@ -1,22 +1,2 @@
-# for tests
-kolaBitMEXBot
-*ipynb*
-
-secrets.py
-adaorders.tsv
-morders.tsv*
-pyvenv.cfg
-bin/
-include/
-lib/
-share/
-*pye
-*_*cache*
-*.org
-core_program_files.txt
-build*
-dist*
-*.egg*
-morders.py
-.python-version
-get-pip.py
+# created by virtualenv automatically
+*
