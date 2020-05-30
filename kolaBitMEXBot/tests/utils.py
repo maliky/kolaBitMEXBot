@@ -326,7 +326,7 @@ def simp(id):
     return id[:12]
 
 
-logging.getLogger("").setLevel("INFO")
+logging.getLogger("").setLevel("DEBUG")
 tma = MarketAuditeur(live=False)
 tma.start_server()
 T = Test(tma)

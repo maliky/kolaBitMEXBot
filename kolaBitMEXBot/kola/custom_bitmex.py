@@ -121,7 +121,7 @@ class BitMEX(object):
         auth = APIKeyAuthWithExpires(self.apiKey, self.apiSecret)
 
         def exit_or_throw(e, reponse=None, load=None):
-            """ gère la sortie en cas d'erreur socket ou de request"""
+            """ Gère la sortie en cas d'erreur socket ou de request"""
             if rethrow_errors:
                 error = response.json().get("error", {}) if response is not None else {}
                 self.logger.error(f"msg={error}, load={load}")
