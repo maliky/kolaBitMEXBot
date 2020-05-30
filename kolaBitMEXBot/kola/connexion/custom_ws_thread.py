@@ -45,8 +45,9 @@ class BitMEXWebsocket:
 
     def __del__(self):
         self.exit()
-
+        
     def single_connection(self, endpoint=TEST_URL, symbol=SYMBOL, shouldAuth=True):
+        """Erreur pas de __subscribe"""
         self.subscriptions = self.__subscribe(symbol, shouldAuth)
         self.logger.info(f"Creating a connexion")
         self.wsURL = get_wsURL(self.subscriptions, endpoint)

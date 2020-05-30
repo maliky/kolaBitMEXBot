@@ -328,5 +328,6 @@ def simp(id):
 
 logging.getLogger("").setLevel("INFO")
 tma = MarketAuditeur(live=False)
+ama = MarketAuditeur(live=False)
 tma.start_server()
 T = Test(tma)
