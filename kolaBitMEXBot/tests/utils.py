@@ -165,7 +165,7 @@ class Test:
     def buyL(self, offset_=None, qty_=None, **opts):
         """Buy Limit with offset from current price."""
         offset = self.offset if offset_ is None else offset_
-        qty = self.qty is qty_ is None else qty_
+        qty = self.qty if qty_ is None else qty_
         
         self.ObuyL = self.placeL("buy", offset, qty)
         return self.ObuyL
