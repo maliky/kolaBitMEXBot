@@ -157,16 +157,18 @@ class BitMEXWebsocket:
         # Filter to only open orders (leavesQty > 0) and those that we actually placed
         return [o for o in orders if str(o["clOrdID"]).startswith(clOrdIDPrefix)]
 
-    def position(self, symbol=SYMBOL):
+    def position(self, symbol_=None):
+        """Get the position for symbol."""
+        _symbol = self.symbol if symbol_ is None else symbol_
         positions = self.data["position"]
-        pos = [p for p in positions if p["symbol"] == symbol]
+        pos = [p for p in positions if p["symbol"] == _symbol]
         if len(pos) == 0:
             # No position found; stub it
             return {
                 "avgCostPrice": 0,
                 "avgEntryPrice": 0,
                 "currentQty": 0,
-                "symbol": symbol,
+                "symbol": _symbol,
             }
         return pos[0]
 

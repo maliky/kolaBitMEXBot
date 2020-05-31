@@ -30,22 +30,36 @@ from kolaBitMEXBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
 class Test:
     """Classe qui regroupe des outils pour les tests sur Bitmex."""
 
-    def __init__(self, tma, pricetype="LastPrice"):
+    def __init__(
+        self,
+        tma,
+        pricetype="LastPrice",
+        qty_: int = 40,
+        offset_: float = 2,
+        offsetPx_: float = 10,
+        offsetStop_: float = 20,
+    ):
         """
         Regroupe quelques fonction pour faciliter les tests depuis ipython.
         
         from kolaBitMEXBot.kola.test.utils_test import Test; T = Test()
+        tma: test market Auditeur
+        pricetype="LastPrice": reference price to place orders
+        qty_: int = 40,  default quantity
+        offset_: float = 2, default offset for L and SL
+        offsetPx_: float = 10, default offset for stop price
+        offsetStop_: float = 20,  default offset for stop
         """
-        self.qty: int = 40
-        self.offset: float = 2
-        self.offsetPx: float = 10
-        self.offsetStop: float = 20
+        self.qty = qty_
+        self.offset = offset_
+        self.offsetPx = offsetPx_
+        self.offsetStop = offsetStop_
         self.tma = tma
         self.brg: Bargain = tma.brg
         self.bto: BitMEX = tma.brg.bto
         self.ws: BitMEXWebsocket = tma.brg.bto.ws
         self.Ods = OrderedDict()  # a dictionnary for oders passed
-        self.logger = logging.getLogger(__name__)
+        self.logger = tma.logger #logging.getLogger(__name__)
         self.S: symbT = self.bto.symbol
         self.priceType: priceTT = pricetype
 
@@ -148,8 +162,11 @@ class Test:
         self.OsellM = self.placeM("sell", qty)
         return self.OsellM
 
-    def buyL(self, offset=None, qty=None, **opts):
+    def buyL(self, offset_=None, qty_=None, **opts):
         """Buy Limit with offset from current price."""
+        offset = self.offset is offset_ is None else offset_
+        qty = self.qty is qty_ is None else qty_
+        
         self.ObuyL = self.placeL("buy", offset, qty)
         return self.ObuyL
 
