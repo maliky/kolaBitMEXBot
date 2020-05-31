@@ -1,9 +1,9 @@
 # -*- coding: utf-8; mode: Python; blacken-line-length: 83; -*-
 """Script qui gère une paire d'ordre et leur relance."""
 from queue import Queue
-from sys import exit
 from time import sleep
 import logging
+import sys
 import os
 import threading
 import time
@@ -584,4 +584,4 @@ def main_prg():
 
 if __name__ == "__main__":
     main_prg()
-    exit()
+    sys.exit()

@@ -38,11 +38,8 @@ def run(logger_, func_, live_: bool = False, symbol_=None):
             logger_.info(f"T.buyL()={T.buyL()}")
     except Exception as ex:
         logger_.error(f"Something went wrong. Exception:\n{ex}")
-        # raise(ex)
 
-    logger_.info('End!')
-    print('End')
-    exit
+    logger_.info('**** End ****')
 
 
 def get_args():

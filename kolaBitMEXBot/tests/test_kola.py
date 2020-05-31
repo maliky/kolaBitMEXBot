@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Get the position."""
 from time import sleep
+import sys
 import argparse
 import logging
 
@@ -41,7 +42,7 @@ def run(logger_, func_, live_: bool = False, symbol_=None):
 
     logger_.info('End!')
     print('End')
-    exit()
+    sys.exit()
 
 
 def get_args():
@@ -83,4 +84,4 @@ def main_prg():
 
 if __name__ == "__main__":
     main_prg()
-    exit(0)
+    sys.exit()
