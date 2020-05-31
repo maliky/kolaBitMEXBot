@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 """Get the position."""
 from time import sleep
-from kolaBitMEXBot.kola.utils.orderfunc import get_logger
+import argparse
+import logging
+
+from kolaBitMEXBot.kola.utils.orderfunc import get_logger, setup_logging
 from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.settings import LOGFMT
 from kolaBitMEXBot.tests.utils import Test
 from kolaBitMEXBot.multi_kola import MarketAuditeur
-
-import argparse
-
-# import logging
 
 
 def run(logger_, func_, live_: bool = False, symbol_=None):
@@ -75,10 +74,13 @@ def main_prg():
     """Parse argument and run main program."""
     args = get_args()
 
-    rlogger = get_logger(name=__name__, sLL=args.logLevel, fmt_=LOGFMT)
+    rlogger = setup_logging()
+    rlogger = get_logger(
+        name=__name__, sLL='DEBUG', fmt_=LOGFMT
+    )
     run(logger_=rlogger, func_=args.func, live_=args.liveRun, symbol_=args.Symbol)
     return None
 
 if __name__ == "__main__":
     main_prg()
-    exit()
+    exit(0)
