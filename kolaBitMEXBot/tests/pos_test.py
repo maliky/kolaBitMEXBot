@@ -4,7 +4,7 @@ from time import sleep
 from kolaBitMEXBot.kola.utils.orderfunc import get_logger
 from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.settings import LOGFMT
-from kolaBitMEXBot.test.utils import T
+from kolaBitMEXBot.tests.utils import T
 from kolaBitMEXBot.multi_kola import MarketAuditeur
 
 import argparse
