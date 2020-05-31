@@ -60,7 +60,8 @@ class Test:
         self.ws: BitMEXWebsocket = tma.brg.bto.ws
         self.Ods = OrderedDict()  # a dictionnary for oders passed
         self.logger = tma.logger #logging.getLogger(__name__)
-        self.symol: symbT = tma.symbol
+        self.symbol: symbT = tma.symbol
+
         self.priceType: priceTT = pricetype
 
     def placeM(self, side: sideT, qty=None, trim_: bool = True, **opts) -> None:
