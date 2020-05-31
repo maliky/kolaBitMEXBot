@@ -13,7 +13,7 @@ with open("README.rst", "r") as f:
 
 setup(
     name="kolaBitMEXBot",
-    version="1.1.5",
+    version="1.1.6",
     description="Trading bot with trail stop and chained orders for pour Bitmex and maybe more...",
     long_description=long_description,
     long_description_content_type="text/x-rst",
@@ -30,10 +30,10 @@ setup(
         ]
     },
     install_requires=[
-        "pandas>=1.0.1",
-        "numpy>=1.16.2",
-        "websocket_client>=0.57.0",
-        "requests>=2.23.0",
+        "pandas",
+        "numpy",
+        "websocket_client",
+        "requests",
     ],
     extras_require={
         'dev': ['mypy', 'flake8', 'black'],
