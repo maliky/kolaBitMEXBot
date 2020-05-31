@@ -580,8 +580,8 @@ def main_prg():
         rlogger.exception("Erreur dans la socket... Quelque chose se prépare.")
         # les thread sont-ils alive ?
 
-    exit()
 
 
 if __name__ == "__main__":
     main_prg()
+    exit()

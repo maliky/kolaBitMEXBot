@@ -37,12 +37,12 @@ def run(logger_, func_, live_: bool = False, symbol_=None):
         if func_ == "buyL":
             logger_.info(f"T.buyL()={T.buyL()}")
     except Exception as ex:
-        logger_.error(f"Something went wrong. Exception:\n{ex}")
+        logger_.error(f"Something went wrong for func '{func_}': Exception:\n{ex}")
         # raise(ex)
 
     logger_.info('End!')
     print('End')
-    exit
+    exit()
 
 
 def get_args():
@@ -77,7 +77,7 @@ def main_prg():
 
     rlogger = get_logger(name=__name__, sLL=args.logLevel, fmt_=LOGFMT)
     run(logger_=rlogger, func_=args.func, live_=args.liveRun, symbol_=args.Symbol)
-    exit()
+    return None
 
 if __name__ == "__main__":
     main_prg()
