@@ -13,7 +13,7 @@ with open("README.rst", "r") as f:
 
 setup(
     name="kolaBitMEXBot",
-    version="1.1.6",
+    version="1.1.7",
     description="Trading bot with trail stop and chained orders for pour Bitmex and maybe more...",
     long_description=long_description,
     long_description_content_type="text/x-rst",
@@ -27,6 +27,8 @@ setup(
         "console_scripts": [
             "run_multi_kola=kolaBitMEXBot.run_multi_kola:main_prg",
             "multi_kola=kolaBitMEXBot.multi_kola:main_prg",
+            "test_kola=kolaBitMEXBot.tests.test_kola:main_prg",
+            
         ]
     },
     install_requires=[
@@ -37,6 +39,7 @@ setup(
     ],
     extras_require={
         'dev': ['mypy', 'flake8', 'black'],
+        'packaging': ['twine'],
         "test": ['pytest', 'hypothesis'],
     },
     classifiers=[
