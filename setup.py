@@ -35,7 +35,10 @@ setup(
         "websocket_client>=0.57.0",
         "requests>=2.23.0",
     ],
-    # extras_require={'linter_checker':['mypy', 'flake8']},
+    extras_require={
+        'dev': ['mypy', 'flake8', 'black'],
+        "test": ['pytest', 'hypothesis'],
+    },
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",

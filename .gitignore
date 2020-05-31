@@ -1,2 +1,22 @@
 # created by virtualenv automatically
-*
+*cache*
+dist/*
+build/*
+include/*
+lib/*
+share/*
+bin/*
+get-pip.py
+
+*egg*
+
+.hypothesis
+secrets.py
+*ipynb*
+*tmp*
+*Logs
+
+journal.org
+README.org
+kolaBitMEXBot/adaorder.tsv
+kolaBitMEXBot/morders.py
