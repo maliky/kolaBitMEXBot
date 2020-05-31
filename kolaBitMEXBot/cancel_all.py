@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Cancel and close all open order on testnet."""
 
-from sys import exit
+from sys
 from tests.utils import Test
 import logging
 from multi_kola import MarketAuditeur
@@ -19,7 +19,7 @@ def main_prg():
     T = Test(tma)
     logging.info(T.close_and_cancel())
     tma.stop_server()
-    exit()
+    sys.exit()
 
 
 if __name__ == "__main__":

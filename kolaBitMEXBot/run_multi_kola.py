@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Lauch the program to run several order couple (main order and tail)."""
 import argparse
-from sys import exit
+import sys
 
 from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
 from kolaBitMEXBot.kola.dummy_bitmex import DummyBitMEX
@@ -114,4 +114,4 @@ def get_cmd_args():
 
 if __name__ == "__main__":
     main_prg()
-    exit()
+    sys.exit()
