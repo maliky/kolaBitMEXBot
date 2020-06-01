@@ -59,10 +59,25 @@ class Test:
         self.bto: BitMEX = tma.brg.bto
         self.ws: BitMEXWebsocket = tma.brg.bto.ws
         self.Ods = OrderedDict()  # a dictionnary for oders passed
-        self.logger = tma.logger #logging.getLogger(__name__)
+        self.logger = tma.logger  # logging.getLogger(__name__)
         self.symbol: symbT = tma.symbol
-
         self.priceType: priceTT = pricetype
+
+    def __repr__(self, long=False):
+        """Represent l'objet Test."""
+        def_values = {
+            key: getattr(self, key)
+            for key in [
+                'qty',
+                'offset',
+                'offsetPx',
+                'offsetStop',
+                'symbol',
+                'priceType',
+            ]
+        }
+        rep = f"defaults: {def_values}"
+        return rep
 
     def placeM(self, side: sideT, qty=None, trim_: bool = True, **opts) -> None:
         """Place side at market."""
@@ -167,7 +182,7 @@ class Test:
         """Buy Limit with offset from current price."""
         offset = self.offset if offset_ is None else offset_
         qty = self.qty if qty_ is None else qty_
-        
+
         self.ObuyL = self.placeL("buy", offset, qty)
         return self.ObuyL
 

@@ -28,9 +28,7 @@ def run(logger_, func_, live_: bool = False, symbol_=None):
     logger_.info("Waiting 2s for connection to establish...")
     sleep(2)
     logger_.info(f"ws={T.ws}")
-
-    logger_.info(f"Running {func_}")
-
+    logger_.info(f"Running '{func_}'")
     try:
         if func_ == 'position':
             logger_.info(f"position={T.ws.position(T.symbol)}")
