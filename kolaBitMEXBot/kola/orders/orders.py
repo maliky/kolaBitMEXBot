@@ -23,7 +23,7 @@ mlogger.setLevel("DEBUG")
 def place_at_market(brg, orderQty, side, **opts):
     """Place a (market) order."""
     opts.update({"ordType": "Market"})
-    mlogger.debug(f"{brg}, orderQty:{orderQty}, side={side}, opts={opts}")
+    mlogger.info(f"{brg}, orderQty:{orderQty}, side={side}, opts={opts}")
     return brg.bto.place(orderQty, side=side, asBulk=True, **opts)
 
 
