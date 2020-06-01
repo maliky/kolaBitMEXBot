@@ -96,6 +96,7 @@ class Test:
         _offset = self.set_offset(side, offset_, offsettype="Limit")
         _price = self.brg.prices(self.priceType) + _offset
 
+        self.logger.info("place signature: {self.brg, side, _qty, price=_price, **opts}")
         reply = place(self.brg, side, _qty, price=_price, **opts)
 
         oPlace = [trim_dic(o) for o in reply][0] if trim_ else reply
