@@ -153,7 +153,7 @@ class BitMEX(object):
 
             req = rq.Request(verb, url, json=postdict, auth=auth, params=query)
             prepped = self.session.prepare_request(req)
-            self.logger.debug(f"req={req}, prepped")
+            self.logger.debug(f"req={req}, prepped={prepped}")
             response = self.session.send(prepped, timeout=timeout)
 
             # Make non-200s throw
