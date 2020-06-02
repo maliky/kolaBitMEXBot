@@ -74,10 +74,10 @@ class Chronos(threading.Thread):
             self.logger.debug(f"Chronos received load: {rcvLoad}")
 
             # Bientôt volume et autre KPI
-
             sender = rcvLoad["sender"]
             timeOut = rcvLoad["timeOut"]
-
+            symbol = rcvLoad["symbol"]
+            
             # make a deep copy of the order to avoid changing rcvLoad
             rcvOrder = pickle.loads(pickle.dumps(rcvLoad["order"]))
             ordType = rcvOrder.pop("ordType", None)
@@ -90,7 +90,6 @@ class Chronos(threading.Thread):
                 # 'StopLimit', 'LimitIfTouched'
                 side = rcvOrder.pop("side")
                 orderQty = rcvOrder.pop("orderQty")
-                symbol = rcvOrder.pop("symbol")
 
                 # pop le prix si dans le rcvOrder
                 # sinon le prix du marché en fonction du side, en market_maker

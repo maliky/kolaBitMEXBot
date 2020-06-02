@@ -464,15 +464,16 @@ class Bargain:
 
         if typeprice == "delta":
             ret = prices["askPrice"] - prices["bidPrice"]
+
         elif typeprice.lower() == "indexprice":
             # S'assurer qu'il n'y a pas deux appels consécutif à moins de x seconde
             # minisytème de cache  jusquà 11s avant nouvel appel au broker
             timeLaps = now() - self.last_check_time
             msg = (
-                f'Checking cached price',
+                f'Checking cached price'
                 f' timeLaps={timeLaps}, now={now()},'
                 f' last_check_time={self.last_check_time}'
-                f' self.cached_refPrices={self.cached_refPrices}',
+                f' self.cached_refPrices={self.cached_refPrices}'
             )
 
             if (
@@ -488,7 +489,7 @@ class Bargain:
 
             self.logger.debug(msg)
 
-            ret = cached_refPrices
+            ret = self.cached_refPrices
 
         elif typeprice.lower() == "lastprice":
             # askPrice > bidPrice
