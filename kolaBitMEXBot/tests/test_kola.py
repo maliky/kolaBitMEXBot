@@ -23,8 +23,9 @@ def run(logger_, func_, live_: bool = False, symbol_=None):
     tma.start_server()
     offset, offsetPx, offsetStop = [PRICE_PRECISION[symbol_] * x for x in [4, 20, 30]]
     qty = {'XBTUSD': 40, 'ADAM20': 5000}.get(symbol_, 40)
-    T = Test(tma, qty_=qty, offsetPx_=offsetPx, offsetStop_=offsetStop)
- 
+
+    T = Test(tma, 'LastPrice', qty, offset, offsetPx, offsetStop)
+
     logger_.info("Waiting 2s for connection to establish...")
     sleep(2)
     logger_.info(f"ws={T.ws}")
@@ -71,10 +72,10 @@ def main_prg():
     args = get_args()
 
     rlogger = setup_logging()
-    rlogger = get_logger(
-        name=__name__, sLL='DEBUG', fmt_=LOGFMT
-    )
+    rlogger = get_logger(name=__name__, sLL='DEBUG', fmt_=LOGFMT)
     run(logger_=rlogger, func_=args.func, live_=args.liveRun, symbol_=args.Symbol)
+    sys.exit()
+
 
 if __name__ == "__main__":
     main_prg()

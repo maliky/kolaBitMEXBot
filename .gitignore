@@ -18,8 +18,11 @@ secrets.py
 
 journal.org
 README.org
-kolaBitMEXBot/adaorder.tsv
+kolaBitMEXBot/adaorders.tsv
+kolaBitMEXBot/xbtorders.tsv
 kolaBitMEXBot/morders.py
+*~
+pyvenv.cfg
 
 # dev
 kolaBitMEXBot/tests/test_connexion.py

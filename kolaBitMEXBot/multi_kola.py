@@ -466,7 +466,7 @@ def go_multi(ma, arg_file=None, updatepause=None, logpause=None):
 
     logging.info(
         f"Starting {len(df.index)} paire(s): update every={updatepause}s,"
-        " log every={logpause}s"
+        f" log every={logpause}s"
     )
 
     _ = threading.Thread(

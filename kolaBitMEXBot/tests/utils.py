@@ -62,6 +62,7 @@ class Test:
         self.logger = tma.logger  # logging.getLogger(__name__)
         self.symbol: symbT = tma.symbol
         self.priceType: priceTT = pricetype
+        self.logger.info(f"End Init: {self}")
 
     def __repr__(self, long=False):
         """Represent l'objet Test."""
@@ -96,7 +97,7 @@ class Test:
         _offset = self.set_offset(side, offset_, offsettype="Limit")
         _price = self.brg.prices(self.priceType) + _offset
 
-        self.logger.info("place signature: {self.brg, side, _qty, price=_price, **opts}")
+        self.logger.info(f"place signature: {self.brg, side, _qty, _price, opts}")
         reply = place(self.brg, side, _qty, price=_price, **opts)
 
         oPlace = [trim_dic(o) for o in reply][0] if trim_ else reply
@@ -365,3 +366,4 @@ tma = MarketAuditeur(live=False)
 ama = MarketAuditeur(live=False)
 tma.start_server()
 T = Test(tma)
+

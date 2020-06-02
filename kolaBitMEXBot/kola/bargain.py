@@ -58,7 +58,7 @@ class Bargain:
         self.last_check_time = now() - Timedelta(
             2, unit="D"
         )  # on s'assure d'être dans le passé.
-        self.cached_refPrice = None
+        self.cached_refPrices = None
 
         self.live = live
         if self.live and dbo is None:
@@ -431,8 +431,12 @@ class Bargain:
             "columns": "price",
             "reverse": "true",
         }
-        # self.logger.debug(f'Got new price from curl {self.cached_refPrice}')
-        return self.bto._curl_bitmex(path, query)[0]["price"]
+        # self.logger.debug(f'Got new price from curl {self.cached_refPrices}')
+        # not sure here about the markPrice for the indexPrice
+        rep = self.bto._curl_bitmex(path, query)[0]
+        self.logger.debug(f"asking: {path}, {query}. *Réponse: {rep}*")
+
+        return rep['price']
 
     def prices(self, typeprice=None, side="buy", symbol_=None):
         """
@@ -445,7 +449,7 @@ class Bargain:
         - symbol if not user bargain symbol but maybe could want other price
         """
         _symbol = self.symbol if symbol_ is None else symbol_
-        
+
         prices = {
             k: v for (k, v) in self.bto.instrument(_symbol).items() if "rice" in k
         }
@@ -461,15 +465,30 @@ class Bargain:
         if typeprice == "delta":
             ret = prices["askPrice"] - prices["bidPrice"]
         elif typeprice.lower() == "indexprice":
-
             # S'assurer qu'il n'y a pas deux appels consécutif à moins de x seconde
             # minisytème de cache  jusquà 11s avant nouvel appel au broker
             timeLaps = now() - self.last_check_time
-            if timeLaps > Timedelta(randint(2, 11), unit="s") or self.bto.dummy:
-                self.cache_refPrice = self.get_most_recent_settlement_price()
+            msg = (
+                f'Checking cached price',
+                f' timeLaps={timeLaps}, now={now()},'
+                f' last_check_time={self.last_check_time}'
+                f' self.cached_refPrices={self.cached_refPrices}',
+            )
+
+            if (
+                self.cached_refPrices is None
+                or timeLaps > Timedelta(randint(2, 11), unit="s")
+                or self.bto.dummy
+            ):
+                cached_refPrices = self.get_most_recent_settlement_price()
                 self.last_check_time = now()
 
-            ret = self.cached_refPrice
+                self.cached_refPrices = cached_refPrices
+                msg += f'>>>> New Cached_refPrices={cached_refPrices} <<<<.'
+
+            self.logger.debug(msg)
+
+            ret = cached_refPrices
 
         elif typeprice.lower() == "lastprice":
             # askPrice > bidPrice

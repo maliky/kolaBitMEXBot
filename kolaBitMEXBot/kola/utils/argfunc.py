@@ -170,6 +170,11 @@ def set_order_args(
             f"Exception >>>> atype={atype}, tptype={tptype} and tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
         )
         raise (e)
+    mlogger.debug(
+        f"Exception >>>> atype={atype}, tptype={tptype} and"
+        f" tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
+        f" tailRefPrices={tailRefPrices}, ordPrices={ordPrices}, prix={prix}."
+    )
 
     prixPrevuOrd = get_prix_decl(ordPrices, side)
     prixPrevuTail = get_prix_decl(tailRefPrices, side)

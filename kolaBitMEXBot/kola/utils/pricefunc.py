@@ -20,10 +20,8 @@ def set_new_price(base: priceT, per: float, symbol="XBTUSD") -> priceT:
     return _round(base * (1 + per / 100))
 
 
-def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol="XBTUSD") -> bipriceT:
-    """
-    Renvois les prix formatés selon atype
-    """
+def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT:
+    """Renvois les prix formatés selon atype."""
     assert any([p in atype for p in ["p%", "pA", "pD"]]), f"atype={atype}"
 
     def _round(x):
@@ -39,6 +37,9 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol="XBTUSD") -> bipr
     elif "pD" in atype:
         # prix en différentiel par rapport au prix de référence
         newPrix = _round(refPrice + prix[0]), _round(refPrice + prix[1])
+        logging.debug(f"refPrice={refPrice}, prix={prix}, newPrix={newPrix}")
+
+    return newPrix
 
 
 def setdef_stopPrice(price: priceT, side: sideT, absdelta: float = 2) -> priceT:
