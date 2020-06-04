@@ -1,0 +1,17 @@
+usage: run_multi_kola [-h] [--morders MORDERS] [--symbol SYMBOL]
+                      [--logLevel LOGLEVEL] [--liveRun] [--dummy]
+
+Lance les ordres du fichier morders.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --morders MORDERS, -m MORDERS
+                        Path to the 'tsv' file containing the market orders.
+                        usually one per symbol (f./xbtorders.tsv).
+  --symbol SYMBOL, -S SYMBOL
+                        Market to listen too. could be XBTM20 XBTU20 ADAM20
+                        BCHM20 ETHUSD LTCM20 (default=XBTUSD)
+  --logLevel LOGLEVEL, -l LOGLEVEL
+                        Le log level
+  --liveRun             Si présent utilise live bitmex !
+  --dummy, -D           Si présent utilise un dummy bitmex

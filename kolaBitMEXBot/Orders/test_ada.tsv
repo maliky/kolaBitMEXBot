@@ -1,0 +1,86 @@
+name	tps_run	essais	tOut	pause	side	oType	tType	sDelta	atype	q	tp	prix	hook
+
+# Test (primary) orders types
+# market orders
+# MS0	0 5440	1			buy	M	S		qAtDpD	1.1e3	1e-6	-1e-7 1e-7
+# limit orders
+# LS0	0 5440	1			buy	L	S		qAtDpD	1.2e3	1e-6	-2e-6 -1e-6
+# # (market) Stops
+# SS0	0 5440	1			sell	S	S		qAtDpD	1.3e3	1e-6	-2e-6 -1e-6
+# # (market) Touch
+# MTS0	0 5440	1			buy	MT	S		qAtDpD	1.4e3	1e-6	-2e-6 -1e-6
+# # (Limit) Stops
+# SLS0	0 5440	1			sell	SL	S	1e-7	qAtDpD	1.5e3	1e-6	-2e-6 -1e-6
+# # (Limit) Touch
+#LTS0	0 5440	1			buy	LT	S	1e-7	qAtDpD	1.6e3	1e-6	-2e-6 -1e-6
+
+# # stop refprice
+Si	0 5440	1			buy	Si	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+Sl	0 5440	1			buy	Sl	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+Sm	0 5440	1			buy	Sm	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+SLi	0 5440	1			buy	SLi	S	1e-7	qAtDpD	4e3	1e-6	-2e-6 -1e-6
+SLl	0 5440	1			buy	SLl	S	1e-7	qAtDpD	4e3	1e-6	-2e-6 -1e-6
+SLm	0 5440	1			buy	SLm	S	1e-7	qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# LTi	0 5440	1			sell	LTi	S	1e-7	qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# LTl	0 5440	1			sell	LTl	S	1e-7	qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# LTm	0 5440	1			sell	LTm	S	1e-7	qAtDpD	4e3	1e-6	-2e-6 -1e-6
+
+
+# # test tail type (or secondary order)
+# # L! is for immediat cancelation of main order because prix condition is already true
+# # market orders
+# LM	0 5440	1			buy	L!	M		qAtDpD	2.1e3	1e-6	1e-8 2e-8
+# # limit orders
+# LL	0 5440	1			buy	L!	L		qAtDpD	2.2e3	1e-6	1e-8 2e-8
+# # (market) Stops
+# LS	0 5440	1			sell	L!	S		qAtDpD	2.3e3	1e-6	-1e-8 0
+# # (market) Touch
+# LMT	0 5440	1			buy	L!	MT		qAtDpD	2.4e3	1e-6	1e-8 2e-8
+# # (Limit) Stops
+# LSL	0 5440	1			sell	L!	SL	1e-7	qAtDpD	2.5e3	1e-6	-1e-8 0
+# # (Limit) Touch
+# LLT	0 5440	1			buy	L!	LT	1e-7	qAtDpD	2.6e3	1e-6	1e-8 2e-8
+
+# # test atype
+# qAtDpD	0 5440	1			buy	L	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# qAtDp%	0 5440	1			buy	L	S		qAtDp%	4e3	1e-6	-10 -9
+# qAtDpA	0 5440	1			buy	L	S		qAtDpA	4e3	1e-6	6e-6 7e-6
+# qAt%pD	0 5440	1			buy	L	S		qAt%pD	4e3	10	-2e-6 -1e-6
+# qAtApD	0 5440	1			buy	L	S		qAtApD	4e3	7e-6	-2e-6 -1e-6
+# q%tDpD	0 5440	1			buy	L	S		q%tDpD	20	1e-6	-2e-6 -1e-6
+# #qDtDpD	0 5440	1			buy	L	S		qDtDpD	4e3	1e-6	-2e-6 -1e-6
+
+# # test run_time, timeout, pause and retry (essais)
+# Time	0 5440	1			buy	L	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# Time	20 5440	1			buy	L	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# Time	20 40	1			buy	L	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+
+# # should handle automaticaly pause duration to have on average the 30 trial (if possible)
+# Time	0 60	3			buy	L	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# Time	0 60	3	1		buy	L	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# Time	0 60	3	1	1	buy	L	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# Time	0 60	3	.2		buy	L	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+# Time	0 60	3	.4	.2	buy	L	S		qAtDpD	4e3	1e-6	-2e-6 -1e-6
+
+
+
+# #### Notes ####
+# oType = order price Type
+# tType = tail Price Type
+# Differents values des Types
+
+# i, l, m (index, Last et Mark trigger Prices)  # par défaut last price which seem to be ask and bid prices
+
+# M, L, S, MT, SL, LT: Market, Limit, Stop, MarketIfTouched, StopLimit, LimitIfTouched orders
+# L toucher par rapport à LastPrice ?
+# 
+# !, - ParticipateDoNotInitiate et ReduceOnly, incompatible avec Market orders
+# utiliser les SL et LT avec des limites juste à côte du trigger par défaut et dans le même sens
+# tOut et pause sont en minutes
+
+# sDelta (en diff nominal pour l'ordre principal seulement)  par défaut = 1  pour le stop
+
+# sell SL, trigger when mark price < price given et le limit sera sell aussi
+
+# temps: 24h 1440m, 48h 2880m,  4j 5760m, 7j ~10000m.
+

@@ -1,0 +1,13 @@
+usage: test_kola [-h] [-S SYMBOL] [--logLevel LOGLEVEL] [--liveRun] [-f FUNC]
+
+Un fichier pour executer des commandes simple sur bitmex.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -S SYMBOL, --Symbol SYMBOL
+                        Symbol to initiate the Bargain (def. XBTUSD).
+  --logLevel LOGLEVEL, -l LOGLEVEL
+                        Le log level
+  --liveRun             Si présent utilise live bitmex !
+  -f FUNC, --func FUNC  Fonction to apply on the market. try 'position' or
+                        'buyL' (def. position).
