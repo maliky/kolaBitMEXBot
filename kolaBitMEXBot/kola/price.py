@@ -204,12 +204,18 @@ class PriceObj:
         return round(stopOffsetPer * 100, 2)
 
     def get_stopTail_offset_delta(self, refPrice=None, stopTail=None):
-        """Renvois l'écart (en valeur) entre le prix de référence actuelle et la stopTail actuelle.  >0 si stopTail au dessus, <0 sinon.
-        S'assure que les prix sont définis"""
+        """
+        Renvois l'écart (en valeur) entre le prix de référence actuelle et la stopTail actuelle.  
+
+        Return >0 si stopTail au dessus, <0 sinon. S'assure que les prix sont définis
+        """
         refPrice = self.get_refPrice(refPrice)
         tail = self.get_data(nomElt="stopTail", default_ret=stopTail)
-        offset = round_sprice(tail - refPrice, self.symbol)
-        return offset
+        if (tail - refPrice) == 0:
+            return 0
+        else:
+            offset = round_sprice(tail - refPrice, self.symbol)
+            return offset
 
     def flexTail_offset_delta(self, refPrice=None):
         """Calcul l'offset flexible qui est fonction des variation des prix."""

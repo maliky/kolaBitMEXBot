@@ -104,7 +104,7 @@ def get_precision(x):
 def round_price(price: float, precision_=0.5) -> float:
     """Set defaut to round an XBT price. see round_half_up"""
     assert precision_ is not None
-    assert price > 0
+    # assert price != 0, f"price={price}, precision_={precision_}"
     return round_half_up(price, precision_)
 
 
@@ -115,6 +115,7 @@ def round_sprice(x, symbol_=None):
     Par exemple: x=234.7 -> arrondira au dixème
     x=.00005 -> au millionnième
     """
+    # assert x != 0, f"symbol_={symbol_}, x={x}"
     sprecision = PRICE_PRECISION.get(symbol_, 10**-get_precision(x))
     return round_price(x, sprecision)
 
@@ -129,11 +130,15 @@ def round_half_up(x: float, precision_: float) -> float:
     """
     assert precision_, f"y must be set but it is {precision_}"
     # p = get_precision(y)
-    getcontext().prec = 28  # i think it's to trigger some precision stuff
+    getcontext().prec = 28  # set precision context
     prec_ = to_decimal(precision_)
-    return float(
-        (to_decimal(x) / prec_).quantize(Decimal(1), rounding=ROUND_HALF_UP) * prec_
-    )
+    arrondi = (to_decimal(x) / prec_).quantize(Decimal(1), rounding=ROUND_HALF_UP) * prec_
+
+    # si precision_ = .5 -> 1 si 1e-7 -> 7
+    round_precision = get_precision(precision_)
+    x_ = float(round(arrondi, round_precision) )
+    #logging.debug(f">>>> x_={x_} >>>> arrondi={arrondi}, round_precision={round_precision}.")
+    return x_
 
 
 def to_decimal(x: float) -> Decimal:

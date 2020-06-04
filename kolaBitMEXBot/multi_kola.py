@@ -26,7 +26,11 @@ from kolaBitMEXBot.kola.settings import (
     LOGFMT,
     ordStatusTrans,
 )
-from kolaBitMEXBot.kola.utils.argfunc import set_order_args, price_type_trad, get_args
+from kolaBitMEXBot.kola.utils.argfunc import (
+    set_order_args,
+    price_type_trad,
+    get_args,
+)
 from kolaBitMEXBot.kola.utils.conditions import cVraieTpsDeA, cVraiePrixDeA, cHook
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
@@ -75,7 +79,9 @@ class MarketAuditeur:
         if logger:
             self.logger = logger
         else:
-            self.logger = get_logger(logger, name=__name__, sLL="DEBUG", logFile=logfile)
+            self.logger = get_logger(
+                logger, name=__name__, sLL="DEBUG", logFile=logfile
+            )
 
         # to cache the hooks
         self.hookedIDs: Set[str] = set()
@@ -103,7 +109,10 @@ class MarketAuditeur:
         )
         # Serveur dispacheur d'ordre
         self.chrs: Chronos = Chronos(
-            self.brg, self.fileDattente, self.fileDeConfirmation, logger=self.logger
+            self.brg,
+            self.fileDattente,
+            self.fileDeConfirmation,
+            logger=self.logger,
         )
         self.chrs.start()
         # Resultats financiers
@@ -207,7 +216,9 @@ class MarketAuditeur:
             sDelta = 2
 
         # Expanding shortcut for ref price type:
-        opType, ordType, execInst = price_type_trad(oType, side)  # decl du main order.
+        opType, ordType, execInst = price_type_trad(
+            oType, side
+        )  # decl du main order.
         tpType, tOrdType, tExecInst = price_type_trad(tType, side)  # decl du stop.
 
         # #### On commence la boucle qui va gérer le run.
@@ -221,7 +232,16 @@ class MarketAuditeur:
                 f"oType={opType, ordType, execInst}, tType={tpType, tOrdType, tExecInst}"
             )
             oPrices, _q, _tp, tailPrices = set_order_args(
-                prix, q, tp, atype, self.brg, opType, tpType, recompute=True
+                prix,
+                q,
+                tp,
+                atype,
+                self.brg,
+                opType,
+                tpType,
+                recompute=True,
+                side=side,
+                symbol=self.symbol,
             )
 
             _info = {
@@ -245,7 +265,9 @@ class MarketAuditeur:
             )
 
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst
-            order = create_order(side, _q, opType, ordType, execInst, oPrices, sDelta)
+            order = create_order(
+                side, _q, opType, ordType, execInst, oPrices, sDelta
+            )
 
             # On initialise les arguments condition pour les ordres principaux
             kwargs = {
@@ -268,7 +290,10 @@ class MarketAuditeur:
                 # hook formé du 'nom-S_F' avec code ou nom-P_C eg.
                 # <nom>-<src_secondair|src_principal>_<ordTargetStatus>-<SO|PO>id..
                 self.ocp = HookOrder(
-                    hSrc=_hSrc, hStatus=_hStatus, excludeIDs_=self.hookedIDs, **kwargs
+                    hSrc=_hSrc,
+                    hStatus=_hStatus,
+                    excludeIDs_=self.hookedIDs,
+                    **kwargs,
                 )
 
                 # add hook conditions
@@ -321,7 +346,11 @@ class MarketAuditeur:
                 break
 
             self.fin_essai(
-                i, essais, close=False, dr_pause=dr_pause, dr_essai_theo=dr_essai_theo
+                i,
+                essais,
+                close=False,
+                dr_pause=dr_pause,
+                dr_essai_theo=dr_essai_theo,
             )
             # avant d'essaie aussi et s'assurer que le stop a bien été exécuté
             i += 1
@@ -332,6 +361,7 @@ class MarketAuditeur:
                 self.logger.info(f">>>> Updating hookedIDs={self.hookedIDs}")
 
         self.fin_des_essais(essais, close=False)
+        sys.exit()
 
     def record_new_executions(self, fout_="./Logs/executions.csv"):
         """Enregistre les executions courantes."""
@@ -412,6 +442,7 @@ class MarketAuditeur:
         # si q == 0 close all position.  q mesure la réduction de la position
         # self.brg.cancel_and_close(quantity=close)
         # self.exit()
+        sys.exit()
 
     def pause(self, dr_pause, dr_essai_theo):
         """
@@ -456,7 +487,10 @@ def go_multi(ma, arg_file=None, updatepause=None, logpause=None):
     """
     try:
         df = pd.read_csv(
-            filepath_or_buffer=arg_file, sep="\t", comment="#", skip_blank_lines=True
+            filepath_or_buffer=arg_file,
+            sep="\t",
+            comment="#",
+            skip_blank_lines=True,
         )
         df = df.set_index([df.index, df.name]).drop(columns="name")
         df = df.apply(coerce_types, axis=1)
@@ -478,7 +512,10 @@ def go_multi(ma, arg_file=None, updatepause=None, logpause=None):
         kwargs.update(
             {"nameT": idx[1], "updatepause": updatepause, "logpause": logpause}
         )
-        logging.debug(f"kwargs={kwargs}")
+        logging.debug(
+            f"nameT={idx[1]}, update={updatepause}, logpause={logpause}"
+            f" kwargs={kwargs}"
+        )
 
         t = threading.Thread(target=ma.go, name=idx[1], kwargs=kwargs)
         sleep(HTTP_SIMPLE_RATE_LIMITE)  # gérer le cas des erreur au départ ?
@@ -525,7 +562,7 @@ def coerce_types(s):
         "tp": coerce_to("float", s.tp),
         "atype": s.atype.strip(),
         "oType": s.oType.strip(),
-        "sDelta": coerce_to("int", s.sDelta),
+        "sDelta": coerce_to("float", s.sDelta),
         "tType": s.tType.strip(),
         "hook": "" if pd.isna(s.hook) else s.hook.strip(),
     }
@@ -560,7 +597,9 @@ def main_prg():
         name=LOGNAME, sLL=args.logLevel, logFile=args.logFile, fmt_=LOGFMT
     )
     dbo = DummyBitMEX(up=0, logger=rlogger) if args.dummy else None
-    tma = MarketAuditeur(live=args.liveRun, dbo=dbo, logger=rlogger, symbol=args.symbol)
+    tma = MarketAuditeur(
+        live=args.liveRun, dbo=dbo, logger=rlogger, symbol=args.symbol
+    )
     tma.start_server()
 
     try:
@@ -579,7 +618,6 @@ def main_prg():
     except ke.wsException:
         rlogger.exception("Erreur dans la socket... Quelque chose se prépare.")
         # les thread sont-ils alive ?
-
 
 
 if __name__ == "__main__":

@@ -163,17 +163,18 @@ def set_order_args(
     # on gère le passage des prix en pourcentage
     # c'est bon de rester approximatif et de ne pas forcer des prix entier du genre 8800
     try:
-        tailRefPrices = get_prices(tailPrixRef, prix, atype)
-        ordPrices = get_prices(ordPrixRef, prix, atype)
+        tailRefPrices = get_prices(tailPrixRef, prix, atype, symbol)
+        ordPrices = get_prices(ordPrixRef, prix, atype, symbol)
     except Exception as e:
         mlogger.exception(
-            f"Exception >>>> atype={atype}, tptype={tptype} and tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
+            f"Exception >>>> atype={atype}, tptype={tptype} and tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}, symbol={symbol}"
         )
         raise (e)
     mlogger.debug(
         f"Exception >>>> atype={atype}, tptype={tptype} and"
         f" tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
-        f" tailRefPrices={tailRefPrices}, ordPrices={ordPrices}, prix={prix}."
+        f" tailRefPrices={tailRefPrices}, ordPrices={ordPrices}, prix={prix}"
+        f" symbol={symbol}."
     )
 
     prixPrevuOrd = get_prix_decl(ordPrices, side)

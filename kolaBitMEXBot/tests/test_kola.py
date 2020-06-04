@@ -39,6 +39,7 @@ def run(logger_, func_, live_: bool = False, symbol_=None):
         logger_.error(f"Something went wrong for func '{func_}': Exception:\n{ex}")
         # raise(ex)
     logger_.info('End!')
+    sys.exit()
 
 
 def get_args():
@@ -80,4 +81,4 @@ def main_prg():
 if __name__ == "__main__":
     main_prg()
     sys.exit()
-    quit()
+

@@ -1,28 +1,2 @@
 # created by virtualenv automatically
-*cache*
-dist/*
-build/*
-include/*
-lib/*
-share/*
-bin/*
-get-pip.py
-
-*egg*
-
-.hypothesis
-secrets.py
-*ipynb*
-*tmp*
-*Logs
-
-journal.org
-README.org
-kolaBitMEXBot/adaorders.tsv
-kolaBitMEXBot/xbtorders.tsv
-kolaBitMEXBot/morders.py
-*~
-pyvenv.cfg
-
-# dev
-kolaBitMEXBot/tests/test_connexion.py
+*

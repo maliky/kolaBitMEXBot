@@ -37,7 +37,7 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT
     elif "pD" in atype:
         # prix en différentiel par rapport au prix de référence
         newPrix = _round(refPrice + prix[0]), _round(refPrice + prix[1])
-        logging.debug(f"refPrice={refPrice}, prix={prix}, newPrix={newPrix}")
+        logging.debug(f"refPrice={refPrice}, prix={prix}, newPrix={newPrix}, symbol={symbol}")
 
     return newPrix
 
@@ -53,7 +53,7 @@ def setdef_stopPrice(price: priceT, side: sideT, absdelta: float = 2) -> priceT:
     Renvois le stopPrice ou stopPx
     """
     # stpPx < price si side sell
-    assert absdelta > 0, f"abs delta doit être positif strictement."
+    assert absdelta > 0, f"mais {absdelta}."
 
     # side = side.lower()
     T = {"buy": 1, "sell": -1}

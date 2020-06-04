@@ -1,12 +1,11 @@
-usage: multi_kola.py [-h] [--tps_run TPS_RUN TPS_RUN] [--name NAME]
-                     [--tOut TOUT] [--drPause DRPAUSE] [--prix PRIX PRIX]
-                     [--quantity QUANTITY] [--tailPrice TAILPRICE]
-                     [--logLevel LOGLEVEL] [--symbole SYMBOLE]
-                     [--updatePause UPDATEPAUSE] [--logPause LOGPAUSE]
-                     [--argFile ARGFILE] [--sDelta SDELTA]
-                     [--nbEssais NBESSAIS] [--oType OTYPE] [--tType TTYPE]
-                     [--side SIDE] [--aType ATYPE] [--logFile LOGFILE]
-                     [--liveRun] [--dummy] [--Hook HOOK]
+usage: multi_kola [-h] [--tps_run TPS_RUN TPS_RUN] [--name NAME] [--tOut TOUT]
+                  [--drPause DRPAUSE] [--prix PRIX PRIX] [--quantity QUANTITY]
+                  [--tailPrice TAILPRICE] [--logLevel LOGLEVEL]
+                  [--symbol SYMBOL] [--updatePause UPDATEPAUSE]
+                  [--logPause LOGPAUSE] [--argFile ARGFILE] [--sDelta SDELTA]
+                  [--nbEssais NBESSAIS] [--oType OTYPE] [--tType TTYPE]
+                  [--side SIDE] [--aType ATYPE] [--logFile LOGFILE]
+                  [--liveRun] [--dummy] [--Hook HOOK]
 
 Un bot pour faire du trading de cryptomonnaie.
 
@@ -41,7 +40,7 @@ optional arguments:
                         en %, valeur absolu ou prix de départ (default=2)
   --logLevel LOGLEVEL, -l LOGLEVEL
                         le niveau pour le log (default=INFO)
-  --symbole SYMBOLE, -S SYMBOLE
+  --symbol SYMBOL, -S SYMBOL
                         Market to listen too. could be XBTM20 XBTU20 ADAM20
                         BCHM20 ETHUSD LTCM20 (default=XBTUSD)
   --updatePause UPDATEPAUSE, -U UPDATEPAUSE

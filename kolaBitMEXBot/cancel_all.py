@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Cancel and close all open order on testnet."""
 
-from sys
+import sys
 from tests.utils import Test
 import logging
 from multi_kola import MarketAuditeur
