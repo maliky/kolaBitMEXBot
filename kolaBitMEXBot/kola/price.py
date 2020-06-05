@@ -57,7 +57,7 @@ class PriceObj:
         90% < .22
         - symbol: keep track of price symbol to format and round price correctly
         """
-        self.logger = get_logger(logger, sLL="DEBUG", name=__name__)
+        self.logger = get_logger(logger, sLL="INFO", name=__name__)
 
         self.head = head
         self.refPrice = refPrice
@@ -221,16 +221,16 @@ class PriceObj:
         """Calcul l'offset flexible qui est fonction des variation des prix."""
         refPrice = self.get_refPrice(refPrice)
         refTail = self.get_refTail(refPrice)
-        base_ofs = round(refTail - refPrice, 2)
+        base_ofs = refTail - refPrice
         current_var, currP, prevP = self.get_current_variation()
         scale = self.get_scale(current_var)
-        flexOfs = round(scale * base_ofs, 2)
+        flexOfs = round_sprice(scale * base_ofs, self.symbol)
         # logmsg = (f'Offset_delta: prevP={round(prevP, 2)}, currP={round(currP, 2)},'
         #           f' var={round(current_var,2)}, scale={scale}, base_ofs={base_ofs},'
         #           f' flexOfs={flexOfs}, refPrice={refPrice}')
 
         # self.logger.debug(logmsg)
-        return round_sprice(flexOfs, self.symbol), round(scale * 100, 2)
+        return round_sprice(flexOfs, self.symbol), round(scale * 100, 4)
 
     def get_refTail(self, refPrice=None):
         """Renvois la queue de référence.  (la bleue).  Celle ci ne change pas d'épaisseur mais suit le prix de reférence dans ses variations.
@@ -253,7 +253,9 @@ class PriceObj:
         return self.data.stopTail.current != self.data.stopTail.previous
 
     def get_flexTail(self, refPrice=None, refTail=None):
-        """Renvois le prix de la queue Verte, la flexible.
+        """
+        Compute the green tail flexible tail thickness.
+
         C'est un nombre en minTail et maxTail qui dépend du dernier delta
         si le tableau est rempli.
         JE me base sur ça pour calculer l'offset
@@ -264,7 +266,7 @@ class PriceObj:
         # if self.enought_data():
         if True:
             refPrice = self.get_refPrice(refPrice)
-            flexOfs, scale = self.flexTail_offset_delta()
+            flexOfs, scale = self.flexTail_offset_delta(refPrice)
             flexTail = refPrice + flexOfs
 
             return round_sprice(flexTail, self.symbol)

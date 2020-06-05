@@ -80,7 +80,7 @@ class MarketAuditeur:
             self.logger = logger
         else:
             self.logger = get_logger(
-                logger, name=__name__, sLL="DEBUG", logFile=logfile
+                logger, name=__name__, sLL="INFO", logFile=logfile
             )
 
         # to cache the hooks

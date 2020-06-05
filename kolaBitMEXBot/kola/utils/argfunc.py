@@ -167,11 +167,12 @@ def set_order_args(
         ordPrices = get_prices(ordPrixRef, prix, atype, symbol)
     except Exception as e:
         mlogger.exception(
-            f"Exception >>>> atype={atype}, tptype={tptype} and tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}, symbol={symbol}"
+            f"Exception {e} >>>> atype={atype}, tptype={tptype} and tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}, symbol={symbol}"
         )
-        raise (e)
-    mlogger.debug(
-        f"Exception >>>> atype={atype}, tptype={tptype} and"
+        raise e
+    
+    mlogger.info(
+        f" >>>> atype={atype}, tptype={tptype} and"
         f" tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
         f" tailRefPrices={tailRefPrices}, ordPrices={ordPrices}, prix={prix}"
         f" symbol={symbol}."
@@ -183,9 +184,13 @@ def set_order_args(
     # des options pour le tail
     if "tA" in atype:
         # le tail est en valeur absolue, prix ou doit être le tail / au prixPrevuTail
+        assert prixPrevuTail != 1 , f"tailRefPrices={tailRefPrices}, side={side}, atype={atype}."
+
         tp = abs((_tp / prixPrevuTail - 1) * 100)
     elif "tD" in atype:
         # c'est qu'on l'a donné en différentielle par rapport au prix en val abs.
+        assert prixPrevuTail !=0 , f"tailRefPrices={tailRefPrices}, side={side}, atype={atype}."
+
         tp = (_tp / prixPrevuTail) * 100
     else:
         # c'est que l'on à donné un pourcentage. tp = tp
