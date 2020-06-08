@@ -479,21 +479,17 @@ class MarketAuditeur:
             )
 
 
-def go_multi(ma, arg_file=None, updatepause=None, logpause=None):
+def go_multi(ma: MarketAuditeur, arg_file=None, updatepause=None, logpause=None):
     """
-    Ici tout est dans la fichier de morders.
+    Charge le fichier orders arg_file, and starts market auditeur.
 
-    Pour chaque ligne du fichier configue on démarre un go.
+    - ma the interface to bitmex market
+    - arg_file: path to order file
+    - updatepause : time to wait between market price checking (throttle)
+    - logpause: time to wait before logging prices objects
     """
     try:
-        df = pd.read_csv(
-            filepath_or_buffer=arg_file,
-            sep="\t",
-            comment="#",
-            skip_blank_lines=True,
-        )
-        df = df.set_index([df.index, df.name]).drop(columns="name")
-        df = df.apply(coerce_types, axis=1)
+        df = read_order_file(arg_file)
     except Exception as e:
         logging.error(df)
         raise (e)
@@ -503,27 +499,48 @@ def go_multi(ma, arg_file=None, updatepause=None, logpause=None):
         f" log every={logpause}s"
     )
 
-    _ = threading.Thread(
-        target=ma.record_new_executions, kwargs={"fout_": "./Logs/executions.csv"}
-    )
+    # _ = threading.Thread(
+    #     target=ma.record_new_executions, kwargs={"fout_": "./Logs/executions.csv"}
+    # )
 
     for idx in df.index:
         kwargs = df.loc[idx]
-        kwargs.update(
-            {"nameT": idx[1], "updatepause": updatepause, "logpause": logpause}
-        )
-        logging.debug(
-            f"nameT={idx[1]}, update={updatepause}, logpause={logpause}"
-            f" kwargs={kwargs}"
-        )
+        logging.debug(f"nameT={idx[1]}, kwargs={kwargs}")
 
         t = threading.Thread(target=ma.go, name=idx[1], kwargs=kwargs)
         sleep(HTTP_SIMPLE_RATE_LIMITE)  # gérer le cas des erreur au départ ?
         t.start()
 
 
+def read_order_file(arg_file):
+    """Read the order file, parsing arguments to correct types."""
+    # read the morder_file
+    df = pd.read_csv(
+        filepath_or_buffer=arg_file, sep="\t", comment="#", skip_blank_lines=True,
+    )
+    df = df.set_index([df.index, df.name]).drop(columns="name")
+    df = df.apply(coerce_types, axis=1)
+    return df
+
+
 def coerce_types(s):
-    """Coerce the df multi_orders types to what the go function expect."""
+    """
+    Coerce the df multi_orders types to what the go function expect.
+
+    - tps_run: s.tps_run
+    - essais: "int"
+    - dr_pause: "float"
+    - timeout: "int",
+    - side: str
+    - prix: s.prix,
+    - q: "int", 
+    - tp: "float", 
+    - atype: str
+    - oType: str
+    - sDelta: "float",
+    - tType: str
+    - hook: str
+    """
 
     def handle_tuple(tpl, atype=None):
         """Change tuple elements to float except if they are - or +."""
@@ -554,7 +571,7 @@ def coerce_types(s):
     return {
         "tps_run": handle_tuple(s.tps_run),
         "essais": coerce_to("int", s.essais),
-        "dr_pause": coerce_to("int", s.pause),
+        "dr_pause": coerce_to("float", s.pause),
         "timeout": coerce_to("int", s.tOut),
         "side": s.side.strip(),
         "prix": handle_tuple(s.prix, s.atype.strip()),
