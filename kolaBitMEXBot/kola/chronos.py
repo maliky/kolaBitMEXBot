@@ -48,7 +48,7 @@ class Chronos(threading.Thread):
         self.valid_queue = valid_queue
         self.reply_queue: Queue = Queue()
         self.stop = False
-        self.logger = get_logger(logger, name=__name__, sLL="INFO")
+        self.logger = get_logger(logger, name=__name__, sLL="DEBUG")
 
         self.logger.info(f"Fini init {self}")
 
@@ -73,7 +73,6 @@ class Chronos(threading.Thread):
             rcvLoad = self.recpt_queue.get(block=True)
             self.logger.debug(f"Chronos received load: {rcvLoad}")
 
-            # Bientôt volume et autre KPI
             sender = rcvLoad["sender"]
             timeOut = rcvLoad["timeOut"]
             symbol = rcvLoad["symbol"]
@@ -81,7 +80,7 @@ class Chronos(threading.Thread):
             # make a deep copy of the order to avoid changing rcvLoad
             rcvOrder = pickle.loads(pickle.dumps(rcvLoad["order"]))
             ordType = rcvOrder.pop("ordType", None)
-            assert ordType, f"Nous devons avoir un ordType dans le rcvOrder {rcvOrder}"
+            assert ordType, f"Should have an ordType in rcvOrder but {rcvOrder}"
 
             execInst = rcvOrder.get("execInst", "")  # TriggeredOrActivatedBySystem
 
@@ -91,8 +90,7 @@ class Chronos(threading.Thread):
                 side = rcvOrder.pop("side")
                 orderQty = rcvOrder.pop("orderQty")
 
-                # pop le prix si dans le rcvOrder
-                # sinon le prix du marché en fonction du side, en market_maker
+                # pop price from rcvOrder else get market price using side
                 price = self.pop_price_from_(rcvOrder, side, execInst, symbol)
 
                 # renvois un stopPx par défaut si ordType le nécessite
@@ -143,7 +141,7 @@ class Chronos(threading.Thread):
                             newPrice,
                             ordType,
                             side,
-                            absdelta=2,
+                            absdelta=PRICE_PRECISION.get(symbol, 1),
                             text=text,
                         )
                     )
@@ -486,15 +484,14 @@ class Chronos(threading.Thread):
         """
         Get price from rcvOrder.
 
-        Renvois le prix si renseigné,
-        sinon le prix marché de type execInst,
-        sinon lastMidprice
+        else get the market price using execInst and side.  
+        By default get lastMidprice
         """
         return rcvOrder.pop(
             "price", get_execPrice(self.brg, side, {"execInst": execInst}, symbol)
         )
 
-    def pop_stopPx_from_(self, rcvOrder, price, side, ordtype, absdelta=2, symbol=None):
+    def pop_stopPx_from_(self, rcvOrder, price, side, ordtype, absdelta=None, symbol=None):
         """
         Pop the stopPx from the rcvOrder.
 
@@ -502,11 +499,12 @@ class Chronos(threading.Thread):
         if stopPx not in rcvOrder,
         set de default stopPx based on price side, ordType and absdelta
         """
+        # absdelta = PRICE_PRECISION.get(symbol,1) if absdelta is None else absdelta
         stopPx = rcvOrder.pop("stopPx", None)
         if stopPx is None and contains(["Stop", "Touched"], ordtype):
             # probably not necessary as stop should be set
             # defaut to 2 for XBTUSD
-            absdelta = rcvOrder.pop("sDelta", PRICE_PRECISION[symbol] * 4)
+            absdelta = rcvOrder.pop("sDelta", PRICE_PRECISION[symbol])
             stopPx = setdef_stopPrice(price, side, absdelta)
 
         return stopPx

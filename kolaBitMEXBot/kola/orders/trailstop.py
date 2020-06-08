@@ -5,6 +5,7 @@ from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
 from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
 from kolaBitMEXBot.kola.settings import API_ERROR_INTERVAL
 from kolaBitMEXBot.kola.price import PriceObj
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.utils.orderfunc import (
     get_logger,
     toggle_sides,
@@ -148,6 +149,7 @@ class TrailStop(OrderConditionned):
             )
         else:
             # on met en place la condition pour la tail et on lance l'update
+            # ne doit plus s'annuler sur un time out !
             self.logger.info(f"#### Placing stop {self}")
             reply = self.place_tailstop()
             orderRef = get_order_from(reply)
@@ -230,7 +232,10 @@ class TrailStop(OrderConditionned):
             # on passe aussi un prix
             self.order["price"] = self.PO.data.stopTail.current
             self.order["stopPx"] = setdef_stopPrice(
-                self.order["price"], self.order["side"], absdelta=1
+                entryPrice=self.order["price"],
+                side=self.order["side"],
+                ordtype='Limit',
+                absdelta=PRICE_PRECISION.get(self.symbol, 1),
             )
         else:
             self.order["stopPx"] = self.PO.data.stopTail.current

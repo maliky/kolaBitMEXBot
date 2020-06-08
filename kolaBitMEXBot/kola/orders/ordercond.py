@@ -57,7 +57,7 @@ class OrderConditionned(Thread):
         self.timeOut = setdef_timedelta(timeout, pd.Timedelta(2, unit="D"))
         self.startTime = now()
 
-        # self.logger.debug(f"#### Init fini for {self.__repr__(short=False)}")
+        self.logger.debug(f"#### Init fini for {self.__repr__(short=False)}")
 
     def __repr__(self, short=True, suffix="----"):
         """Représenation."""
@@ -90,7 +90,7 @@ class OrderConditionned(Thread):
         self.condition.get_price_conds()
 
     def run(self):
-        """Tourne jusqu'à ce qu'au vrai stop ou jusqu'à ce que la condition se réalise."""
+        """Run until truth exit condition."""
         self.logger.info(f"#### Starting {self.__repr__(False)}")
 
         execValidation = {}

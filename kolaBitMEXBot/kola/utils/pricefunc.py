@@ -3,10 +3,7 @@ from typing import Union, Literal, Tuple
 import logging
 
 from kolaBitMEXBot.kola.utils.general import round_sprice
-
-priceT = Union[float, int]
-sideT = Literal["buy", "sell"]
-bipriceT = Tuple[priceT, priceT]  # couple de price
+from kolaBitMEXBot.kola.kolatypes import priceT, sideT, bipriceT, ordTypeT
 
 
 def set_new_price(base: priceT, per: float, symbol="XBTUSD") -> priceT:
@@ -42,29 +39,41 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT
     return newPrix
 
 
-def setdef_stopPrice(price: priceT, side: sideT, absdelta: float = 2) -> priceT:
+def setdef_stopPrice(entryPrice: priceT, side: sideT, ordtype: ordTypeT, absdelta: float = .5) -> priceT:
     """
-    Soit le price voulu d'entrée (de l'ordre) sur le marché et un side.
+    set de default trigger price for a given entry_price
 
-    renvois un prix de déclenchement (stopPx) différé d'un delta dans le bon sens.
-    par défaut absdelta=2 pour un déclenchement proche du prix.
+    - side: the side of the order
+    - absdelta: the default (xbt) delta between entryPrice and trigger price.
 
-    pour buy orders les stpPx > price d'entrée
-    Renvois le stopPrice ou stopPx
+    The returned trigger price may fall cause immediat triggering if entryPrice and
+    absdelta are not set correctly.
     """
     # stpPx < price si side sell
     assert absdelta > 0, f"mais {absdelta}."
+    assert ordtype in ['MarketIfTouched', 'LimitIfTouched', 'Limit'], f"but ordtype={ordtype}"
 
-    # side = side.lower()
+    logging.info(f'>>>> entryPrice={entryPrice}, ordtype={ordtype}, absdelta={absdelta}')
     T = {"buy": 1, "sell": -1}
+    return entryPrice + T[side] * absdelta
+    
 
-    return price + T[side] * absdelta
 
-
-def get_prix_decl(prices: Tuple[priceT, priceT], side: sideT) -> priceT:
+def get_prix_decl(prices: Tuple[priceT, priceT], side: sideT, ordtype:ordTypeT) -> priceT:
     """
-    given un tuple ordonnée de prices et un side
-    renvois le prices qui sera le premier atteind en suivant le sens side
+    Return the price to be reach first if markets mooves towards the prices
+    
+    For limit and touche limit, buy should be the biggest price
+    For stop and stop limit buy should be the smallest price
+    We suppose that prices are both on the same side of market price.
+    Other ways we would get immediat entry.
     """
+    assert prices[0] < prices[1], f"prices={prices} should be an ordered paire."
+    assert side in ['buy', 'sell'], f"side={side}"
+    
+    if ordtype in ['Limit', 'MarketIfTouched', 'LimitIfTouched']:
+        return prices[1] if side == "buy" else prices[0]
+    if ordtype in ['Stop', 'StopLimit']:
+        return prices[1] if side == "sell" else prices[0]
 
-    return prices[0] if side == "buy" else prices[1]
+    raise Exception(f'ordtype={ordtype} not recognized.')

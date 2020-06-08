@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 from base64 import b64encode
 from uuid import uuid4
+import re
+
 from kolaBitMEXBot.kola.utils.pricefunc import get_prix_decl, setdef_stopPrice
 from kolaBitMEXBot.kola.utils.general import opt_add_to_, contains, log_args
 from kolaBitMEXBot.kola.settings import LOGNAME, ORDERID_PREFIX
-import re
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 
 mlogger = get_logger(name=f"{LOGNAME}.{__name__}")
 
@@ -76,7 +78,7 @@ def get_abbv_from_ID(oClOrdID_: str):
 
 # @log_args()
 def create_order(
-    side, _q, opType, ordtype, execinst, prices=None, absdelta=2, text=None
+    side, _q, opType, ordtype, execinst, prices=None, absdelta=.5, text=None
 ):
     """
     Crée un 'side' ordre de type ordtype et de volume '_q'.  
@@ -86,22 +88,22 @@ def create_order(
     """
     _q = int(_q)
     if _q < 30:
-        raise Exception("pb de Balance et donc de quantité")
+        raise Exception("qty is too small _q={_q}")
 
     if prices is None and ordtype != "Market":
-        raise Exception(f"prices is None et ordtype ={ordtype}, quels prix donner ?")
+        raise Exception(f"if ordtype {ordtype} need prices to immediatly place limit or stop. prices={prices}.")
 
     # création de l'ordre principal
     order = {"side": side, "orderQty": _q}
 
     if ordtype == "Limit":
-        order["price"] = get_prix_decl(prices, side)
+        order["price"] = get_prix_decl(prices, side, ordtype)
     elif ordtype in ["Stop", "MarketIfTouched"]:
-        order["stopPx"] = get_prix_decl(prices, side)
+        order["stopPx"] = get_prix_decl(prices, side, ordtype)
     elif ordtype in ["StopLimit", "LimitIfTouched"]:
-        _price = get_prix_decl(prices, side)
+        _price = get_prix_decl(prices, side, ordtype)
         order["price"] = _price
-        order["stopPx"] = setdef_stopPrice(_price, side, absdelta)
+        order["stopPx"] = setdef_stopPrice(_price, side, ordtype, absdelta)
     else:
         # cad ou ordType == 'Market'
         # par défault le prix sera celui du marché lorsque la condition sera validé

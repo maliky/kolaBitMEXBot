@@ -8,6 +8,7 @@ from kolaBitMEXBot.kola.utils.general import round_sprice, trim_dic
 from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.exceptions import InvalidOrdStatus
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 
 # from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.settings import LOGNAME
@@ -187,7 +188,7 @@ def amend_price(brg, orderID, newPrice):
 
 
 def amend_prices(
-    brg, orderid, newprice, which_, side=None, absdelta=2, text="", **kwargs
+    brg, orderid, newprice, which_, side=None, absdelta=None, text="", **kwargs
 ):
     """
     Amend the limit price of an order with a stop price too.
@@ -200,6 +201,7 @@ def amend_prices(
     #    mlogger.debug(f'orderID={orderID}, newStopPx={newStopPx}, opts={opts}')
     # devrait être fait en deux fois via chronos
     newOrder = {"orderID": orderid}
+    absdelta = PRICE_PRECISION[brg.symbol] if absdelta is None else absdelta
 
     which = which_.replace("amend", "")  # I get a standard order
     assert which != "Market", f"Market orders cannot be amended."

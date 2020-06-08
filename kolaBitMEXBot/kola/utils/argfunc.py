@@ -5,6 +5,7 @@ import re
 
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.settings import LOGNAME
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.utils.pricefunc import get_prices, get_prix_decl
 from kolaBitMEXBot.kola.utils.orderfunc import (
     set_order_type,
@@ -42,7 +43,7 @@ def get_args():
     tailPrice_def = 2
     tps_run_def = [-1, 800]
     updatePause_def = 10
-    sDelta_def = 2
+    sDelta_def = PRICE_PRECISION['XBTUSD']
     hook_def = ""
     symbol_def = "XBTUSD"  # define the market to listent too
 
@@ -142,7 +143,7 @@ def check_args(func):
 
 # @log_args(logopt=__name__)
 def set_order_args(
-    prix, _q, _tp, atype, brg, optype, tptype, recompute=True, side=None, symbol=None
+    prix, _q, _tp, atype, brg, otype, ttype, recompute=True, side=None, symbol=None
 ):
     """
     Définie les valeurs pour le prix, la quantité, la taille.
@@ -153,6 +154,9 @@ def set_order_args(
     - symbol: XBTUSD ou ADAM20 for exemple. used to set rounding
     """
     # renvois le prix de référence pour la queue selon le tptype et side
+    optype, ordtype, execinst = otype
+    tptype, tordtype, texecinst = ttype
+    
     tailPrixRef = brg.prices(tptype, side)
 
     # renvois le prix de référence pour l'ordre principale selon optype et side
@@ -178,8 +182,8 @@ def set_order_args(
         f" symbol={symbol}."
     )
 
-    prixPrevuOrd = get_prix_decl(ordPrices, side)
-    prixPrevuTail = get_prix_decl(tailRefPrices, side)
+    prixPrevuOrd = get_prix_decl(ordPrices, side, ordtype)
+    prixPrevuTail = get_prix_decl(tailRefPrices, side, ordtype)
 
     # des options pour le tail
     if "tA" in atype:

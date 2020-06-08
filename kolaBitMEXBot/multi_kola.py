@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 
 
-from kolaBitMEXBot.kola.settings import SYMBOL
 from kolaBitMEXBot.kola.bargain import Bargain
 from kolaBitMEXBot.kola.chronos import Chronos
 from kolaBitMEXBot.kola.dummy_bitmex import DummyBitMEX
@@ -21,6 +20,7 @@ from kolaBitMEXBot.kola.orders.hookorder import HookOrder
 from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
 from kolaBitMEXBot.kola.orders.trailstop import TrailStop
 from kolaBitMEXBot.kola.settings import (
+    SYMBOL,
     HTTP_SIMPLE_RATE_LIMITE,
     LOGNAME,
     LOGFMT,
@@ -31,6 +31,7 @@ from kolaBitMEXBot.kola.utils.argfunc import (
     price_type_trad,
     get_args,
 )
+from  kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.utils.conditions import cVraieTpsDeA, cVraiePrixDeA, cHook
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
@@ -80,7 +81,7 @@ class MarketAuditeur:
             self.logger = logger
         else:
             self.logger = get_logger(
-                logger, name=__name__, sLL="INFO", logFile=logfile
+                logger, name=__name__, sLL="DEBUG", logFile=logfile
             )
 
         # to cache the hooks
@@ -213,13 +214,15 @@ class MarketAuditeur:
             timeOut = pd.Timedelta(timeout, unit="m")
 
         if pd.isna(sDelta):
-            sDelta = 2
+            sDelta = PRICE_PRECISION[self.symbol]
 
         # Expanding shortcut for ref price type:
-        opType, ordType, execInst = price_type_trad(
-            oType, side
-        )  # decl du main order.
-        tpType, tOrdType, tExecInst = price_type_trad(tType, side)  # decl du stop.
+        # decl du main order.
+        oType = price_type_trad(oType, side)
+        opType, ordType, execInst = oType
+        # decl du stop (tail Type).
+        tType = price_type_trad(tType, side)  
+        tpType, tOrdType, tExecInst = tType
 
         # #### On commence la boucle qui va gérer le run.
         # i.e. la relance des ordres pendant la période de validité des conditions
@@ -228,17 +231,15 @@ class MarketAuditeur:
             self.tpsDebEssai = now()  # on sauvegarde le temps de départ
 
             # Traitement des paramètres de l'ordre suivant atype
-            self.logger.info(
-                f"oType={opType, ordType, execInst}, tType={tpType, tOrdType, tExecInst}"
-            )
+            self.logger.info(f"oType={oType}, tType={tType}")
             oPrices, _q, _tp, tailPrices = set_order_args(
                 prix,
                 q,
                 tp,
                 atype,
                 self.brg,
-                opType,
-                tpType,
+                oType,
+                tType,
                 recompute=True,
                 side=side,
                 symbol=self.symbol,
@@ -316,7 +317,7 @@ class MarketAuditeur:
             msg = f"### OrdrePrincipal défini ### {self.ocp.__repr__(short=False)}"
             self.logger.info(msg)
 
-            # on accroche un stop (tail, trail) suiveur à l'ordre principal
+            # on accroche un stop (tail, trail) to follow the main order
             self.oct: TrailStop = TrailStop(
                 self.ocp,
                 self.brg,
@@ -505,7 +506,10 @@ def go_multi(ma: MarketAuditeur, arg_file=None, updatepause=None, logpause=None)
 
     for idx in df.index:
         kwargs = df.loc[idx]
-        logging.debug(f"nameT={idx[1]}, kwargs={kwargs}")
+        kwargs.update(
+            {"nameT": idx[1], "updatepause": updatepause, "logpause": logpause}
+        )
+        logging.debug(f" kwargs={kwargs}")
 
         t = threading.Thread(target=ma.go, name=idx[1], kwargs=kwargs)
         sleep(HTTP_SIMPLE_RATE_LIMITE)  # gérer le cas des erreur au départ ?
