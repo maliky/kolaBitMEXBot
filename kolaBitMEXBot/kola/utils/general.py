@@ -81,6 +81,8 @@ def in_interval(x, a, b, bornes="="):
         return a < x and x < b
 
 
+
+@log_exception()
 def get_precision(x):
     """Renvois la précision décimale avec laquelle a été écrite x."""
     if isinstance(x, int):
