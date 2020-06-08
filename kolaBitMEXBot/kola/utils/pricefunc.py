@@ -30,7 +30,7 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT
 
     if "p%" in atype:
         # prix inf et prix sup
-        newPrix = set_new_price(refPrice, prix[0]), set_new_price(refPrice, prix[1])
+        newPrix = set_new_price(refPrice, prix[0], symbol), set_new_price(refPrice, prix[1], symbol)
     elif "pA" in atype:
         # prix en absolue
         newPrix = prix[0], prix[1]

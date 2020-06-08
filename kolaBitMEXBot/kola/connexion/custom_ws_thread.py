@@ -34,7 +34,7 @@ class BitMEXWebsocket:
         self.__reset()
         self.apiKey = apiKey
         self.apiSecret = apiSecret
-        self.logger = get_logger(logger, name=__name__, sLL="DEBUG")
+        self.logger = get_logger(logger, name=__name__, sLL="INFO")
         self.retries = 1
         # not goog practice as it will be only for one symbol can't do ...arbitrage
         self.wsURL = None  # will contain the wsURL after first connection
