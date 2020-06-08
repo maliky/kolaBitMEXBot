@@ -11,6 +11,62 @@ from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.settings import LOGLEVELS
 
 
+def log_exception(logopt_=None, level_="ERROR"):
+    """
+    Decorator to log the function signature if exception is catched.
+
+    - logopt: a logger object, a level or logger name.
+    if level, will use the root logger with that level,
+    if name get the logger with that name,  default to the root logger, 
+    else use the logger passed.
+    
+    Return decorator
+    """
+    def set_logger(logopt_, level_):
+        """Set get a logger and a level."""
+        if isinstance(logopt_, logging.RootLogger):
+            _logger = logopt_
+        elif isinstance(logopt_, str):
+            assert logopt_ not in LOGLEVELS, f"Use a level not {logopt_}"
+            _logger = logging.getLogger(logopt)
+        else:
+            _logger = logging.getLogger(__name__)
+
+        if isinstance(level_, str):
+            _level = LOGLEVELS[level]
+
+        return _logger, _level
+
+    def set_log_message(ex_, func_, args_=None, kwargs_=None, res=None):
+        """Set the log message."""
+        # get / set the logger 
+        msg = f"Catching exception >>>> {ex_}.\n"
+        msg += f"{func_.__qualname__} Signature: args={args_}, kwargs={kwargs_}."
+        if res is not None:
+            msg += f" >>>> res={res}"
+            
+        return msg
+        
+    def decorator(func):
+        @functools.wraps(func)  # what for ?
+
+        def wrapped_func(*args, **kwargs):
+            nonlocal logopt_, level_
+
+            try:
+                res = func(*args, **kwargs)
+                return res
+            except Exception as ex:
+                logger, level = set_logger(logopt_, level_)
+                msg = set_log_message(ex, func, args, kwargs, res)
+                logger.log(level, msg)
+                raise(ex)
+
+        return wrapped_func
+
+    return decorator
+
+
 def log_args(logopt=None, level="INFO"):
     """
     Decorator to log arguments of a function.
