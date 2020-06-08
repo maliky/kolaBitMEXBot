@@ -156,6 +156,9 @@ def get_precision(x):
     # somme des conditions suivantes vraies
     # que les valeurs dont l'index est plus grand que celui du point
     # juste récupérer la valeur
+    if not len(s.loc[s == "."].index):
+        logger.debug(f"Getting_precision for s={s}. but something is wrong...")
+                
     return int(sum(s.index > (s.loc[s == "."].index.values[0])))
 
 
