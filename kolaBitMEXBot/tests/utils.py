@@ -292,7 +292,12 @@ class Test:
 
         if newprice is None:
             _side = toggle_order(_o["side"]) if closer else _o["side"]
-            newPrice = setdef_stopPrice(_o["price"], _side, absdelta=absdelta)
+            newPrice = setdef_stopPrice(
+                entryPrice=_o["price"],
+                side=_side,
+                ordtype=_o['ordType'],
+                absdelta=absdelta,
+            )
 
         order = {"orderID": _oid}
         if "Limit" in _o["ordType"]:
@@ -366,4 +371,3 @@ tma = MarketAuditeur(live=False)
 ama = MarketAuditeur(live=False)
 tma.start_server()
 T = Test(tma)
-
