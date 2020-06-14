@@ -51,7 +51,7 @@ def setdef_stopPrice(entryPrice: priceT, side: sideT, ordtype: ordTypeT, absdelt
     """
     # stpPx < price si side sell
     assert absdelta > 0, f"mais {absdelta}."
-    assert ordtype in ['MarketIfTouched', 'LimitIfTouched', 'Limit'], f"but ordtype={ordtype}"
+    # assert ordtype in ['MarketIfTouched', 'LimitIfTouched', 'Limit'], f"but ordtype={ordtype}"
 
     logging.info(f'>>>> entryPrice={entryPrice}, ordtype={ordtype}, absdelta={absdelta}')
     T = {"buy": 1, "sell": -1}

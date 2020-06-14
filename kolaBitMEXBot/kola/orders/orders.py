@@ -39,7 +39,9 @@ def place(brg, side, orderQty, price, **opts):
     """
     # by default ordType='Limit'
     price = round_sprice(price)
-    mlogger.debug(f"brg={brg}, orderQty:{orderQty}, side={side}, opts={opts}, price={price}")
+    mlogger.debug(
+        f"brg={brg}, orderQty:{orderQty}, side={side}, opts={opts}, price={price}"
+    )
     return brg.bto.place(orderQty=orderQty, side=side, price=price, asBulk=True, **opts)
 
 
@@ -214,7 +216,11 @@ def amend_prices(
     elif which in ["StopLimit", "LimitIfTouched"]:
         newPrice = {"price": newprice}
         assert side, f'Il faut renseigner "side" pour pouvoir amender "{which}"'
-        newStopPx = {"stopPx": setdef_stopPrice(newprice, side, absdelta=absdelta)}
+        newStopPx = {
+            "stopPx": setdef_stopPrice(
+                entryPrice=newprice, side=side, ordtype=which, absdelta=absdelta
+            )
+        }
 
     newPrices = [newPrice, newStopPx]
     mlogger.info(f"Amending {newOrder} and {newPrices}")

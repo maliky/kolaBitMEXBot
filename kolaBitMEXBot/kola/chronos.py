@@ -76,7 +76,7 @@ class Chronos(threading.Thread):
             sender = rcvLoad["sender"]
             timeOut = rcvLoad["timeOut"]
             symbol = rcvLoad["symbol"]
-            
+
             # make a deep copy of the order to avoid changing rcvLoad
             rcvOrder = pickle.loads(pickle.dumps(rcvLoad["order"]))
             ordType = rcvOrder.pop("ordType", None)
@@ -491,7 +491,9 @@ class Chronos(threading.Thread):
             "price", get_execPrice(self.brg, side, {"execInst": execInst}, symbol)
         )
 
-    def pop_stopPx_from_(self, rcvOrder, price, side, ordtype, absdelta=None, symbol=None):
+    def pop_stopPx_from_(
+        self, rcvOrder, price, side, ordtype, absdelta=None, symbol=None
+    ):
         """
         Pop the stopPx from the rcvOrder.
 
@@ -504,7 +506,11 @@ class Chronos(threading.Thread):
         if stopPx is None and contains(["Stop", "Touched"], ordtype):
             # probably not necessary as stop should be set
             # defaut to 2 for XBTUSD
-            absdelta = rcvOrder.pop("sDelta", PRICE_PRECISION[symbol])
-            stopPx = setdef_stopPrice(price, side, absdelta)
+            stopPx = setdef_stopPrice(
+                entryPrice=price,
+                side=side,
+                ordtype=ordtype,
+                absdelta=rcvOrder.pop("sDelta", PRICE_PRECISION[symbol]),
+            )
 
         return stopPx
