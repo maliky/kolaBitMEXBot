@@ -12,6 +12,7 @@ def test_get_precision():
         1: [10e9, 10 / 10, 123e0] + [0.0, 0.000000008e8, 0.50, 0.00, 101 / 10, 123e-1],
         2: [0.01, 0.000000008e7, 0.050, 101 / 100, 123e-2],
         10: [1234567809e-10],
+        
     }
     for res, list_tests in exemples.items():
         for val in list_tests:
