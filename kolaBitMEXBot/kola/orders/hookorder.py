@@ -39,6 +39,7 @@ class HookOrder(OrderConditionned):
         self.is_hooked: bool = False
         self.excludeIDs = excludeIDs_
         self.symbol = symbol
+        self.relative_values = {}
 
         # for the symbol need some change to hook on other symbols
         OrderConditionned.__init__(
@@ -54,7 +55,6 @@ class HookOrder(OrderConditionned):
         )
 
         self.init_cond_frame = self.condition.cond_frame.copy()
-        self.relative_values = {}
 
         self.logger = get_logger(logger, sLL="INFO", name=__name__)
 

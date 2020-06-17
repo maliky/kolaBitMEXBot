@@ -44,7 +44,7 @@ class OrderConditionned(Thread):
         self.symbol = symbol
         self.send_queue = send_queue
         self.valid_queue = valid_queue
-
+        self._canceled = False
         self.condition = cond
         self.stop = False
         self.orderIDPrefix = "mlk_"
@@ -81,6 +81,9 @@ class OrderConditionned(Thread):
         """
         return (self.elapsed_time() >= self.timeOut) or self.condition.timed_out()
 
+    def canceled(self):
+        return self._canceled
+    
     def add_condition(self, condition):
         """Ajoute une ou des conditions à la condition existante."""
         self.condition.add_condition(condition)
@@ -105,6 +108,9 @@ class OrderConditionned(Thread):
                 )
                 self.logger.info(f"Déclenchement {self} '{condition_sortie}'")
                 execValidation = self.send_order()
+                if isinstance(execValidation, dict):
+                    if execValidation.get('ordStatus', False) == 'Canceled' :
+                        self._canceled = True
                 break
 
             # sleep(2+randint(5))  # mitigate rate limite
@@ -114,6 +120,7 @@ class OrderConditionned(Thread):
 
         msg = f'"{reason}" & 1st execValidation={trim_dic(execValidation, trimid=12)}.'
         # at order leave do not close the order if finished.
+
         self.finalise(close=False, reason=msg)
 
         # on renvois les informations sur cet ordre pour les chained orders
@@ -133,6 +140,9 @@ class OrderConditionned(Thread):
         elif self.order["ordType"] in ["Limit", "Stop"]:
             # ? pourquoi ce test
             reason = "Self is Limit or Stop order"
+        elif self._canceled:
+            reason = "Self has been canceled on exec time"
+
         return reason
 
     def cancel_order(self):
@@ -200,11 +210,7 @@ class OrderConditionned(Thread):
                 sleep(0.1)
 
     def finalise(self, close=False, reason=None):
-        """lorsque le thread s'arrête.
-        Retourne faux si il s'arrête pour une raison autre que l'atteinte
-        de la condition
-        - close(False) n'envois pas d'orde de cloture à chrs.  Utile que
-        si il y a un pb sur le réseau"""
+        """Finalise somme values depending on reason."""
         reason = f"{self}" if reason is None else f"{reason}"
         # the closing order.  Will reduce only.. Attention si execInst dans order
         if close:
@@ -217,4 +223,8 @@ class OrderConditionned(Thread):
             self.send_order({"order": closing_order})
             reason += " ... with order closing."
 
+        if self.canceled():
+            reason += ">>>> IS CANCELED <<<<"
+            
         self.logger.info(f"with {reason}")
+
