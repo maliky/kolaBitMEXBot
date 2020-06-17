@@ -16,7 +16,7 @@ from kolaBitMEXBot.kola.bargain import Bargain
 
 mlogger = logging.getLogger("")
 mlogger.name = f"{LOGNAME}.{__name__}"
-mlogger.setLevel("DEBUG")
+mlogger.setLevel("INFO")
 # logging = logging.get
 # mlogger = get_logger(name=f"{LOGNAME}.{__name__}")
 
@@ -54,13 +54,14 @@ def place_stop(brg, side, orderqty, stoppx, **opts):
     # print(f"side={side}, refPrice={refPrice}, stoppx={stoppx}, ordType={ordType}")
     tv, eval_price = is_valid_order(brg, side, refPrice, stoppx, ordType, debug=True)
     if not tv:
+        # usualy fast move when getting here
+        pDelta = PRICE_PRECISION[brg.symbol] * 2
+        override_price = refPrice + pDelta if side == "buy" else refPrice - pDelta
 
-        override_price = refPrice - 1 if side == "buy" else refPrice + 1
         # gère les cas de changement brusque avec LastPrice généralement.
         msg = (
-            f"{now()}: '{side}' Stop invalide. stop price={stoppx},"
-            f" eval_price={eval_price}, et "
-            f"refPrice+opts {refPrice, opts}. new stop -> {override_price}."
+            f"{now()}: Stop invalid. {side}Stop@{stoppx} when refPrice={refPrice}."
+            f" eval_price={eval_price}, opts {opts}. new stop -> {override_price}."
         )
         mlogger.warning(msg)
         print(msg)

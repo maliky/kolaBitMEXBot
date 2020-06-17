@@ -81,7 +81,7 @@ class MarketAuditeur:
             self.logger = logger
         else:
             self.logger = get_logger(
-                logger, name=__name__, sLL="DEBUG", logFile=logfile
+                logger, name=__name__, sLL="INFO", logFile=logfile
             )
 
         # to cache the hooks
@@ -141,7 +141,8 @@ class MarketAuditeur:
         dr_pause=None,
         tType=None,
         timeout=None,
-        sDelta=None,
+        oDelta=None,
+        tDelta=None,
         hook=None,
     ):
         """
@@ -170,7 +171,8 @@ class MarketAuditeur:
         # self.logger.info(
         #     f"#### Go : tps_run={tps_run}, prix={prix}, essais={essais},"
         #     f" side={side}, q={q}, tp={tp}, atype={atype}, oType={oType},"
-        #     f" tType={tType}, sDelta={sDelta}, dr_pause={dr_pause}m,"
+        #     f" tType={tType}, oDelta={oDelta}, tDelta={tDelta},
+        # dr_pause={dr_pause}m,"
         #     f" timeOut={timeout} m, balance={self.balance()}"
         # )
         _info = {
@@ -183,7 +185,8 @@ class MarketAuditeur:
             "atype": atype,
             "oType": oType,
             "tType": tType,
-            "sDelta": sDelta,
+            "oDelta": oDelta,
+            "tDelta": tDelta,
             "dr_pause": dr_pause,
             "timeout": f"{timeout}m",
             "balance": self.balance(),
@@ -213,8 +216,11 @@ class MarketAuditeur:
         else:
             timeOut = pd.Timedelta(timeout, unit="m")
 
-        if pd.isna(sDelta):
-            sDelta = PRICE_PRECISION[self.symbol]
+        if pd.isna(oDelta):
+            oDelta = PRICE_PRECISION[self.symbol]
+
+        if pd.isna(tDelta):
+            tDelta = PRICE_PRECISION[self.symbol]
 
         # Expanding shortcut for ref price type:
         # decl du main order.
@@ -256,7 +262,8 @@ class MarketAuditeur:
                 "side": side,
                 "q": _q,
                 "tp": round(_tp, 4),
-                "sDelta": sDelta,
+                "oDelta": oDelta,
+                "tDelta": tDelta,
                 "opType": (opType, ordType, execInst),
                 "tpType": (tpType, tOrdType, tExecInst),
                 "timeOut": timeOut,
@@ -267,7 +274,7 @@ class MarketAuditeur:
 
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst
             order = create_order(
-                side, _q, opType, ordType, execInst, oPrices, sDelta
+                side, _q, opType, ordType, execInst, oPrices, oDelta
             )
 
             # On initialise les arguments condition pour les ordres principaux
@@ -329,6 +336,7 @@ class MarketAuditeur:
                 refPrice=tpType,
                 execinst=tExecInst,
                 ordtype=tOrdType,
+                tDelta=tDelta
             )
 
             # on active le tout, à partir de la tail
@@ -395,8 +403,8 @@ class MarketAuditeur:
         """
         Affiche les infos de finalisation de l'esssai et close quantity close.
 
-        # on fait varie le temps d'attente entre les essais.
-        # Il dépend du temps de l'essai
+        On fait varie le temps d'attente entre les essais.
+        Il dépend du temps de l'essai
         """
         # info sur les résultats
         if close:
@@ -416,7 +424,7 @@ class MarketAuditeur:
             f"{self.resultats.iloc[-1,:]}"
         )
 
-        # on ne fait une pause que si il reste assez du temps pour le faire
+        # si timed_out, restart without pause ?
         if not self.oct.main_oc.timed_out() and i + 1 < n:
             self.pause(dr_pause, dr_essai_theo)
 
@@ -447,35 +455,36 @@ class MarketAuditeur:
 
     def pause(self, dr_pause, dr_essai_theo):
         """
-        Défini un temps d'attente variable entre les différents essais.
+        set a variying waiting time between trials.
 
-        - dr_pause est en secondes
+        - dr_pause is in minutes.  Waiting at least 10s and then a number
+        varying with dr_pause
         """
 
-        dr_pause = 10 if dr_pause is None else dr_pause
+        _dr_pause = 10 if dr_pause is None else dr_pause * 60
 
         try:
             dr_essai = now() - self.tpsDebEssai
             dr_delta = dr_essai - dr_essai_theo
             if dr_delta.seconds > 0:
-                pause = dr_pause
+                pause = _dr_pause
             else:
-                pause = dr_delta.seconds + dr_pause
+                pause = dr_delta.seconds + _dr_pause
 
             # attend au moins 10 secondes puis un nb aléatoire
             # qui suit une loi exponentielle de param dr_pause
             rnd_wait = np.floor(np.random.exponential(pause))
-            dr_pause = pd.Timedelta(10 + rnd_wait, unit="s")
+            _dr_pause = pd.Timedelta(10 + rnd_wait, unit="s")
 
             self.logger.info(
                 f"Temps de l'essai {dr_essai} (theo: {dr_essai_theo})."
-                f"  Going to sleep for {dr_pause}."
+                f"  Going to sleep for {_dr_pause}."
             )
 
-            sleep(dr_pause.seconds)
+            sleep(_dr_pause.seconds)
         except Exception as e:
             self.logger.error(
-                f"{e} with dr_pause={dr_pause}, "
+                f"{e} with dr_pause={_dr_pause}, "
                 f"dr_essai_theo={dr_essai_theo} pause={pause}"
             )
 
@@ -541,7 +550,8 @@ def coerce_types(s):
     - tp: "float", 
     - atype: str
     - oType: str
-    - sDelta: "float",
+    - oDelta: "float",
+    - tDelta: "float",
     - tType: str
     - hook: str
     """
@@ -555,11 +565,11 @@ def coerce_types(s):
                 el1 = -90 if el1 == "-" else float(el1)
                 el2 = 90 if el2 == "+" else float(el2)
             if "pD" in atype:
-                el1 = -4000 if el1 == "-" else float(el1)
-                el2 = 5000 if el2 == "+" else float(el2)
+                el1 = float(el2)*10 if el1 == "-" else float(el1)
+                el2 = float(el1)*10 if el2 == "+" else float(el2)
             if "pA" in atype:
-                el1 = 2000 if el1 == "-" else float(el1)
-                el2 = 30000 if el2 == "+" else float(el2)
+                el1 = int(float(elt2) /10) if el1 == "-" else float(el1)
+                el2 = int(float(el1) * 10) if el2 == "+" else float(el2)
         return float(el1), float(el2)
 
     def coerce_to(ctype, elt):
@@ -583,7 +593,8 @@ def coerce_types(s):
         "tp": coerce_to("float", s.tp),
         "atype": s.atype.strip(),
         "oType": s.oType.strip(),
-        "sDelta": coerce_to("float", s.sDelta),
+        "oDelta": coerce_to("float", s.oDelta),
+        "tDelta": coerce_to("float", s.tDelta),
         "tType": s.tType.strip(),
         "hook": "" if pd.isna(s.hook) else s.hook.strip(),
     }
@@ -607,7 +618,8 @@ def main_prg():
         "dr_pause": args.drPause,
         "tType": args.tType,
         "timeOut": args.tOut,
-        "sDelta": args.sDelta,
+        "oDelta": args.oDelta,
+        "tDelta": args.tDelta,
         "arg_file": args.argFile,
         "name": args.name,
         "hook": args.Hook,

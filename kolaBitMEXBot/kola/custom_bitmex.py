@@ -43,7 +43,7 @@ class BitMEX(object):
     ):
         """Init connector."""
         self.dummy = False  # to flag this as not dummy
-        self.logger = get_logger(logger, name=__name__, sLL="DEBUG")
+        self.logger = get_logger(logger, name=__name__, sLL="INFO")
         self.base_url = base_url
         self.symbol = symbol
         self.prec = PRICE_PRECISION[symbol]
@@ -113,8 +113,7 @@ class BitMEX(object):
         # In the future we could allow retrying PUT, so long as 'leavesQty' is not used
         # or you could change the clOrdID (set {"clOrdID": "new", "origClOrdID": "old"})
         # so that an amend can't erroneously be applied twice.
-        if max_retries is None:
-            #  if verb in ['POST', 'PUT'] else 12  # il faut faire attention à l'idempotence
+        if max_retries is None or max_retries <= 0:
             max_retries = 30
 
         # Auth: API Key/Secret
@@ -220,7 +219,6 @@ class BitMEX(object):
                     self.logger.error(
                         f"Order not found. postdict = {postdict} and load={load}"
                     )
-                    # self.logger.error("Order not found: %s" % postdict["orderID"])
                     return None
                 exit_or_throw(e, response, load)
 
@@ -362,6 +360,7 @@ class BitMEX(object):
     def cancel(self, orderID):
         """Cancel an existing order. (or List or  dict from split_ids)"""
         path = "order"
+        self.logger.debug(f'canceling ={orderID}')
 
         if isinstance(orderID, dict):
             clIDList = orderID.get("clIDList")

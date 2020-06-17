@@ -34,7 +34,7 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT
     elif "pD" in atype:
         # prix en différentiel par rapport au prix de référence
         newPrix = _round(refPrice + prix[0]), _round(refPrice + prix[1])
-        logging.debug(f"refPrice={refPrice}, prix={prix}, newPrix={newPrix}, symbol={symbol}")
+        logging.info(f"refPrice={refPrice}, prix={prix}, newPrix={newPrix}, symbol={symbol}")
 
     return newPrix
 
@@ -50,10 +50,10 @@ def setdef_stopPrice(entryPrice: priceT, side: sideT, ordtype: ordTypeT, absdelt
     absdelta are not set correctly.
     """
     # stpPx < price si side sell
-    assert absdelta > 0, f"mais {absdelta}."
+    assert absdelta >= 0, f"mais {absdelta}."
     # assert ordtype in ['MarketIfTouched', 'LimitIfTouched', 'Limit'], f"but ordtype={ordtype}"
 
-    logging.info(f'>>>> entryPrice={entryPrice}, ordtype={ordtype}, absdelta={absdelta}')
+    # logging.info(f'>>>> entryPrice={entryPrice}, ordtype={ordtype}, absdelta={absdelta}')
     T = {"buy": 1, "sell": -1}
     return entryPrice + T[side] * absdelta
     

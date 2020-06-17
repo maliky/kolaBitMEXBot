@@ -37,6 +37,7 @@ class TrailStop(OrderConditionned):
         refPrice=None,
         execinst=None,
         ordtype=None,
+        tDelta=None,
     ):
         """Une queue, pour passer les ordres, un ordre à passer si la cond validée.
         
@@ -53,6 +54,8 @@ class TrailStop(OrderConditionned):
         self.ordType = ordtype
         self.symbol = self.main_oc.symbol
 
+        self.tDelta = PRICE_PRECISION if tDelta is None else tDelta
+        
         # trouver une façon de définir ça on the fly basé la volatilité
         self.timeBin = 361
 
@@ -147,6 +150,10 @@ class TrailStop(OrderConditionned):
             self.logger.info(
                 f">>>> {self.main_oc} Timed out. This cancels the tail <<<<"
             )
+        elif self.main_oc.canceled():
+            self.logger.info(
+                f">>>> {self.main_oc} IS CANCELED. This cancels the tail <<<<"
+            )
         else:
             # on met en place la condition pour la tail et on lance l'update
             # ne doit plus s'annuler sur un time out !
@@ -235,7 +242,7 @@ class TrailStop(OrderConditionned):
                 entryPrice=self.order["price"],
                 side=self.order["side"],
                 ordtype='Limit',
-                absdelta=PRICE_PRECISION.get(self.symbol, 1),
+                absdelta=self.tDelta
             )
         else:
             self.order["stopPx"] = self.PO.data.stopTail.current

@@ -48,7 +48,7 @@ class Chronos(threading.Thread):
         self.valid_queue = valid_queue
         self.reply_queue: Queue = Queue()
         self.stop = False
-        self.logger = get_logger(logger, name=__name__, sLL="DEBUG")
+        self.logger = get_logger(logger, name=__name__, sLL="INFO")
 
         self.logger.info(f"Fini init {self}")
 
@@ -146,6 +146,7 @@ class Chronos(threading.Thread):
                         )
                     )
                 elif ordType == "cancel":
+                    
                     timeOut = pd.Timedelta(1, unit="m")  # pourquoi ?
                     clOrdID = rcvOrder.pop("clOrdID")
                     self.reply_queue.put(cancel_order(self.brg, {"clOrdID": clOrdID}))
@@ -307,7 +308,7 @@ class Chronos(threading.Thread):
         ordertype: orderstatus.
         - timeout doit être un pd.Timedelta,
         - waitStep en second
-        ordertype is 'ordStatus our triggered et ordstatus is
+        ordertype is 'ordStatus our triggered et ordstatus ??
         """
         self.logger.debug("Thread started.")
 
@@ -335,8 +336,13 @@ class Chronos(threading.Thread):
             return _timeleft if _timeleft > 0 else 0
 
         timeLeft = update_timeleft()
+        
+        while timeLeft > 0 and not self.is_changed_(
+            clOrdID, valconditions, validateCancel=False
+        ):
+            # #### is_changed_ important !
+            # validating cancel enable resubminting orders ?
 
-        while timeLeft > 0 and not self.is_changed_(clOrdID, valconditions):
             sleep(waitstep)
             timeLeft = update_timeleft()
             if timeLeft % 298 == 0:
@@ -345,24 +351,23 @@ class Chronos(threading.Thread):
                 sleep(1)  # avoid too much logging and throwtlle the system
 
         # block until next reply
-        reply = self.wait_for_reply(timeout=timeLeft)
+        reply = self.wait_for_reply(block=True, timeout=timeLeft)
 
         # problème avec les reply None
 
-        if rcvload["order"]["ordType"] == "cancel":
+        if rcvload["order"]["ordType"].lower() == "cancel":
             self.logger.info(f"ordType is cancel. rcvload={rcvload}")
             replyID = rcvload["order"]["clOrdID"]
+        elif reply is None:
+            # mais si ce n'est pas la bonne reply ? on va tester après
+            replyID = rcvload["order"]["clOrdID"]
         else:
-            # mais si ce n'est pas la bonne reply ?
-            replyID = (
-                rcvload["order"]["clOrdID"]
-                if reply is None
-                else self.get_ID_from(reply, "clOrdID")
-            )
+            replyID = self.get_ID_from(reply, "clOrdID")
 
         seenReplyIDs: Dict[Any, Any] = {}
 
         while replyID != clOrdID and timeLeft:
+            # in case it's not the reply ID we are waiting for
             # saving ID already seen to avoid clutering logs
             if replyID is not None:
                 seenReplyIDs[replyID] = seenReplyIDs.get(replyID, 0) + 1
@@ -397,23 +402,26 @@ class Chronos(threading.Thread):
             )
 
         # ici il y a en fait le cas des reply error d'ammending
-        validation = (
-            reply
-            if timeLeft and reply is not None and not reply.get("error", False)
-            else False
-        )
+        if timeLeft and reply is not None and not reply.get("error", False):
+            validation = reply
+        else:
+            validation = False
 
         self.logger.info(
             f"Attendu {timeOut - pd.Timedelta(timeLeft, unit='s')}."
-            f"Validation is {bool(validation)}."
+            f"Change in reply for {replyID} is {bool(validation)}."
         )
+        #self.logger.debug(f"Détail validation {validation} et reply")
 
         self.valid_queue.put(
             {"brokerReply": reply, "exgLoad": rcvload, "execValidation": validation}
         )
 
     def is_changed_(
-        self, ID, valconditions=[{"exectype": "New", "orderstatus": "New"}]
+        self,
+        ID,
+        valconditions=[{"exectype": "New", "orderstatus": "New"}],
+        validateCancel: bool = True,
     ):
         """
         Return test if order with ID is exec or canceled and compare to val.
@@ -427,10 +435,14 @@ class Chronos(threading.Thread):
                 ID, exectype, orderstatus
             )
 
-        # by default we handle cancel orders
-        statusType["is_canceled"] = self.ID_type_status_exec(ID, "Canceled", "Canceled")
+        # #### by default we handle cancel orders ####
+        if validateCancel:
+            # #### so cancel will act as condition validated
+            statusType["is_canceled"] = self.ID_type_status_exec(
+                ID, "Canceled", "Canceled"
+            )
 
-        # self.logger.debug(f'ID={ID[:10]}, statusType={statusType}')
+        # self.logger.debug(f'ID=set({ID[:10]}, statusType={statusType})')
 
         return any(statusType.values())
 
@@ -510,7 +522,7 @@ class Chronos(threading.Thread):
                 entryPrice=price,
                 side=side,
                 ordtype=ordtype,
-                absdelta=rcvOrder.pop("sDelta", PRICE_PRECISION[symbol]),
+                absdelta=rcvOrder.pop("oDelta", PRICE_PRECISION[symbol]),
             )
 
         return stopPx

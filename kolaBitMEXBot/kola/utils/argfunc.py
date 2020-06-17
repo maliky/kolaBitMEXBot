@@ -43,15 +43,19 @@ def get_args():
     tailPrice_def = 2
     tps_run_def = [-1, 800]
     updatePause_def = 10
-    sDelta_def = PRICE_PRECISION['XBTUSD']
+    oDelta_def = PRICE_PRECISION['XBTUSD']
+    tDelta_def = PRICE_PRECISION['XBTUSD']
     hook_def = ""
     symbol_def = "XBTUSD"  # define the market to listent too
 
     name_help = f"Nom de l'ordre dans logs internes"
     symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAM20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
-    sDelta_help = (
+    oDelta_help = (
         f"Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."
-        "  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={sDelta_def})"
+        "  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={oDelta_def})"
+    )
+    tDelta_help = (
+        f"Difference between trigger price and price for tail orders (default={tDelta_def})"
     )
     tps_run_help = f"le temps en minute à partir du moment du lancement, doit être un tuple, indique la plage horaire pour laquelle l'ordre est valide. (default={tps_run_def})"
     tOut_help = f"Temps d'attente de vérification in minutes de la validation de l'order.  Pour les limites order peut être très long. (default le temps du run) (default temps d'attente théorique d'un ordre ie, durée du run / nb orders)"
@@ -108,7 +112,10 @@ def get_args():
         "--argFile", "-A", type=str, default=argFile_def, help=argFile_help
     )
     parser.add_argument(
-        "--sDelta", "-s", type=int, default=sDelta_def, help=sDelta_help
+        "--oDelta", "-s", type=int, default=oDelta_def, help=oDelta_help
+    )
+    parser.add_argument(
+        "--tDelta", "-s", type=int, default=tDelta_def, help=tDelta_help
     )
     parser.add_argument(
         "--nbEssais", "-n", type=int, default=nbEssai_def, help=nbEssai_help
@@ -175,12 +182,12 @@ def set_order_args(
         )
         raise e
     
-    mlogger.info(
-        f" >>>> atype={atype}, tptype={tptype} and"
-        f" tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
-        f" tailRefPrices={tailRefPrices}, ordPrices={ordPrices}, prix={prix}"
-        f" symbol={symbol}."
-    )
+    # mlogger.info(
+    #     f" >>>> atype={atype}, tptype={tptype} and"
+    #     f" tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
+    #     f" tailRefPrices={tailRefPrices}, ordPrices={ordPrices}, prix={prix}"
+    #     f" symbol={symbol}."
+    # )
 
     prixPrevuOrd = get_prix_decl(ordPrices, side, ordtype)
     prixPrevuTail = get_prix_decl(tailRefPrices, side, ordtype)
