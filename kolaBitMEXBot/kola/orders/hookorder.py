@@ -151,9 +151,9 @@ class HookOrder(OrderConditionned):
 
         return None
 
-    def get_current_price(self, priceType_=None):
+    def get_current_price(self):
         """Renvoi un prix de la condition."""
-        return self.condition.get_current_price(priceType_)
+        return self.condition.get_current_price()
 
     def update_price_with_relatie_values(self):
         """Change l'ordre pour qu'il soit mise à jour par chronos."""
@@ -190,8 +190,8 @@ class HookOrder(OrderConditionned):
         relative_condition_values = self.get_relative_condition_values()
 
         if genre_ == "price":
-            relative_values, _priceType = relative_condition_values[genre_]
-            base_value = self.get_current_price(_priceType)
+            relative_values, _prixCourant = relative_condition_values[genre_]
+            base_value = self.get_current_price()
         elif genre_ == "temps":
             relative_values = relative_condition_values[genre_]
             base_value = now()
@@ -203,11 +203,11 @@ class HookOrder(OrderConditionned):
     def get_relative_condition_values(self):
         """renvois les valeurs de la condition."""
         _lowT, _highT = self.condition.get_relative_lh_temps()
-        _lowP, _highP, priceType = self.condition.get_relative_lh_price()
+        _lowP, _highP, prixCourant = self.condition.get_relative_lh_price()
 
         return {
             "temps": {">": _lowT, "<": _highT},
-            "price": ({">": _lowP, "<": _highP}, priceType)
+            "price": ({">": _lowP, "<": _highP}, prixCourant)
         }
 
     def conditions_remplies(self):
