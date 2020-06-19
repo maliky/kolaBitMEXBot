@@ -353,7 +353,7 @@ class Condition:
         else:
             _pricetype = pricetype_
 
-        prices = self.get_price_cond_where(_pricetype).values
+        prices = self.get_price_cond_where(_pricetype)
         currentPrice = get_execPrice(self.brg, "sell", _pricetype)
 
         self.logger.info(f"prices={prices}")
