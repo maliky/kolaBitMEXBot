@@ -29,6 +29,8 @@ class Condition:
         - brg: Une prise we
         - cond: un tuple (type, 'op', value).
         Si type is usualy temps (then val is Timestamp) ou prix (val float)
+
+        There can only be one price condition (for now)
         """
         self.brg = brg
 
@@ -275,10 +277,9 @@ class Condition:
         """
         Evalue a hook.
 
-        Cherche dans les ordres executés avec un clOrdID correspondand à cond_.op
+        Cherche dans les ordres executés un clOrdID correspondand à cond_.op
         (ie l'abbrevation de la srcKey).
-        Vérifie ensuite que cet ou ces ordres ont le status voulus cond_.value
-        Généralement Filled ou Canceled mais pourrait aussi être Triggered.
+        Vérifie ensuite que ces ordres ont le status cond_.value (eg. Filled, Triggered, Canceled)
         """
         clOrdIDs = [
             clID
@@ -293,7 +294,7 @@ class Condition:
 
         if len(clOrdIDs):
             tv = self.brg.order_reached_status(clOrdIDs[-1], cond_.value)
-            if tv:
+            if tv and (clOrdIDs[-1] != self.hookedSrcID):
                 self.logger.info(f"We hook to {clOrdIDs[-1]}")
                 self.hookedSrcID = clOrdIDs[-1]
 
@@ -392,34 +393,35 @@ class Condition:
         if len(_genre):
             return _genre.iloc[0]
 
-    def get_x_cond(self, genre_):
-        if genre_ == "price":
+    def get_conditions(self, genre_):
+        if "price" in genre_.lower():
             return self.get_price_cond()
         elif genre_ == "temps":
             return self.get_temps_cond()
 
     def update_cond(self, genre_, op_, value_):
-        """"Met à jour une condition."""
-        mgenre = self.get_x_cond(genre_).values
-        mop = (self.cond_frame.op == op_).values
-        mask = mgenre & mop
-        if sum(mask) > 1:
-            self.logger.warning(
+        """"
+        Met à jour une condition.
+        - genre_ le genre de la condition 'temps, hook, IndexPrice, LastPrice...
+        - op: l'opérateur de la condition
+        - value_: la nouvelle valeu
+        """
+        mask = self.get_conditions(genre_).values & (self.cond_frame.op == op_).values
+
+        def msg_debug(_msg_):
+            return (
                 f">>>>>>>>>>>>>>>> genre={genre_}, op={op_}, value_={value_}\n"
-                f"Update several conditions at once. \n"
-                f"{genre_, op_},\n {self.cond_frame}.\n"
-                f"mask={mask}."
+                f"{_msg_}.\n{genre_, op_},\n {self.cond_frame}.\n mask={mask}."
             )
-        elif sum(mask) == 0:
-            self.logger.warning(
-                f">>>> genre={genre_}, op={op_}, value_={value_}\n"
-                f"Trying to update condition but none found.\n"
-                f"{genre_, op_},\n {self.cond_frame}\n"
-                f"mask={mask}."
-            )
+
+        assert sum(mask) <= 1, msg_debug("Update several conditions at once")
+
+        if sum(mask) == 0:
+            self.logger.warning(msg_debug(f"Trying to update condition but none found"))
             return self
 
         self.cond_frame.loc[mask, "value"] = value_
+
         return self
 
     def get_price_cond(self):

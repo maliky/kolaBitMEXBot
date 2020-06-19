@@ -55,7 +55,7 @@ class TrailStop(OrderConditionned):
         self.symbol = self.main_oc.symbol
 
         self.tDelta = PRICE_PRECISION if tDelta is None else tDelta
-        
+
         # trouver une façon de définir ça on the fly basé la volatilité
         self.timeBin = 361
 
@@ -158,6 +158,7 @@ class TrailStop(OrderConditionned):
             # on met en place la condition pour la tail et on lance l'update
             # ne doit plus s'annuler sur un time out !
             self.logger.info(f"#### Placing stop {self}")
+
             reply = self.place_tailstop()
             orderRef = get_order_from(reply)
             sleep(0.12)  # laisser le temps de se mettre à jour?
@@ -165,19 +166,19 @@ class TrailStop(OrderConditionned):
             self.logger.info(f"Tail{self.main_oc} en place! Reply: {orderRef}")
 
             i = 0
+            # boucle qui check the update condition
             while not self.stop:
-                # on met à jour la condition de tail_oc
+
                 # si la mise à jour (amend) échoue, newOrder sera False
                 newOrder = self.amend_stop_price(reply["orderID"]) if reply else reply
-                # Si condition sortir de la boucle.
+
                 if not newOrder or self.tailStop_triggerCond.is_(True):
 
                     # Chronos vérifie l'execution
-                    logmsg = (
-                        f"Fin de Trace: newOrder ({newOrder}) is False "
+                    self.logger.info(
+                        f"Fin de Trace car newOrder ({newOrder}) is False "
                         f"_ou_\n{self.tailStop_triggerCond.__repr__(short=False)}"
                     )
-                    self.logger.info(logmsg)
                     break
 
                 if self.PO.new_current_stopTail():
@@ -242,7 +243,7 @@ class TrailStop(OrderConditionned):
                 entryPrice=self.order["price"],
                 side=self.order["side"],
                 ordtype='Limit',
-                absdelta=self.tDelta
+                absdelta=self.tDelta,
             )
         else:
             self.order["stopPx"] = self.PO.data.stopTail.current

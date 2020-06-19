@@ -40,7 +40,6 @@ class HookOrder(OrderConditionned):
         self.excludeIDs = excludeIDs_
         self.symbol = symbol
         self.relative_values = {}
-
         # for the symbol need some change to hook on other symbols
         OrderConditionned.__init__(
             self,
@@ -75,7 +74,7 @@ class HookOrder(OrderConditionned):
 
         # update relative_values
         # self.logger.debug(f"Before update {self.__repr__(False)}")
-        # relative_values = self.get_relative_values()
+        # relative_values = self.get_condition_values()
         # self.logger.debug(f"After {self.__repr__(False)} relative_values={relative_values}")
 
         execValidation = {}
@@ -124,8 +123,8 @@ class HookOrder(OrderConditionned):
         """
         Update self.is_hooked.
 
-        If new hooked update conditions relative to new price and time
-        else return only hook
+        If newly hooked update conditions relative to new price and time,
+        else return self.is_hooked
         """
         self.logger.debug(
             f"is_hooked={self.is_hooked} and condition,\n "
@@ -138,7 +137,7 @@ class HookOrder(OrderConditionned):
             return True
 
         if self.condition.is_hooked():
-            self.logger.info(f"self.condition={self.condition}")
+            self.logger.info(f"*** self.condition={self.__repr__(short=False)}")
             self.is_hooked = True
             self.startTime = now()
             self.logger.debug(f"* *Before update* * {self.__repr__(False)}")
@@ -152,10 +151,9 @@ class HookOrder(OrderConditionned):
 
         return None
 
-    def get_current_price(self):
+    def get_current_price(self, priceType_=None):
         """Renvoi un prix de la condition."""
-        # ajouter le price type
-        return self.condition.get_current_price()
+        return self.condition.get_current_price(priceType_)
 
     def update_price_with_relatie_values(self):
         """Change l'ordre pour qu'il soit mise à jour par chronos."""
@@ -164,51 +162,53 @@ class HookOrder(OrderConditionned):
         old_price = self.order.get("price", None)
         old_stopPx = self.order.get("stopPx", None)
 
-        high = self.get_relative("price", "<")
-        low = self.get_relative("price", ">")
+        high = self.get_new_cond_values("price", "<")
+        low = self.get_new_cond_values("price", ">")
 
         new_price = (high + low) / 2
 
         self.order["price"] = new_price
 
         if old_stopPx is not None:
-            assert old_price is not None, f"self={self}"
+            assert old_price is not None, f"oldprice none but oldstop ok, self={self}"
+
             price_delta = old_price - old_stopPx
             self.order["stopPx"] = new_price - price_delta
 
         self.logger.info(f"old_order={old_order}, new_order={self.order}")
 
     def update_cond_with_relative_values(self):
+        """Met à jour les valeurs des conditions."""
         for op_, genre_ in product(["<", ">"], ["price", "temps"]):
-            new_value = self.get_relative(genre_, op_)
-            self.condition.update_cond(genre_, op_, new_value)
+            new_value = self.get_new_cond_values(genre_, op_)
+            self.condition = self.condition.update_cond(genre_, op_, new_value)
 
         return None
 
-    def get_relative(self, genre_, op_):
-        """Renvoie les nouvelles valeurs relative au prix et temps courant."""
-        relative_values = self.get_relative_values()
+    def get_new_cond_values(self, genre_, op_):
+        """Renvoie les nouvelles valeurs relatives aux prix et temps courants."""
+        relative_condition_values = self.get_relative_condition_values()
 
         if genre_ == "price":
-            cPrice = self.get_current_price()
-            return cPrice + relative_values[genre_][op_]
-
+            relative_values, _priceType = relative_condition_values[genre_]
+            base_value = self.get_current_price(_priceType)
         elif genre_ == "temps":
-            cTime = now()
-            return cTime + relative_values[genre_][op_]
+            relative_values = relative_condition_values[genre_]
+            base_value = now()
+        else:
+            raise Exception(f"genre={genre_} pas pris en compte pour le moment.")
+        
+        return base_value + relative_values[op_]
 
-    def get_relative_values(self):
-        """Relativise les valeurs de la condition."""
-        # get timeDelta
+    def get_relative_condition_values(self):
+        """renvois les valeurs de la condition."""
         _lowT, _highT = self.condition.get_relative_lh_temps()
+        _lowP, _highP, priceType = self.condition.get_relative_lh_price()
 
-        # get priceDelta
-        _lowP, _highP, self.priceType = self.condition.get_relative_lh_price()
-        self.relative_values = {
+        return {
             "temps": {">": _lowT, "<": _highT},
-            "price": {">": _lowP, "<": _highP},
+            "price": ({">": _lowP, "<": _highP}, priceType)
         }
-        return self.relative_values
 
     def conditions_remplies(self):
         """Check that conditions to start the ordrer."""
