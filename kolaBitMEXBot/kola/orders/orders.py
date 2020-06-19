@@ -425,6 +425,7 @@ def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice", symbol=No
     """
     if typeprice is None:
         # 'lastMidPrice'  # == markPrice ?
+        assert deftypeprice is not None
         typePrice = deftypeprice
     elif isinstance(typeprice, dict):
         typePrices = [
@@ -434,8 +435,8 @@ def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice", symbol=No
     elif isinstance(typeprice, str):
         typePrice = typeprice
     else:
-        msg = f"typePrice={typePrice} Non pris en charge."
-        raise ValueError(msg)
+        msg = f"typeprice={typeprice} Non pris en charge."
+        raise Exception(msg)
 
     # print(f"1 > typeprice={typeprice}, typePrice={typePrice},  brg.prices(deftypeprice, side)={brg.prices(deftypeprice, side)}")
     try:
