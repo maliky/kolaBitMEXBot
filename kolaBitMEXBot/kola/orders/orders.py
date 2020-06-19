@@ -434,7 +434,8 @@ def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice", symbol=No
     elif isinstance(typeprice, str):
         typePrice = typeprice
     else:
-        raise ValueError(f"typePrice={typePrice} Non pris en charge.")
+        msg = f"typePrice={typePrice} Non pris en charge."
+        raise ValueError(msg)
 
     # print(f"1 > typeprice={typeprice}, typePrice={typePrice},  brg.prices(deftypeprice, side)={brg.prices(deftypeprice, side)}")
     try:
