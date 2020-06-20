@@ -83,6 +83,7 @@ class PriceObj:
 
         # on initialise les prix et la df qui les contiendra
         # define self.data
+        self.data = None
         self.data = self.__init_price_df(price, refPrice)
 
         # on définie l'épaisseur du stop
