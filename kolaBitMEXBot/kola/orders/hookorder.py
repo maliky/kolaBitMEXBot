@@ -22,6 +22,7 @@ class HookOrder(OrderConditionned):
         valid_queue,
         nameT,
         timeout,
+        brg,
         logger=None,
         excludeIDs_=None,
         symbol="XBTUSD",
@@ -40,6 +41,7 @@ class HookOrder(OrderConditionned):
         self.excludeIDs = excludeIDs_
         self.symbol = symbol
         self.relative_values = {}
+        self.brg = brg
         # for the symbol need some change to hook on other symbols
         OrderConditionned.__init__(
             self,

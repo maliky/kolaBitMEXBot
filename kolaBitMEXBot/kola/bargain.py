@@ -438,7 +438,7 @@ class Bargain:
 
         return rep['price']
 
-    def prices(self, typeprice=None, side="buy", symbol_=None):
+    def prices(self, typeprice=None, side="buy", symbol_=None, force_live: bool=False):
         """
         Show summary of current prices.
 
@@ -447,6 +447,7 @@ class Bargain:
         'midPrice', 'ref_delta','market_maker', 'lastMidPrice' or None
         (for all instrument prices)
         - symbol if not user bargain symbol but maybe could want other price
+        - force_live: should we force getting live price ? (def false)
         """
         _symbol = self.symbol if symbol_ is None else symbol_
 
@@ -468,6 +469,8 @@ class Bargain:
         elif typeprice.lower() == "indexprice":
             # S'assurer qu'il n'y a pas deux appels consécutif à moins de x seconde
             # minisytème de cache  jusquà 11s avant nouvel appel au broker
+            # can be force is force_live = True
+            
             timeLaps = now() - self.last_check_time
             msg = (
                 f'Checking cached price'
@@ -480,6 +483,7 @@ class Bargain:
                 self.cached_refPrices is None
                 or timeLaps > Timedelta(randint(2, 11), unit="s")
                 or self.bto.dummy
+                or force_live
             ):
                 cached_refPrices = self.get_most_recent_settlement_price()
                 self.last_check_time = now()
