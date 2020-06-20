@@ -361,8 +361,8 @@ class Condition:
         #     else:
         #         return get_execPrice(self.brg, "buy", _pricetype)
         self.logger.debug(
-            f"cond prices={prices.values}, _pricetype={_pricetype}, currentSellPx={currentSellPx}, "
-            f"currentBuyPx={currentBuyPx}"
+            f"_pricetype={_pricetype}, currentSellPx={currentSellPx}, currentBuyPx={currentBuyPx}"
+            f"_cond prices_:\n{prices.values}\n"
         )
 
         return currentSellPx if useSellPrice else currentBuyPx
