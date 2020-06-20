@@ -86,10 +86,10 @@ class HookOrder(OrderConditionned):
             # relative condition updated
             # and if hooked start_time for timeout too
             if _has_been_hooked:
-                
+
                 self.startTime = now()  # initiate the timeout
                 self.logger.debug(f"We have reseted startTime to {self.startTime}")
-                
+
                 out = self.condition.is_(True) or self.order["ordType"] != "Market"
 
                 reason_out = (
@@ -188,7 +188,9 @@ class HookOrder(OrderConditionned):
         """Met à jour les valeurs des conditions."""
         for op_, genre_ in product(["<", ">"], ["price", "temps"]):
             new_value = self.get_new_cond_values(genre_, op_)
-            self.logger.debug(f"Updating cond genre_={genre_}, op_={op_}, new_value={new_value}")
+            self.logger.debug(
+                f"Updating cond genre_={genre_}, op_={op_}, new_value={new_value}"
+            )
             self.condition = self.condition.update_cond(genre_, op_, new_value)
 
         return None
@@ -205,7 +207,11 @@ class HookOrder(OrderConditionned):
             base_value = now()
         else:
             raise Exception(f"genre={genre_} pas pris en compte pour le moment.")
-        
+
+        self.logger.debug(
+            f"relative_values[{op_}], base_value={relative_values[op_], base_value} {_prixCourant if _prixCourant is not None else ''}"
+        )
+
         return base_value + relative_values[op_]
 
     def get_relative_condition_values(self):
@@ -215,7 +221,7 @@ class HookOrder(OrderConditionned):
 
         return {
             "temps": {">": _lowT, "<": _highT},
-            "price": ({">": _lowP, "<": _highP}, prixCourant)
+            "price": ({">": _lowP, "<": _highP}, prixCourant),
         }
 
     def conditions_remplies(self):
