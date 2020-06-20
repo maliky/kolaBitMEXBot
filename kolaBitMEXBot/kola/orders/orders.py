@@ -417,7 +417,9 @@ def is_newPrice_valide(brg, side, newPrice):
         return newPrice > brg.prices("market", side)
 
 
-def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice", symbol=None):
+def get_execPrice(
+    brg, side, typeprice=None, deftypeprice="LastPrice", symbol=None, _forceLive=False
+):
     """
     Return the current market price defined by the typeprice (def. lastMidPrice).
 
@@ -441,6 +443,8 @@ def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice", symbol=No
         raise Exception(msg)
 
     try:
-        return brg.prices(typeprice=typePrice, side=side, symbol_=symbol)
+        return brg.prices(
+            typeprice=typePrice, side=side, symbol_=symbol, force_live=_forceLive
+        )
     except AttributeError as ex:
         raise (ex)

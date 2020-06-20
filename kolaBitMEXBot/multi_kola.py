@@ -301,6 +301,7 @@ class MarketAuditeur:
                     hSrc=_hSrc,
                     hStatus=_hStatus,
                     excludeIDs_=self.hookedIDs,
+                    brg=self.brg,
                     **kwargs,
                 )
 

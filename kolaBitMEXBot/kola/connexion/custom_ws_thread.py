@@ -375,7 +375,8 @@ class BitMEXWebsocket:
                                     iside, isymbol = item["side"], item["symbol"]
                                     itick, iprice = instrument["tickLog"], item["price"]
                                     self.logger.info(
-                                        f"Confirme Execution: {iside} {contExecuted} 1$ Contracts at the current {isymbol} price of {iprice}$ and {itick}"
+                                        f"item={item} (reduce log)"
+                                        # f"Confirme Execution: {iside} {contExecuted} 1$ Contracts at the current {isymbol} price of {iprice}$ and {itick}"
                                     )
                                     raise Exception(f"{item}")
 

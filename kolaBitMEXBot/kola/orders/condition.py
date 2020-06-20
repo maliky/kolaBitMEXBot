@@ -339,23 +339,33 @@ class Condition:
 
     def get_current_price(self, pricetype_=None):
         """
-        Renvoie un prix courant. Devrait gérer les prix de diff type.
+        Renvoie un prix courant. Devrait gérer les prix de diff type. ??
 
         Normalement renvoie le prix associé à la condition prix.
         Si plusieurs condition prix, nécessite de préciser le pricetype_
         """
 
         _pricetype = self.get_price_type() if pricetype_ is None else pricetype_
-
         prices = self.get_prices_where(_pricetype)
 
-        currentPrice = get_execPrice(self.brg, "sell", _pricetype)
+        currentSellPx = get_execPrice(self.brg, "sell", _pricetype, _forceLive=True)
+        currentBuyPx = get_execPrice(self.brg, "buy", _pricetype, _forceLive=True)
 
-        self.logger.info(f"prices={prices}")
+        useSellPrice = currentSellPx <= max(prices.values) if len(prices) else True
 
-        test = currentPrice <= max(prices.values) if len(prices) else True
+        # if not len(prices):
+        #     return get_execPrice(self.brg, "sell", _pricetype)
+        # else:
+        #     if currentSellPx <= max(prices.values):
+        #         return get_execPrice(self.brg, "sell", _pricetype)
+        #     else:
+        #         return get_execPrice(self.brg, "buy", _pricetype)
+        self.logger.info(
+            f"cond prices={prices}, _pricetype={_pricetype}, currentSellPx={currentSellPx}, "
+            f"currentBuyPx={currentBuyPx}"
+        )
 
-        return currentPrice if test else get_execPrice(self.brg, "buy", _pricetype)
+        return currentSellPx if useSellPrice else currentBuyPx
 
     def get_prices_where(self, pricetype_):
         """Renvoie les prix de type pricetype."""
