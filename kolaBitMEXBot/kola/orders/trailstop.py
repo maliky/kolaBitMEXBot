@@ -21,7 +21,7 @@ class TrailStop(OrderConditionned):
     Object TrailStop.
 
     Permet de faire un ordre avec trace, et lancement conditionné
-    ance un order conditionné simple puis lorsqu'éxécuté lance sa trace, 
+    ance un order conditionné simple puis lorsqu'éxécuté lance sa trace,
     tail ou tail, met à jour la condition pour la trace
     """
 
@@ -40,7 +40,7 @@ class TrailStop(OrderConditionned):
         tDelta=None,
     ):
         """Une queue, pour passer les ordres, un ordre à passer si la cond validée.
-        
+
         - l'ordre peut être stopé prématurement en mettant stop=True
         - l'ordre doit être un buy ou sell at market
         - pegOffset_perc in [0, 100] % du prix de ref pour la trace
@@ -94,7 +94,7 @@ class TrailStop(OrderConditionned):
         # même si le déclenchement se fera automatiquement sur le marché
         if "sell" in self.side:
             self.op = "<"
-            args = (self.refPrice_type, "<", -1)
+            args = (self.refPrice_type, "<", float(-1))
         else:
             self.op = ">"
             args = (self.refPrice_type, ">", 1e9)
@@ -114,7 +114,7 @@ class TrailStop(OrderConditionned):
         )
 
     def __repr__(self, tracing=False, short=True, cond=False):
-        ret = f"----TrailStop"
+        ret = "----TrailStop"
         ret += f"{OrderConditionned.__repr__(self, short=short, suffix=' of ')}"
         if cond:
             ret += f"\n----TailTrigger{self.tailStop_triggerCond}"
@@ -202,7 +202,7 @@ class TrailStop(OrderConditionned):
     def place_tailstop(self):
         """
         Appelé une fois l'ordre principal déclanché.
-        
+
         On enclenche alors une trace par rapport à un prix de référence.
         On crée pour cela un objet prix qui suivra l'évolution via le broker.
         On envois l'ordre (le stop) au broker et on le met à jour ensuite
@@ -210,7 +210,8 @@ class TrailStop(OrderConditionned):
         - ordType: un parmi 'Stop', 'StopLimit', 'MarketIfTouched', 'LimitIfTouched',
         - orderQty
         - stopPx
-        - execInst: parmi ParticipateDoNotInitiate; MarkPrice, LastPrice, IndexPrice; ReduceOnly; Close.
+        - execInst: parmi ParticipateDoNotInitiate; MarkPrice, LastPrice, IndexPrice;
+        ReduceOnly; Close.
 
         Renvois le résultat de OC.send_order
         """
@@ -267,7 +268,6 @@ class TrailStop(OrderConditionned):
         )  # refPrice
 
         # maj de la condition
-        # self.logger.debug(f'theoretical stopPx={self.refPrice_type, self.PO.data.flexTail.current}')
         self.tailStop_triggerCond.set_price_val(
             self.refPrice_type, self.PO.data.stopTail.current
         )

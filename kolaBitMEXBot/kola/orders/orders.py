@@ -108,7 +108,8 @@ def place_LIT(brg, side, orderqty, stoppx, price, **opts):
         brg, side, price, stoppx, ordType
     ), f"'{side}' LIT invalide. stop price={stoppx} quand prix est {price}."
     mlogger.debug(
-        f"Placing {orderqty} {side} Limit ({price}) if Touched @stopPx ({stoppx}), opts={opts}"
+        f"Placing {orderqty} {side} Limit ({price}) if Touched @stopPx ({stoppx}),"
+        f" opts={opts}"
     )
 
     return brg.bto.place(orderqty, side=side, asBulk=True, **opts)
@@ -149,12 +150,12 @@ def sell_at_market(brg, orderQty):
 
 def sell_stop(brg, orderQty, stopPx, price):
     """Place a sell (limit) order,"""
-    return place_stop(brg, "sell", orderQty, price=price, stopPx=stopPx)
+    return place_stop(brg, "sell", orderQty, stopPx, price=price)
 
 
 def buy_stop(brg, orderQty, stopPx, price):
     """Place a buy (limit) order"""
-    return place_stop(brg, "buy", orderQty, price=price, stopPx=stopPx)
+    return place_stop(brg, "buy", orderQty, stopPx, price=price)
 
 
 # brg is a Bargain
@@ -207,7 +208,7 @@ def amend_prices(
     absdelta = PRICE_PRECISION[brg.symbol] if absdelta is None else absdelta
 
     which = which_.replace("amend", "")  # I get a standard order
-    assert which != "Market", f"Market orders cannot be amended."
+    assert which != "Market", "Market orders cannot be amended."
     newStopPx = {}
 
     if which in ["Stop", "MarketIfTouched"]:
@@ -239,7 +240,8 @@ def amend_prices(
             brg.bto.amend(newOrder, **newStopPx, text=text)
         except Exception:
             mlogger.exception(
-                f"*Amending stopPrice failed* {orderid, newStopPx} Probably already triggered!"
+                f"*Amending stopPrice failed* {orderid, newStopPx}"
+                " Probably already triggered!"
             )
 
     return amendedPx
@@ -260,21 +262,21 @@ def amend_stop_price(brg, orderID, newStopPx):
         raise (e)
 
 
-def amend_trailstop(brg, order, newPegOffsetValue):
-    """Amend la pegOffsetValue (le delta de la sécurité (hook, crochet) par rapport au prix du marché).
-    Params:
-    - brg <Bargain Object>:,  - order <str>: one existing bitmex order, peut se résumé à l'essentiel {'orderID':...}
-    - pegOffsetValue <int>: le delta, si >0 trigger price au dessus, (donc orderQty doit être <0 ou side sell)."""
+def amend_trailstop(brg: Bargain, order: str, newPegOffsetValue: float):
+    """Amend la pegOffsetValue.
 
+    (le delta de la sécurité (hook, crochet) par rapport au prix du marché).
+    Params:
+    - brg <Bargain Object>:,
+    - order <str>: one existing bitmex order, peut se résumé à l'essentiel {'orderID'...}
+    - pegOffsetValue <int>: le delta, si >0 trigger price au dessus,
+    (donc orderQty doit être <0 ou side sell).
+    """
     mlogger.info(f"order={order}, newPegOffsetValue={newPegOffsetValue}")
     newPegOffsetValue = round_sprice(newPegOffsetValue)
     return brg.bto.amend(
         order, pegOffsetValue=newPegOffsetValue, pegPriceType="TrailingStopPeg"
     )
-
-    # else:
-    #     mlogger.warning('Canceling amending % s to % s for order % s, because will directly close.'
-    #                     % (order['stopPx'], newPegOffsetValue, order['orderID']))
 
 
 def place_with_contigency():
@@ -386,7 +388,7 @@ def is_valid_order(
 ):
     """
     Check that the side price is correct for a stop.
-    
+
     - if price is None, get current market price (LastPrice),
     - ordertype is stop or touched
     """
@@ -418,8 +420,8 @@ def is_newPrice_valide(brg, side, newPrice):
 def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice", symbol=None):
     """
     Return the current market price defined by the typeprice (def. lastMidPrice).
-    
-    typeprice can be a dictionary with execInst.  
+
+    typeprice can be a dictionary with execInst.
     Will check for the price type in execInst.
     - symbol: the symbol to get the price for
     """
@@ -438,9 +440,7 @@ def get_execPrice(brg, side, typeprice=None, deftypeprice="LastPrice", symbol=No
         msg = f"typeprice={typeprice} Non pris en charge."
         raise Exception(msg)
 
-    # print(f"1 > typeprice={typeprice}, typePrice={typePrice},  brg.prices(deftypeprice, side)={brg.prices(deftypeprice, side)}")
     try:
         return brg.prices(typeprice=typePrice, side=side, symbol_=symbol)
     except AttributeError as ex:
-        # print(f"2 > typeprice={typeprice}, typePrice={typePrice},  brg.prices(deftypeprice, side)={brg.prices(deftypeprice, side)}")
         raise (ex)

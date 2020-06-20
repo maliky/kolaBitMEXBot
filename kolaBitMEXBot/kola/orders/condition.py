@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Conditions pour les ordres."""
-import numpy as np
+from numpy import array
 from pandas import DataFrame, concat, Timestamp, Series
-from typing import Set, Optional, Union
+from typing import Set, Optional, Union, List
 
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now
@@ -32,13 +32,13 @@ class Condition:
 
         There can only be one price condition (for now)
         """
-        self.brg = brg
+        self.brg: Bargain = brg
 
         self.logger = get_logger(logger, sLL="INFO", name=__name__)
 
         # Une liste de mots clef pour le prix
         # Fairprice = market price et lastPrice ~= midPrice
-        self.price_list = [
+        self.price_list: List[str] = [
             "lastPrice",
             "indexPrice",
             "bidPrice",
@@ -51,15 +51,15 @@ class Condition:
         ]
 
         # to cached hooked ID, il ne doit y en avoir qu'un
-        self.hookedSrcID = ""
+        self.hookedSrcID: str = ""
         self.excludeIDs: Set[str] = set()
 
         # store les conditions dans un df avec les cols (genre, op, value)
-        self.cond_frame = self.forme_conditions(cond)
+        self.cond_frame: DataFrame = self.forme_conditions(cond)
 
     def __repr__(self, short=True):
         """Représentation pour la condition."""
-        if self is None:
+        if self.cond_frame is None:
             return "No Condition yet"
 
         if self.cond_frame is not None:
@@ -124,31 +124,31 @@ class Condition:
         )
         self.cond_frame = self.cond_frame.reset_index(drop=True)
 
-    def forme_conditions(self, cond):
+    def forme_conditions(self, cond_) -> DataFrame:
         """Vérifie la formation des conditions et les retournent bien formatées."""
-        # on vérifie la forme
         try:
-            # si chacune des longueurs des conditionsest 3 je suppose que c'est bon
-            cond_formatee = DataFrame(data=list(cond), columns=["genre", "op", "value"])
+            # si chacune des longueurs des cond est 3 je suppose que c'est bon
+            cond_formatee: DataFrame = DataFrame(
+                data=list(cond_), columns=["genre", "op", "value"]
+            )
         except ValueError:
             # on a probablement un itérable mais avec un pb de shape.
             # (une seul cond)
-            cond = np.array(cond)
-            cond.shape = (1, 3)
-            cond_formatee = DataFrame(data=list(cond), columns=["genre", "op", "value"])
+            _cond = array(cond_)
+            _cond.shape = (1, 3)
+            cond_formatee: DataFrame = DataFrame(
+                data=list(_cond), columns=["genre", "op", "value"]
+            )
         except Exception as e:
-            self.logger.error(f"{e} un pb dans le format de la condition {[cond]}")
+            self.logger.error(f"{e} un pb dans le format de la condition {[_cond]}")
             raise e
 
         # On vérifie le fond de la forme
-        try:
-            if all(cond_formatee.apply(axis=1, func=self.verifie_forme)):
-                cond_formatee = cond_formatee.reset_index(drop=True)
-                return cond_formatee
-            else:
-                raise Exception(f"Une condition {cond_formatee} n'est pas correcte.")
-        except Exception:
-            raise
+        if all(cond_formatee.apply(axis=1, func=self.verifie_forme)):
+            cond_formatee = cond_formatee.reset_index(drop=True)
+            return cond_formatee
+        else:
+            raise Exception(f"Une condition {cond_formatee} n'est pas correcte.")
 
     def set_price_val(self, price_ref, val):
         """Vérifie que l'on a une cond. prix et la renvoie si tel est le cas."""
@@ -245,20 +245,16 @@ class Condition:
 
     def evalue(self, a, op: str, b) -> bool:
         """Retourne <bool> a op b où op est un operateur de type string."""
-        if op == "<":
-            ret = a < b
-        elif op == ">":
-            ret = a > b
-
-        return bool(ret)
+        assert op in ["<", ">"]
+        return bool(a < b) if op == "<" else bool(a > b)
 
     def get_price_conds(self):
         """Returns condition of type price sorted by price value (small first)."""
         with_price = self.get_price_cond_mask()
         return self.cond_frame.loc[with_price].sort_values("value")
 
-    def hasHook(self):
-        """Say if this condition has a hook and is  hooked."""
+    def has_hook_cond(self):
+        """Say if this condition has a hook condition."""
         return len(self.cond_frame.genre == "hook")
 
     def is_hooked(self):
@@ -267,7 +263,7 @@ class Condition:
 
         If so, we say that the condition is hooked.
         """
-        if self.hasHook():
+        if self.has_hook_cond():
             hooks = self.cond_frame.genre == "hook"
             return self.cond_frame.loc[hooks, :].test.all()
 
@@ -279,7 +275,8 @@ class Condition:
 
         Cherche dans les ordres executés un clOrdID correspondand à cond_.op
         (ie l'abbrevation de la srcKey).
-        Vérifie ensuite que ces ordres ont le status cond_.value (eg. Filled, Triggered, Canceled)
+        Vérifie ensuite que ces ordres ont le status cond_.value
+        (eg. Filled, Triggered, Canceled)
         """
         clOrdIDs = [
             clID
@@ -348,12 +345,10 @@ class Condition:
         Si plusieurs condition prix, nécessite de préciser le pricetype_
         """
 
-        if pricetype_ is None:
-            _pricetype = self.get_price_type()
-        else:
-            _pricetype = pricetype_
+        _pricetype = self.get_price_type() if pricetype_ is None else pricetype_
 
-        prices = self.get_price_cond_where(_pricetype)
+        prices = self.get_prices_where(_pricetype)
+
         currentPrice = get_execPrice(self.brg, "sell", _pricetype)
 
         self.logger.info(f"prices={prices}")
@@ -367,10 +362,10 @@ class Condition:
         prices = self.get_price_cond_where(pricetype_)
         return prices.value
 
-    def get_price_cond_where(self, pricetype_):
+    def get_price_cond_where(self, pricetype_) -> DataFrame:
         """
         Renvoie les conditions prix ou pricetype is pricetype_.
-        
+
         Attention le pricetype_ peut être lastmidprice, à revoir
         """
         prices = self.cond_frame.loc[self.get_price_cond_mask()]
@@ -416,7 +411,7 @@ class Condition:
         assert sum(mask) <= 1, msg_debug("Update several conditions at once")
 
         if sum(mask) == 0:
-            self.logger.warning(msg_debug(f"Trying to update condition but none found"))
+            self.logger.warning(msg_debug("Trying to update condition but none found"))
             return self
 
         self.cond_frame.loc[mask, "value"] = value_
