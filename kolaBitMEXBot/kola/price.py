@@ -9,7 +9,7 @@ from kolaBitMEXBot.kola.utils.general import round_sprice, contains
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
-from kolaBitMEXBot.kola.utils.kolatypes import symbT, sideT, priceT
+from kolaBitMEXBot.kola.kolatypes import symbT, sideT, priceT
 
 
 class PriceObj:
