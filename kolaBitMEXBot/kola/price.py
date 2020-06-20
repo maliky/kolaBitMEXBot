@@ -9,6 +9,7 @@ from kolaBitMEXBot.kola.utils.general import round_sprice, contains
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBitMEXBot.kola.utils.kolatypes import symbT, sideT, priceT
 
 
 class PriceObj:
@@ -18,40 +19,40 @@ class PriceObj:
 
     def __init__(
         self,
-        price,
-        refPrice,
-        tail_perct_init=0.5,
-        head="buy",
-        updatepause=6,
-        timeBin=60,
+        price: priceT,
+        refPrice: priceT,
+        tail_perct_init: float = 0.5,
+        head: sideT = "buy",
+        updatepause: float = 6,
+        timeBin: int = 60,
         logger=None,
-        max_var=2.6,
-        min_flex=0.2,
-        symbol="XBTUSD",
+        max_var: float = 2.6,
+        min_flex: float = 0.2,
+        symbol: symbT = "XBTUSD",
     ):
         """
         Head is the direction, need a price (market price and ref price) and
-        tail_perct_init (%): default.  Le nb_enregistrement est la longeur 
-        de la bd des prix 
-        - Une tête sur la prix du marché référence et trois queues 
+        tail_perct_init (%): default.  Le nb_enregistrement est la longeur
+        de la bd des prix
+        - Une tête sur la prix du marché référence et trois queues
         (tails ou tails).
         - La queue bleu (Qbleue) elle suit le prix du marché toujours à la même
         distance (même épaisseur)
-        - La queue rouge, c'est le stop, elle ne bouge pas tant qu'il n'y a pas 
+        - La queue rouge, c'est le stop, elle ne bouge pas tant qu'il n'y a pas
         de bénéf.
-        - La queue verte (flexTail) elle est d'épaisseur variable, 
+        - La queue verte (flexTail) elle est d'épaisseur variable,
         son prix est passé au brokeur si au dessus du refPrice
-        - min_flex est le pourcentage de la refTail jusqu'ou 
+        - min_flex est le pourcentage de la refTail jusqu'ou
         on peux réduire la flexTail ex. 80 de la ref tail
-        - main_window_size c'est la taille de l'historique de ce prixObject, 
-        doit être calcule en fonction de la taille de la bin voulue 
+        - main_window_size c'est la taille de l'historique de ce prixObject,
+        doit être calcule en fonction de la taille de la bin voulue
         et de la fréquence des mis à jour
         - updatepause c'est le nombre moyen de secondes entre deux mise à jour
-        - timeBin c'est la taille de la fenêtre utilisé pour calculer 
+        - timeBin c'est la taille de la fenêtre utilisé pour calculer
         la variation de prix.
         avec la updatepause permet d'estimer la main_window_size
-        - max_var en quoi? et min_flex determine la flexibilité des queue.  
-        max_var est une statistique décrivant la variation nécessaire 
+        - max_var en quoi? et min_flex determine la flexibilité des queue.
+        max_var est une statistique décrivant la variation nécessaire
         pour que la queue se réduise à min_flex.  Elle est issue d'obeservation
         du marché voir getting_data.ipyng.  la var à un très long mais fine queue.
         90% < .22
@@ -63,8 +64,8 @@ class PriceObj:
         self.refPrice = refPrice
         self.symbol = symbol
         self.prec = PRICE_PRECISION[symbol]
-
-        self.tail_perct_init = tail_perct_init  # tail percent sera appliqué au prix de référence nombre entre 0 et 100
+        # tail percent sera appliqué au prix de référence nombre entre 0 et 100
+        self.tail_perct_init = tail_perct_init
         self.timeBin = timeBin
         self.updatePause = updatepause
         # essaye d'avoir un tableau plus grand que nécessaire
@@ -82,7 +83,6 @@ class PriceObj:
 
         # on initialise les prix et la df qui les contiendra
         # define self.data
-        self.data = None
         self.data = self.__init_price_df(price, refPrice)
 
         # on définie l'épaisseur du stop
@@ -119,7 +119,7 @@ class PriceObj:
         current_prices = self.get_current_prices(price, refPrice)
         data = pd.DataFrame(index=index, columns=columns)
         data.loc[:, :] = current_prices.values
-        # On s'assure que la colonne date est au bon format pour faciliter les calculs ultérieurs
+        # On s'assure que la colonne date est au bon format
         data.date = pd.to_datetime(data.date)
         self.logger.debug(f"Init df prices Object:\n{data.describe()}")
         return data
@@ -196,7 +196,11 @@ class PriceObj:
             return "Data not initialised yet but price, refPrice, are {price, refPrice}"
 
     def get_stopTail_offset_per(self, refPrice=None, stopTail=None):
-        """Renvois l'écart (en % du refPrice) entre le refPrice et la stopTail.  >0 si stopTail au dessus, <0 sinon"""
+        """
+        Renvois l'écart (en % du refPrice) entre le refPrice et la stopTail.
+
+        >0 si stopTail au dessus, <0 sinon
+        """
 
         refPrice = self.get_refPrice(refPrice)
         stopOffsetDelta = self.get_stopTail_offset_delta(refPrice, stopTail)
@@ -205,7 +209,7 @@ class PriceObj:
 
     def get_stopTail_offset_delta(self, refPrice=None, stopTail=None):
         """
-        Renvois l'écart (en valeur) entre le prix de référence actuelle et la stopTail actuelle.  
+        Renvoie l'écart (en valeur) entre le prix de référence et la stopTail actuelles.
 
         Return >0 si stopTail au dessus, <0 sinon. S'assure que les prix sont définis
         """
@@ -233,8 +237,13 @@ class PriceObj:
         return round_sprice(flexOfs, self.symbol), round(scale * 100, 4)
 
     def get_refTail(self, refPrice=None):
-        """Renvois la queue de référence.  (la bleue).  Celle ci ne change pas d'épaisseur mais suit le prix de reférence dans ses variations.
-        Elle sert à déclancher la mise à jour du stopTail lorsque la nouvelle Tail sera sortie du bois (ie assure une prise)"""
+        """
+        Renvoie la queue de référence.  (la bleue).
+
+        Celle ci ne change pas d'épaisseur mais suit le prix de reférence.
+        Elle sert à déclancher la mise à jour du stopTail lorsque la nouvelle Tail
+        sera sortie du bois (ie assure une prise)
+        """
         refPrice = self.get_refPrice(refPrice)
 
         sens = 1 if self.head.lower() == "buy" else -1
@@ -243,13 +252,10 @@ class PriceObj:
 
         refTail = round_sprice(refPrice + ofs, self.symbol)
 
-        # logmsg = f'refPrice={refPrice}, refOfs={round(ofs,2)}, sens={sens}, direction head={self.head} --> refTail={refTail}'
-        # self.logger.debug(logmsg)
-
         return refTail
 
     def new_current_stopTail(self):
-        """Renvois un booléen indiquant si la stop tail courante est nouvelle."""
+        """Renvoie un booléen indiquant si la stop tail courante est nouvelle."""
         return self.data.stopTail.current != self.data.stopTail.previous
 
     def get_flexTail(self, refPrice=None, refTail=None):
@@ -264,14 +270,10 @@ class PriceObj:
             refTail = self.get_refTail(refPrice)
 
         # if self.enought_data():
-        if True:
-            refPrice = self.get_refPrice(refPrice)
-            flexOfs, scale = self.flexTail_offset_delta(refPrice)
-            flexTail = refPrice + flexOfs
-
-            return round_sprice(flexTail, self.symbol)
-        else:
-            return refTail
+        refPrice = self.get_refPrice(refPrice)
+        flexOfs, scale = self.flexTail_offset_delta(refPrice)
+        flexTail = refPrice + flexOfs
+        return round_sprice(flexTail, self.symbol)
 
     def enought_data(self):
         """Check that we have enought data to compute the variation for the flex tail"""
@@ -291,7 +293,7 @@ class PriceObj:
             raise (e)
 
     def get_current_variation(self):
-        """Renvois le % de var des prix moyen pour la dernière et avant dernière timeBin."""
+        """Renvoie var % des derniers et avant derniers prix moyens."""
         if self.data is None:
             return 0, 0, 0
         # on suppose que le data à les données nécessaire pour les calculs suivants
@@ -318,10 +320,11 @@ class PriceObj:
         implémente e^-f(t)
 
         t=current_var, ie la variation en pourcentage des deux derniers prix binnés,
-        a=min_flex et b=1.  
-        Cela donne une fonction qui a son image dans [0,1] mais avec la plus part de valeurs proches de 1.
+        a=min_flex et b=1.
+        Cela donne une fonction qui a son image dans [0,1]
+        mais avec la plus part de valeurs proches de 1.
 
-        Rappel: si t \\in [O,1] alors f(t)=bt + (1-t)*a sera \\in [a, b] de façon linéaire.
+        Rappel: si t \\in [O,1] alors f(t)=bt + (1-t)*a sera \\in [a, b] de façon lin..
         Elle tend rapidement vers 0 pour les current_var > 80% des variation historique
         """
         # rang dans un tableau de lenVal ligne donc compris entre 0 et 1
@@ -340,12 +343,15 @@ class PriceObj:
         return scale
 
     def is_stopTail(self, tail):
-        """ Test si tail est une stopTail.
-        Pour être une stopTail, tail doit être plus loin que la stopTail précédente et refTail doit être plus loin que le prix de référence.
-        Revoir la deuxième condition  """
+        """
+        Test si tail est une stopTail.
+        Pour être une stopTail, tail doit être plus loin que la stopTail précédente
+        et refTail doit être plus loin que le prix de référence.
+        Revoir la deuxième condition
+        """
         assert self.head, f"Le dragon doit avoir une tête {self.head}"
         if "buy" in self.head:
-            # c'est vrai si la queue actuelle est au dessus de la stoptail et du prix initial
+            # vrai si la queue actuelle est au dessus de la stoptail et du prix initial
             # voir si utiliser refTail ou flexTail
             if tail > self.data.stopTail.current:
                 return self.data.flexTail.current > self.data.refPrice.init
@@ -392,7 +398,7 @@ class PriceObj:
         # self.logger.warning(self)
 
     def get_date_range(self):
-        """Renvois la date range timedelta (en seconds) converte par le price data"""
+        """Renvoie la date range timedelta (en seconds) converte par le price data"""
         min_date, max_date, date_range = None, None, None
 
         if self.data is None:
@@ -407,7 +413,7 @@ class PriceObj:
                 date_range = max_date - min_date
                 return date_range.seconds
         except Exception as e:
-            logmsg = f"data={self.data}, min_date={min_date} et max_date={max_date} et date_range"
+            logmsg = f"data={self.data}, min_date={min_date} et max_date={max_date}"
             self.logger.error(logmsg)
             raise (e)
 
@@ -415,8 +421,9 @@ class PriceObj:
         return self.get_data(nomElt="date", temps="init")
 
     def get_data(self, nomElt, temps="current", default_ret=None):
-        """ Renvois un element du data si il existe.
-        Si refPrice ou date demandé, envois des valeurs par défaut si n'a rien trouvé dans data
+        """
+        Renvoie un element du data si il existe.
+        Si refPrice ou date demandés, envoie des valeurs par défaut
         """
         if self.data is not None:
             elt = self.data.loc[temps].loc[nomElt]
@@ -436,7 +443,7 @@ class PriceObj:
             raise Exception(expmsg)
 
     def get_refPrice(self, refPrice=None):
-        """Renvois le prix de référence en s'assurant qu'il est définit.  """
+        """Renvoie le prix de référence en s'assurant qu'il est définit.  """
         if pd.isna(refPrice):
             return self.get_data("refPrice")
         else:

@@ -6,8 +6,7 @@ sideT = Literal["buy", "sell"]
 symbT = Literal["ADAM20", "XBTUSD"]
 # majuscules importantes
 priceTT = Literal["LastPrice", "IndexPrice", "MarkPrice"]
-priceT = Union[float, int]
-sideT = Literal["buy", "sell"]
+priceT = float
 bipriceT = Tuple[priceT, priceT]  # couple de price
 
 # see exec_ordesr in custom_bitmex

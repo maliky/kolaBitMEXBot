@@ -84,7 +84,8 @@ class HookOrder(OrderConditionned):
             # relative condition updated
             # and if hooked start_time for timeout too
             if _has_been_hooked:
-
+                
+                self.startTime = now()  # initiate the timeout
                 out = self.condition.is_(True) or self.order["ordType"] != "Market"
 
                 reason_out = (
