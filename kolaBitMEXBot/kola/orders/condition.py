@@ -353,14 +353,7 @@ class Condition:
 
         useSellPrice = currentSellPx <= max(prices.values) if len(prices) else True
 
-        # if not len(prices):
-        #     return get_execPrice(self.brg, "sell", _pricetype)
-        # else:
-        #     if currentSellPx <= max(prices.values):
-        #         return get_execPrice(self.brg, "sell", _pricetype)
-        #     else:
-        #         return get_execPrice(self.brg, "buy", _pricetype)
-        self.logger.debug(
+        self.logger.info(
             f"_pricetype={_pricetype}, currentSellPx={currentSellPx}, currentBuyPx={currentBuyPx}"
             f"_cond prices_:\n{prices.values}\n"
         )

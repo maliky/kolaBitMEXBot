@@ -158,7 +158,9 @@ class HookOrder(OrderConditionned):
 
     def get_current_price(self):
         """Renvoi un prix de la condition."""
-        return self.condition.get_current_price()
+        current_price = self.condition.get_current_price()
+        self.logger.info(f"current_price={current_price}")
+        return current_price
 
     def update_price_with_relatie_values(self):
         """Change l'ordre pour qu'il soit mise à jour par chronos."""
