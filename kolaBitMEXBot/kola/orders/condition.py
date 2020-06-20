@@ -360,8 +360,8 @@ class Condition:
         #         return get_execPrice(self.brg, "sell", _pricetype)
         #     else:
         #         return get_execPrice(self.brg, "buy", _pricetype)
-        self.logger.info(
-            f"cond prices={prices}, _pricetype={_pricetype}, currentSellPx={currentSellPx}, "
+        self.logger.debug(
+            f"cond prices={prices.values}, _pricetype={_pricetype}, currentSellPx={currentSellPx}, "
             f"currentBuyPx={currentBuyPx}"
         )
 

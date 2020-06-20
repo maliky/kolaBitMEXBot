@@ -57,7 +57,7 @@ class HookOrder(OrderConditionned):
 
         self.init_cond_frame = self.condition.cond_frame.copy()
 
-        self.logger = get_logger(logger, sLL="INFO", name=__name__)
+        self.logger = get_logger(logger, sLL="DEBUG", name=__name__)
 
     def __repr__(self, short=True):
         """Repr self."""
@@ -88,6 +88,8 @@ class HookOrder(OrderConditionned):
             if _has_been_hooked:
                 
                 self.startTime = now()  # initiate the timeout
+                self.logger.debug("We have reseted startTime to {self.startTime}")
+                
                 out = self.condition.is_(True) or self.order["ordType"] != "Market"
 
                 reason_out = (
@@ -130,7 +132,7 @@ class HookOrder(OrderConditionned):
         else return self.is_hooked
         """
         self.logger.debug(
-            f"is_hooked={self.is_hooked} and condition,\n "
+            f" $$$ is_hooked={self.is_hooked} and condition,\n "
             f"{self.condition.__repr__(short=False)}, "
             f"cond is hooked ? {self.condition.is_hooked()}, "
             f"hookedSrcID={self.condition.hookedSrcID}"
@@ -146,7 +148,7 @@ class HookOrder(OrderConditionned):
             self.logger.debug(f"* *Before update* * {self.__repr__(False)}")
             self.update_cond_with_relative_values()
             self.logger.info(
-                f"{self} is hooking with ID '{self.condition.hookedSrcID}'\n"
+                f"$$*$ {self} is hooking with ID '{self.condition.hookedSrcID}'\n"
                 f"_Newly Updated conditions_:\n "
                 f"- from:\nself.init_cond={self.init_cond_frame}\n"
                 f"- to:\n{self.condition.__repr__(False)}"
@@ -184,6 +186,7 @@ class HookOrder(OrderConditionned):
         """Met à jour les valeurs des conditions."""
         for op_, genre_ in product(["<", ">"], ["price", "temps"]):
             new_value = self.get_new_cond_values(genre_, op_)
+            self.logger.debug(f"updating cond genre_={genre_}, op_={op_}, new_value={new_value}")
             self.condition = self.condition.update_cond(genre_, op_, new_value)
 
         return None
