@@ -34,7 +34,7 @@ class Condition:
         """
         self.brg: Bargain = brg
 
-        self.logger = get_logger(logger, sLL="INFO", name=__name__)
+        self.logger = get_logger(logger, sLL="DEBUG", name=__name__)
 
         # Une liste de mots clef pour le prix
         # Fairprice = market price et lastPrice ~= midPrice
