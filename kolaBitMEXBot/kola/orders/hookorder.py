@@ -199,6 +199,7 @@ class HookOrder(OrderConditionned):
         """Renvoie les nouvelles valeurs relatives aux prix et temps courants."""
         relative_condition_values = self.get_relative_condition_values()
 
+        _prixCourant = None
         if genre_ == "price":
             relative_values, _prixCourant = relative_condition_values[genre_]
             base_value = self.get_current_price()
@@ -209,7 +210,7 @@ class HookOrder(OrderConditionned):
             raise Exception(f"genre={genre_} pas pris en compte pour le moment.")
 
         self.logger.debug(
-            f"relative_values[{op_}], base_value={relative_values[op_], base_value} {_prixCourant if _prixCourant is not None else ''}"
+            f"relative_values[{op_}], base_value={relative_values[op_], base_value} {_prixCourant}"
         )
 
         return base_value + relative_values[op_]
