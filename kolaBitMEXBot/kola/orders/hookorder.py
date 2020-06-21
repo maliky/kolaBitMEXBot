@@ -82,7 +82,6 @@ class HookOrder(OrderConditionned):
             # and if hooked start_time for timeout too
             if _has_been_hooked:
 
-                self.startTime = now()  # resetting the timeout
                 self.logger.debug(f"We have reseted startTime to {self.startTime}")
 
                 out = self.condition.is_(True) or self.order["ordType"] != "Market"
@@ -126,7 +125,10 @@ class HookOrder(OrderConditionned):
         If newly hooked update conditions relative to new price and time,
         else return self.is_hooked
         """
-        if self.condition.is_hooked() and not self.is_hooked:
+        if self.is_hooked:
+            return True
+
+        if self.condition.is_hooked():
             self.is_hooked = True
             self.startTime = now()
 
@@ -139,13 +141,9 @@ class HookOrder(OrderConditionned):
                 f"- from:\nself.init_cond={self.init_cond_frame}\n"
                 f"- to:\n{self.condition.__repr__(False)}"
             )
+            return True
 
-        self.logger.debug(
-            f"$$ Test is_hooked={self.is_hooked} and "
-            f"condition.is_hooked()={self.condition.is_hooked()} $$"
-        )
-
-        return self.is_hooked
+        return False
 
     def get_current_price(self):
         """Renvoi un prix de la condition."""
