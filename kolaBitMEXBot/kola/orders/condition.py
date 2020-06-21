@@ -238,20 +238,15 @@ class Condition:
         assert op in ["<", ">"]
         return bool(a < b) if op == "<" else bool(a > b)
 
-    def has_hook_cond(self):
-        """Say if this condition has a hook condition."""
-        return len(self.cond_frame.genre == "hook")
-
     def is_hooked(self):
         """
         Say if condition has hooks and if their conditions are validated.
 
         If so, we say that the condition is hooked.
         """
-        if self.has_hook_cond():
-            hooks = self.cond_frame.genre == "hook"
-
-            return self.cond_frame.loc[hooks, :].test.all()
+        has_hook = self.get_conds('hook')
+        if len(has_hook):
+            return self.evalue_les_conditions(has_hook).all()
 
         return False
 
@@ -271,7 +266,7 @@ class Condition:
         ]
 
         self.logger.debug(
-            f">>>> self.brg.get_exec_(srcKey_=cond_.op)="
+            f"~~~~ self.brg.get_exec_(srcKey_=cond_.op)="
             f"{self.brg.get_exec_clID_with_(srcKey_=cond_.op, debug_=False)}"
         )
 
@@ -288,8 +283,8 @@ class Condition:
     def get_low_high(self, _genre):
         """get low high value for _genre condition."""
         mask = {
-            "temps": self.get_temps_conds().values,
-            "price": self.get_price_conds(),
+            "temps": self.get_conds("temps").values,
+            "price": self.get_conds("price"),
         }[_genre]
 
         assert sum(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
@@ -311,17 +306,18 @@ class Condition:
     def get_conditions(self, genre_):
         """Return condition for genre"""
         if "price" in genre_.lower():
-            return self.get_price_conds()
+            return self.get_conds("price")
         elif genre_ == "temps":
-            return self.get_temps_conds()
+            return self.get_conds("temps")
 
-    def get_temps_conds(self):
+    def get_conds(self, genre_, pricetype_="*"):
         """Renvoie le mask pour les conditions de temps."""
-        return self.cond_frame.loc[self.cond_frame.genre == "temps"].sort_values(
-            "value"
-        )
+        if "price" in genre_.lower():
+            return self._get_price_conds(pricetype_)
 
-    def get_price_conds(self, pricetype_="*"):
+        return self.cond_frame.loc[self.cond_frame.genre == genre_].sort_values("value")
+
+    def _get_price_conds(self, pricetype_="*"):
         """Renvoie le mask pour les conditions de prix."""
         prices = self.cond_frame.genre.isin(self.price_list).sort_values("value")
 
@@ -370,7 +366,7 @@ class Condition:
         - op: l'opérateur de la condition
         - value_: la nouvelle valeur
         """
-        mask = self.get_conditions(genre_).values & (self.cond_frame.op == op_).values
+        mask = self.get_conds(genre_).values & (self.cond_frame.op == op_).values
 
         def msg_debug(_msg_):
             return (
