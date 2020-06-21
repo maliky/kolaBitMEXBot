@@ -24,6 +24,7 @@ from kolaBitMEXBot.kola.utils.constantes import (
     EXECOLS,
     SETTLEMENTPRICES,
     PRICE_PRECISION,
+    INSTRUMENT_PRICES,
 )
 
 
@@ -461,7 +462,7 @@ class Bargain:
         # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'MarkPrice',
         # 'MarkPrice', 'indicativeSettlePrice', 'lowPrice',
         # execInst, MarkPrice, LastPrice, IndexPrice
-        
+
         ret = None
         typeprice = "" if typeprice is None else typeprice
 
@@ -507,22 +508,57 @@ class Bargain:
                 ret = self.prices("midPrice")  # this is close to the last price
             elif typeprice.lower() in ["market", "market_price", "markprice"]:
                 # fairePrice is the marketPrice dans XBT check markMethod
-                ret = prices["MarkPrice"]
+                ret = prices["markPrice"]
             elif typeprice == "ref_delta":
-                ret = self.prices("midPrice") - self.prices("IndexPrice")
+                ret = self.prices("midPrice") - self.prices("indexPrice")
             elif typeprice:
-                ret = prices[typeprice]
+                ret = prices[self.camelCase_price(typeprice)]
         except Exception as e:
             self.logger.error(f"prices={prices}, e={e}")
-            raise(e)
-            
+            raise (e)
+
         return prices if not ret else round_sprice(ret, self.symbol)
+
+    def camelCase_price(self, priceName):
+        """
+        CamelCase the price name so it matches the instrument keys.
+        
+        keys:
+        prices= [f"{suf}Price" for suf in ['max', 'prevClose', 'prev', 'high', 'low',
+        'last', 'bid', 'mid', 'ask', 'impactBid', 'impactMid', 'impactAsk', 
+        'fair', 'mark', 'indicativeSettle']] + [lastPriceProtected]
+        """
+
+        assert priceName.lower() in [
+            p.lower() for p in INSTRUMENT_PRICES
+        ], f"priceName={priceName} and INSTRUMENT_PRICES={INSTRUMENT_PRICES}"
+
+        if priceName.lower() == "lastpriceprotected":
+            return "lastPriceProtected"
+
+        _name = priceName.lower().split("price")[0]
+        if "impact" in _name:
+            assert "prev" not in _name, "Gérer le cas où les deux sont dans le nom."
+            _name = self.capitalize_last(_name, "impact")
+        elif "prev" in _name:
+            _name = self.capitalize_last(_name, "prev")
+
+        return f"{_name}Price"
+
+    def capitalize_last(self, _name, first):
+        """Split the name with first and capitalize last part."""
+        _split = _name.split("first")
+        return f"{first}{_split[-1].capitalize()}" if len(_split) > 1 else _name
 
     def set_leverage(self, leverage):
         return self.bto.isolate_margin(self.symbol, leverage)
 
     def cancel_and_close(self, quantity=None):
-        """cancel and close all postions at market price.\n may close only position weighted by quantity"""
+        """
+        Cancel and close all postions at market price.
+
+        may close only position weighted by quantity
+        """
         if quantity:
             self.cancel_all_orders()
 
