@@ -485,7 +485,7 @@ class Bargain:
 
                 if (
                     self.cached_refPrices is None
-                    or timeLaps > Timedelta(randint(2, 11), unit="s")
+                    or timeLaps > Timedelta(randint(2, 8), unit="s")
                     or self.bto.dummy
                     or force_live
                 ):
