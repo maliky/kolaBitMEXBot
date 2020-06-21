@@ -333,7 +333,7 @@ class Condition:
         Si plusieurs condition prix, nécessite de préciser le pricetype_
         """
         _pricetype = self.get_price_type() if pricetype_ is None else pricetype_
-        prices = self.get_price_conds(_pricetype).values
+        prices = self._get_price_conds(_pricetype).values
 
         currentSellPx = get_execPrice(self.brg, "sell", _pricetype, _forceLive=True)
         currentBuyPx = get_execPrice(self.brg, "buy", _pricetype, _forceLive=True)
@@ -349,7 +349,7 @@ class Condition:
         Si cette fonction est appelé alors il ne doit y avoir qu'une
         condition prix (ou qu'un genre).
         """
-        mask = self.get_price_conds()
+        mask = self._get_price_conds().index
         _genre = self.cond_frame.loc[mask, "genre"]
 
         assert len(_genre.unique()) <= 1, f"self.cond_frame={self.cond_frame}"
