@@ -287,7 +287,8 @@ class Condition:
             "price": self.get_conds("price"),
         }[_genre]
 
-        assert sum(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
+        assert len(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
+        
         sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
 
         return sorted_cond.values
