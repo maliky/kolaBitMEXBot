@@ -312,7 +312,7 @@ class Condition:
         low, high = sorted_cond.values
 
         self.logger.debug(f"initPrice={initPrice}, (low, high)={(low, high)}")
-        
+
         return low - initPrice, high - initPrice, initPrice
 
     def get_temps_cond(self):

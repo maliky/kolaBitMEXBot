@@ -243,7 +243,7 @@ class TrailStop(OrderConditionned):
             self.order["stopPx"] = setdef_stopPrice(
                 entryPrice=self.order["price"],
                 side=self.order["side"],
-                ordtype='Limit',
+                ordtype="Limit",
                 absdelta=self.tDelta,
             )
         else:
