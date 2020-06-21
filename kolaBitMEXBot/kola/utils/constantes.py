@@ -34,3 +34,24 @@ PRICELIST_DFT = [
     "bidPrice",
     "lastMidPrice",
 ]
+
+INSTRUMENT_PRICES = [
+    f"{suf}Price"
+    for suf in [
+        "max",
+        "prevClose",
+        "prev",
+        "high",
+        "low",
+        "last",
+        "bid",
+        "mid",
+        "ask",
+        "impactBid",
+        "impactMid",
+        "impactAsk",
+        "fair",
+        "mark",
+        "indicativeSettle",
+    ]
+] + ["lastPriceProtected"]
