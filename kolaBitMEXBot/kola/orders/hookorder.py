@@ -87,7 +87,7 @@ class HookOrder(OrderConditionned):
             # and if hooked start_time for timeout too
             if _has_been_hooked:
 
-                self.startTime = now()  # initiate the timeout
+                self.startTime = now()  # resetting the timeout
                 self.logger.debug(f"We have reseted startTime to {self.startTime}")
 
                 out = self.condition.is_(True) or self.order["ordType"] != "Market"
@@ -210,7 +210,7 @@ class HookOrder(OrderConditionned):
             raise Exception(f"genre={genre_} pas pris en compte pour le moment.")
 
         self.logger.debug(
-            f"relative_values[{op_}], base_value={relative_values[op_], base_value} {_prixCourant}"
+            f"relative_{genre_}[{op_}], base_value={relative_values[op_], base_value} {_prixCourant}"
         )
 
         return base_value + relative_values[op_]

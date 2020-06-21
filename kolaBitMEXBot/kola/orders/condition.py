@@ -2,13 +2,14 @@
 """Conditions pour les ordres."""
 from numpy import array
 from pandas import DataFrame, concat, Timestamp, Series
-from typing import Set, Optional, Union, List
+from typing import Set, Optional, Union, List, Dict
 
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.bargain import Bargain
 from kolaBitMEXBot.kola.kolatypes import ordStatusL
 from kolaBitMEXBot.kola.orders.orders import get_execPrice
+from kolaBitMEXBot.kola.utils.constantes import PRICELISTDFT
 
 
 class Condition:
@@ -56,6 +57,9 @@ class Condition:
 
         # store les conditions dans un df avec les cols (genre, op, value)
         self.cond_frame: DataFrame = self.forme_conditions(cond)
+        # market price when condition is initialised.  use to compute relative p.
+        self.init_prices = self.get_default_prices()
+        self.init_time = now()
 
     def __repr__(self, short=True):
         """Représentation pour la condition."""
@@ -77,21 +81,21 @@ class Condition:
 
         ret = f"----Cond: ({self.brg.symbol}) _truthValue is {all(tValues)}_ at {now()}"
         if not short:
-            prices = [
-                f"{p}={self.brg.prices(p)}"
-                for p in [
-                    "indexPrice",
-                    "markPrice",
-                    "lastPrice",
-                    "lastMidPrice",
-                    "bidPrice",
-                    "askPrice",
-                ]
-            ]
+            prices = self.get_default_prices()
             ret += f"\n--------Détails: refPrices={prices},\n{conditions_evaluees}"
             if sum(self.cond_frame.genre == "hook"):
                 ret += f"\n--------Hook to Exclude: {self.get_excludeIDs()}"
         return ret
+
+    def get_default_prices(
+        self, priceList_: List[str] = PRICELISTDFT
+    ) -> Dict[str, float]:
+        """
+        Ask the bargainer for the prices in pricelist.
+        
+        PRICELISTDFT = ["indexPrice", "markPrice", "lastPrice", "lastMidPrice", "bidPrice", "askPrice"]
+        """
+        return {f"{p}": self.brg.prices(p) for p in priceList_}
 
     def timed_out(self):
         """Regarde si il y a une condition de temps qui ne peut plus être vraie."""
@@ -300,27 +304,26 @@ class Condition:
         return False
 
     def get_relative_lh_temps(self):
-        """Renvoie les conditions relatives de type temps."""
+        """Return the difference between time conditions and initial time."""
         mask = self.get_temps_cond().values
         assert sum(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
 
         sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
         low, high = sorted_cond.values
 
-        return low - now(), high - now()
+        return low - self.init_time, high - self.init_time
 
     def get_relative_lh_price(self, priceType="markPrice"):
-        """Renvoie les conditions relative de type price et le prix courant."""
+        """Return the difference between price conditions and initial price."""
         try:
             mask = self.get_price_cond_mask()
             assert sum(mask) == 2, f"mask={mask}," f" self.cond_frame={self.cond_frame}"
         except Exception as ex:
-            self.logger.error(
-                f"mask={mask}," f" self.get_price_conds()={self.get_price_cond_mask()}"
-            )
+            msg = f"mask={mask}, get_price_conds()={self.get_price_cond_mask()}"
+            self.logger.error(msg)
             raise (ex)
 
-        currentP = self.brg.prices(self.get_price_type())
+        initPrice = self.init_prices[self.get_price_type()]
 
         try:
             sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
@@ -331,7 +334,7 @@ class Condition:
         sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
         low, high = sorted_cond.values
 
-        return low - currentP, high - currentP, currentP
+        return low - initPrice, high - initPrice, initPrice
 
     def get_temps_cond(self):
         """Renvoie le mask pour les conditions de temps."""

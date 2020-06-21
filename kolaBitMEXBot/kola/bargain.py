@@ -436,9 +436,11 @@ class Bargain:
         rep = self.bto._curl_bitmex(path, query)[0]
         self.logger.debug(f"asking: {path}, {query}. *Réponse: {rep}*")
 
-        return rep['price']
+        return rep["price"]
 
-    def prices(self, typeprice=None, side="buy", symbol_=None, force_live: bool=False):
+    def prices(
+        self, typeprice=None, side="buy", symbol_=None, force_live: bool = False
+    ):
         """
         Show summary of current prices.
 
@@ -470,13 +472,13 @@ class Bargain:
             # S'assurer qu'il n'y a pas deux appels consécutif à moins de x seconde
             # minisytème de cache  jusquà 11s avant nouvel appel au broker
             # can be force is force_live = True
-            
+
             timeLaps = now() - self.last_check_time
             msg = (
-                f'Checking cached price'
-                f' timeLaps={timeLaps}, now={now()},'
-                f' last_check_time={self.last_check_time}'
-                f' self.cached_refPrices={self.cached_refPrices}'
+                f"Checking cached price"
+                f" timeLaps={timeLaps}, now={now()},"
+                f" last_check_time={self.last_check_time}"
+                f" self.cached_refPrices={self.cached_refPrices}"
             )
 
             if (
@@ -489,7 +491,7 @@ class Bargain:
                 self.last_check_time = now()
 
                 self.cached_refPrices = cached_refPrices
-                msg += f'>>>> New Cached_refPrices={cached_refPrices} <<<<.'
+                msg += f">>>> New Cached_refPrices={cached_refPrices} <<<<."
 
             self.logger.debug(msg)
 
