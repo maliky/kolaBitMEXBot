@@ -288,8 +288,11 @@ class Condition:
         }[_genre]
 
         assert len(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
-        
-        sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
+        try:
+            sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
+        except Exception as e:
+            self.logger.error(f"mask={mask}")
+            raise e
 
         return sorted_cond.values
 
