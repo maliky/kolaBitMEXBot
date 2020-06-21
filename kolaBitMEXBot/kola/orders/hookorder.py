@@ -129,11 +129,9 @@ class HookOrder(OrderConditionned):
         if self.is_hooked:
             return True
 
-        cond_hooked = self.condition.is_hooked()
-        if cond_hooked:
-            self.logger.debug("*Is hooked*: self.__repr__(False)")
-
         if self.condition.is_hooked():
+            self.logger.debug(f"*is hooked*: {self.__repr__(False)}")
+
             self.is_hooked = True
             self.startTime = now()
 
