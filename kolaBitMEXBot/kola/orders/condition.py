@@ -144,7 +144,6 @@ class Condition:
 
     def set_price_val(self, price_ref, val):
         """Vérifie que l'on a une cond. prix et la renvoie si tel est le cas."""
-        self.logger.debug(f"Condition {self}, price_ref={price_ref} et val={val}")
         mask = self.cond_frame.genre == price_ref
         if any(mask):
             mid = self.cond_frame.loc[mask].index
@@ -231,9 +230,8 @@ class Condition:
             ret = all(self.evalue_les_conditions())
         except TypeError:
             ret = True
-        ret = ret if t_value else not ret
-        self.logger.debug(f"Done evaluating a condition {self}:  {ret}")
-        return ret
+
+        return ret if t_value else not ret
 
     def evalue(self, a, op: str, b) -> bool:
         """Retourne <bool> a op b où op est un operateur de type string."""
@@ -252,6 +250,7 @@ class Condition:
         """
         if self.has_hook_cond():
             hooks = self.cond_frame.genre == "hook"
+
             return self.cond_frame.loc[hooks, :].test.all()
 
         return False
@@ -289,8 +288,8 @@ class Condition:
     def get_low_high(self, _genre):
         """get low high value for _genre condition."""
         mask = {
-            "temps": self.get_temps_cond_mask().values,
-            "price": self.get_price_cond_mask(),
+            "temps": self.get_temps_conds().values,
+            "price": self.get_price_conds(),
         }[_genre]
 
         assert sum(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
@@ -309,18 +308,28 @@ class Condition:
 
         return low - initVal, high - initVal, initVal
 
-    def get_price_cond_mask(self):
-        """Renvoie le mask pour les conditions de prix."""
-        return self.cond_frame.genre.isin(self.price_list)
+    def get_conditions(self, genre_):
+        """Return condition for genre"""
+        if "price" in genre_.lower():
+            return self.get_price_conds()
+        elif genre_ == "temps":
+            return self.get_temps_conds()
 
-    def get_price_conds(self):
-        """Returns condition of type price sorted by price value (small first)."""
-        with_price = self.get_price_cond_mask()
-        return self.cond_frame.loc[with_price].sort_values("value")
-
-    def get_temps_cond_mask(self):
+    def get_temps_conds(self):
         """Renvoie le mask pour les conditions de temps."""
-        return self.cond_frame.genre == "temps"
+        return self.cond_frame.loc[self.cond_frame.genre == "temps"].sort_values(
+            "value"
+        )
+
+    def get_price_conds(self, pricetype_="*"):
+        """Renvoie le mask pour les conditions de prix."""
+        prices = self.cond_frame.genre.isin(self.price_list).sort_values("value")
+
+        if pricetype_ == "*":
+            return prices
+        else:
+            assert pricetype_ in prices.genre
+            return prices.loc[prices.genre == pricetype_]
 
     def get_current_price(self, pricetype_=None):
         """
@@ -329,36 +338,15 @@ class Condition:
         Normalement renvoie le prix associé à la condition prix.
         Si plusieurs condition prix, nécessite de préciser le pricetype_
         """
-
         _pricetype = self.get_price_type() if pricetype_ is None else pricetype_
-        prices = self.get_prices_where(_pricetype)
+        prices = self.get_price_conds(_pricetype).values
 
         currentSellPx = get_execPrice(self.brg, "sell", _pricetype, _forceLive=True)
         currentBuyPx = get_execPrice(self.brg, "buy", _pricetype, _forceLive=True)
 
         useSellPrice = currentSellPx <= max(prices.values) if len(prices) else True
 
-        # self.logger.info(
-        #     f"_pricetype={_pricetype}, currentSellPx={currentSellPx}, currentBuyPx={currentBuyPx}"
-        #     f"_cond prices_:\n{prices.values}\n"
-        # )
-
         return currentSellPx if useSellPrice else currentBuyPx
-
-    def get_prices_where(self, pricetype_):
-        """Renvoie les prix de type pricetype."""
-        prices = self.get_price_cond_where(pricetype_)
-        return prices.value
-
-    def get_price_cond_where(self, pricetype_) -> DataFrame:
-        """
-        Renvoie les conditions prix ou pricetype is pricetype_.
-
-        Attention le pricetype_ peut être lastmidprice, à revoir
-        """
-        prices = self.cond_frame.loc[self.get_price_cond_mask()]
-        _with_type = prices.genre == pricetype_
-        return prices.loc[_with_type]
 
     def get_price_type(self):
         """
@@ -367,7 +355,7 @@ class Condition:
         Si cette fonction est appelé alors il ne doit y avoir qu'une
         condition prix (ou qu'un genre).
         """
-        mask = self.get_price_cond_mask()
+        mask = self.get_price_conds()
         _genre = self.cond_frame.loc[mask, "genre"]
 
         assert len(_genre.unique()) <= 1, f"self.cond_frame={self.cond_frame}"
@@ -375,18 +363,12 @@ class Condition:
         if len(_genre):
             return _genre.iloc[0]
 
-    def get_conditions(self, genre_):
-        if "price" in genre_.lower():
-            return self.get_price_cond_mask()
-        elif genre_ == "temps":
-            return self.get_temps_cond_mask()
-
     def update_cond(self, genre_, op_, value_):
         """"
         Met à jour une condition.
         - genre_ le genre de la condition 'temps, hook, IndexPrice, LastPrice...
         - op: l'opérateur de la condition
-        - value_: la nouvelle valeu
+        - value_: la nouvelle valeur
         """
         mask = self.get_conditions(genre_).values & (self.cond_frame.op == op_).values
 

@@ -125,14 +125,19 @@ class HookOrder(OrderConditionned):
         If newly hooked update conditions relative to new price and time,
         else return self.is_hooked
         """
+
         if self.is_hooked:
             return True
+
+        cond_hooked = self.condition.is_hooked()
+        self.logger.debug(
+            f"{self.__repr__(False) if cond_hooked else 'cond is not hooked'}"
+        )
 
         if self.condition.is_hooked():
             self.is_hooked = True
             self.startTime = now()
 
-            self.logger.debug(f"*Before update* {self.__repr__(False)}")
             self.update_cond_with_relative_values()
 
             self.logger.info(
