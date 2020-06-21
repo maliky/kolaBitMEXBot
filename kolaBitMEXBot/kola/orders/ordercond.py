@@ -88,10 +88,6 @@ class OrderConditionned(Thread):
         """Ajoute une ou des conditions à la condition existante."""
         self.condition.add_condition(condition)
 
-    def get_price_conds(self):
-        """Retoure une des conditions prix."""
-        self.condition.get_price_conds()
-
     def run(self):
         """Run until truth exit condition."""
         self.logger.info(f"#### Starting {self.__repr__(False)}")
