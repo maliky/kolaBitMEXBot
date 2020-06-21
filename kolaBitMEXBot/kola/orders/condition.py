@@ -299,29 +299,20 @@ class Condition:
         sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
         low, high = sorted_cond.values
 
-        return low - self.init_time, high - self.init_time
+        return low - self.init_time, high - self.init_time, self.init_time
 
     def get_relative_lh_price(self, priceType="markPrice"):
         """Return the difference between price conditions and initial price."""
-        try:
-            mask = self.get_price_cond_mask()
-            assert sum(mask) == 2, f"mask={mask}," f" self.cond_frame={self.cond_frame}"
-        except Exception as ex:
-            msg = f"mask={mask}, get_price_conds()={self.get_price_cond_mask()}"
-            self.logger.error(msg)
-            raise (ex)
+        mask = self.get_price_cond_mask()
+        assert sum(mask) == 2, f"mask={mask}," f" self.cond_frame={self.cond_frame}"
 
         initPrice = self.init_prices[self.get_price_type()]
-
-        try:
-            sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
-        except Exception as ex:
-            self.logger.exception(f"self.cond_frame={self.cond_frame}")
-            raise (ex)
-
         sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
+
         low, high = sorted_cond.values
 
+        self.logger.debug(f"initPrice={initPrice}, (low, high)={(low, high)}")
+        
         return low - initPrice, high - initPrice, initPrice
 
     def get_temps_cond(self):
