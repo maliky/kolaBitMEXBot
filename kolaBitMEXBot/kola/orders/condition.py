@@ -240,11 +240,6 @@ class Condition:
         assert op in ["<", ">"]
         return bool(a < b) if op == "<" else bool(a > b)
 
-    def get_price_conds(self):
-        """Returns condition of type price sorted by price value (small first)."""
-        with_price = self.get_price_cond_mask()
-        return self.cond_frame.loc[with_price].sort_values("value")
-
     def has_hook_cond(self):
         """Say if this condition has a hook condition."""
         return len(self.cond_frame.genre == "hook")
@@ -291,31 +286,39 @@ class Condition:
 
         return False
 
-    def get_relative_lh_temps(self):
-        """Return the difference between time conditions and initial time."""
-        mask = self.get_temps_cond().values
+    def get_low_high(self, _genre):
+        """get low high value for _genre condition."""
+        mask = {
+            "temps": self.get_temps_cond_mask().values,
+            "price": self.get_price_cond_mask(),
+        }[_genre]
+
         assert sum(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
-
-        sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
-        low, high = sorted_cond.values
-
-        return low - self.init_time, high - self.init_time, self.init_time
-
-    def get_relative_lh_price(self, priceType="markPrice"):
-        """Return the difference between price conditions and initial price."""
-        mask = self.get_price_cond_mask()
-        assert sum(mask) == 2, f"mask={mask}," f" self.cond_frame={self.cond_frame}"
-
-        initPrice = self.init_prices[self.get_price_type()]
         sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
 
-        low, high = sorted_cond.values
+        return sorted_cond.values
 
-        self.logger.debug(f"initPrice={initPrice}, (low, high)={(low, high)}")
+    def get_relative_low_high(self, _genre):
+        """Return the initial difference for genre condition"""
+        assert _genre in ["temps", "price"], f"{_genre} is not implemented."
+        low, high = self.get_low_high(_genre)
+        initVal = {
+            "temps": self.init_time,
+            "price": self.init_prices[self.get_price_type()],
+        }[_genre]
 
-        return low - initPrice, high - initPrice, initPrice
+        return low - initVal, high - initVal, initVal
 
-    def get_temps_cond(self):
+    def get_price_cond_mask(self):
+        """Renvoie le mask pour les conditions de prix."""
+        return self.cond_frame.genre.isin(self.price_list)
+
+    def get_price_conds(self):
+        """Returns condition of type price sorted by price value (small first)."""
+        with_price = self.get_price_cond_mask()
+        return self.cond_frame.loc[with_price].sort_values("value")
+
+    def get_temps_cond_mask(self):
         """Renvoie le mask pour les conditions de temps."""
         return self.cond_frame.genre == "temps"
 
@@ -335,10 +338,10 @@ class Condition:
 
         useSellPrice = currentSellPx <= max(prices.values) if len(prices) else True
 
-        self.logger.info(
-            f"_pricetype={_pricetype}, currentSellPx={currentSellPx}, currentBuyPx={currentBuyPx}"
-            f"_cond prices_:\n{prices.values}\n"
-        )
+        # self.logger.info(
+        #     f"_pricetype={_pricetype}, currentSellPx={currentSellPx}, currentBuyPx={currentBuyPx}"
+        #     f"_cond prices_:\n{prices.values}\n"
+        # )
 
         return currentSellPx if useSellPrice else currentBuyPx
 
@@ -376,7 +379,7 @@ class Condition:
         if "price" in genre_.lower():
             return self.get_price_cond_mask()
         elif genre_ == "temps":
-            return self.get_temps_cond()
+            return self.get_temps_cond_mask()
 
     def update_cond(self, genre_, op_, value_):
         """"
@@ -402,7 +405,3 @@ class Condition:
         self.cond_frame.loc[mask, "value"] = value_
 
         return self
-
-    def get_price_cond_mask(self):
-        """Renvoie le mask pour les conditions de prix."""
-        return self.cond_frame.genre.isin(self.price_list)

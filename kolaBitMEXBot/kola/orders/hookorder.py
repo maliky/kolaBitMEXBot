@@ -74,11 +74,6 @@ class HookOrder(OrderConditionned):
         """Tourne jusqu'à ce qu'au stop ou jusqu'à realisation de la condition."""
         self.logger.info(f"#### Starting {self}")
 
-        # update relative_values
-        # self.logger.debug(f"Before update {self.__repr__(False)}")
-        # relative_values = self.get_condition_values()
-        # self.logger.debug(f"After {self.__repr__(False)} relative_values={relative_values}")
-
         execValidation = {}
         while not self.stop:
 
@@ -131,35 +126,30 @@ class HookOrder(OrderConditionned):
         If newly hooked update conditions relative to new price and time,
         else return self.is_hooked
         """
-        self.logger.debug(
-            f" $$$ is_hooked={self.is_hooked} and condition,\n "
-            f"{self.condition.__repr__(short=False)}, "
-            f"cond is hooked ? {self.condition.is_hooked()}, "
-            f"hookedSrcID={self.condition.hookedSrcID}"
-        )
-
-        if self.is_hooked:
-            return True
-
-        if self.condition.is_hooked():
-            self.logger.info(f"*** self.condition={self.__repr__(short=False)}")
+        if self.condition.is_hooked() and not self.is_hooked:
             self.is_hooked = True
             self.startTime = now()
-            self.logger.debug(f"* *Before update* * {self.__repr__(False)}")
+
+            self.logger.debug(f"*Before update* {self.__repr__(False)}")
             self.update_cond_with_relative_values()
+
             self.logger.info(
-                f"$$*$ {self} is hooking with ID '{self.condition.hookedSrcID}'\n"
-                f"_Newly Updated conditions_:\n "
+                f"*After update* {self} is hooking with ID '{self.condition.hookedSrcID}'\n"
+                f"_Newly Updated conditions_:\n"
                 f"- from:\nself.init_cond={self.init_cond_frame}\n"
                 f"- to:\n{self.condition.__repr__(False)}"
             )
 
-        return None
+        self.logger.debug(
+            f"$$ Test is_hooked={self.is_hooked} and "
+            f"condition.is_hooked()={self.condition.is_hooked()} $$"
+        )
+
+        return self.is_hooked
 
     def get_current_price(self):
         """Renvoi un prix de la condition."""
         current_price = self.condition.get_current_price()
-        self.logger.info(f"current_price={current_price}")
         return current_price
 
     def update_price_with_relatie_values(self):
@@ -196,32 +186,17 @@ class HookOrder(OrderConditionned):
         return None
 
     def get_new_cond_values(self, genre_, op_):
-        """Renvoie les nouvelles valeurs relatives aux prix et temps courants."""
-        _lowT, _highT, _initT = self.condition.get_relative_lh_temps()
-        _lowP, _highP, _initP = self.condition.get_relative_lh_price()
-
-        relative_condition_values = {
-            "temps": {">": _lowT, "<": _highT},
-            "price": {">": _lowP, "<": _highP},
-        }
-
-        if genre_ == "price":
-            relative_values, _initVal = relative_condition_values[genre_], _initP
-            current_val = self.get_current_price()
-        elif genre_ == "temps":
-            relative_values, _initVal = relative_condition_values[genre_], _initT
-            current_val = now()
-        else:
-            raise Exception(f"genre={genre_} pas pris en compte pour le moment.")
+        """Return an initial condition updated to current price or time value."""
+        _lowD, _highD, _initV = self.condition.get_relative_low_high(genre_)
+        relative_val = {">": _lowD, "<": _highD}
+        current_val = {"temps": now(), "price": self.get_current_price()}
 
         self.logger.debug(
-            f"~~'{genre_}'[{op_}] {relative_values[op_]}, current_val = {current_val}, init {_initVal}"
+            f"~'{genre_, op_}'~ init={_initV}, rel_val={relative_val[op_]},"
+            f" current_val={current_val[genre_]}"
         )
 
-        return current_val + relative_values[op_]
-
-    def get_relative_condition_values(self):
-        """renvois les valeurs de la condition."""
+        return current_val[genre_] + relative_val[op_]
 
     def conditions_remplies(self):
         """Check that conditions to start the ordrer."""
