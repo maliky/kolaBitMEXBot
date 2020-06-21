@@ -461,57 +461,60 @@ class Bargain:
         # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'MarkPrice',
         # 'MarkPrice', 'indicativeSettlePrice', 'lowPrice',
         # execInst, MarkPrice, LastPrice, IndexPrice
-
+        
         ret = None
         typeprice = "" if typeprice is None else typeprice
 
-        if typeprice == "delta":
-            ret = prices["askPrice"] - prices["bidPrice"]
+        try:
+            if typeprice == "delta":
+                ret = prices["askPrice"] - prices["bidPrice"]
 
-        elif typeprice.lower() == "indexprice":
-            # S'assurer qu'il n'y a pas deux appels consécutif à moins de x seconde
-            # minisytème de cache  jusquà 11s avant nouvel appel au broker
-            # can be force is force_live = True
+            elif typeprice.lower() == "indexprice":
+                # S'assurer qu'il n'y a pas deux appels consécutif à moins de x seconde
+                # minisytème de cache  jusquà 11s avant nouvel appel au broker
+                # can be force is force_live = True
 
-            timeLaps = now() - self.last_check_time
-            msg = (
-                f"Checking cached price"
-                f" timeLaps={timeLaps}, now={now()},"
-                f" last_check_time={self.last_check_time}"
-                f" self.cached_refPrices={self.cached_refPrices}"
-            )
+                timeLaps = now() - self.last_check_time
+                msg = (
+                    f"Checking cached price"
+                    f" timeLaps={timeLaps}, now={now()},"
+                    f" last_check_time={self.last_check_time}"
+                    f" self.cached_refPrices={self.cached_refPrices}"
+                )
 
-            if (
-                self.cached_refPrices is None
-                or timeLaps > Timedelta(randint(2, 11), unit="s")
-                or self.bto.dummy
-                or force_live
-            ):
-                cached_refPrices = self.get_most_recent_settlement_price()
-                self.last_check_time = now()
+                if (
+                    self.cached_refPrices is None
+                    or timeLaps > Timedelta(randint(2, 11), unit="s")
+                    or self.bto.dummy
+                    or force_live
+                ):
+                    cached_refPrices = self.get_most_recent_settlement_price()
+                    self.last_check_time = now()
 
-                self.cached_refPrices = cached_refPrices
-                msg += f">>>> New Cached_refPrices={cached_refPrices} <<<<."
+                    self.cached_refPrices = cached_refPrices
+                    msg += f">>>> New Cached_refPrices={cached_refPrices} <<<<."
 
-            self.logger.debug(msg)
+                self.logger.debug(msg)
 
-            ret = self.cached_refPrices
+                ret = self.cached_refPrices
 
-        elif typeprice.lower() == "lastprice":
-            # askPrice > bidPrice
-            ret = prices["askPrice"] if side == "buy" else prices["bidPrice"]
-        elif typeprice == "market_maker":
-            ret = prices["bidPrice"] if side == "buy" else prices["askPrice"]
-        elif typeprice.lower() == "lastmidprice":
-            ret = self.prices("midPrice")  # this is close to the last price
-        elif typeprice.lower() in ["market", "market_price", "markprice"]:
-            # fairePrice is the marketPrice dans XBT check markMethod
-            ret = prices["MarkPrice"]
-        elif typeprice == "ref_delta":
-            ret = self.prices("midPrice") - self.prices("IndexPrice")
-        elif typeprice:
-            ret = prices[typeprice]
-
+            elif typeprice.lower() == "lastprice":
+                # askPrice > bidPrice
+                ret = prices["askPrice"] if side == "buy" else prices["bidPrice"]
+            elif typeprice == "market_maker":
+                ret = prices["bidPrice"] if side == "buy" else prices["askPrice"]
+            elif typeprice.lower() == "lastmidprice":
+                ret = self.prices("midPrice")  # this is close to the last price
+            elif typeprice.lower() in ["market", "market_price", "markprice"]:
+                # fairePrice is the marketPrice dans XBT check markMethod
+                ret = prices["MarkPrice"]
+            elif typeprice == "ref_delta":
+                ret = self.prices("midPrice") - self.prices("IndexPrice")
+            elif typeprice:
+                ret = prices[typeprice]
+        except Exception as e:
+            self.logger.error(f"prices={prices}, e={e}")
+            
         return prices if not ret else round_sprice(ret, self.symbol)
 
     def set_leverage(self, leverage):
