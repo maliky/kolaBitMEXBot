@@ -283,13 +283,13 @@ class Condition:
     def get_low_high(self, _genre):
         """get low high value for _genre condition."""
         mask = {
-            "temps": self.get_conds("temps").values,
+            "temps": self.get_conds("temps"),
             "price": self.get_conds("price"),
         }[_genre]
 
         assert len(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
         try:
-            sorted_cond = self.cond_frame.loc[mask, "value"].sort_values()
+            sorted_cond = self.cond_frame.loc[mask.index, "value"].sort_values()
         except Exception as e:
             self.logger.error(f"mask={mask}")
             raise e
@@ -306,13 +306,6 @@ class Condition:
         }[_genre]
 
         return low - initVal, high - initVal, initVal
-
-    def get_conditions(self, genre_):
-        """Return condition for genre"""
-        if "price" in genre_.lower():
-            return self.get_conds("price")
-        elif genre_ == "temps":
-            return self.get_conds("temps")
 
     def get_conds(self, genre_, pricetype_="*"):
         """Renvoie le mask pour les conditions de temps."""
