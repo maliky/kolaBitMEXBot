@@ -244,7 +244,7 @@ class Condition:
 
         If so, we say that the condition is hooked.
         """
-        has_hook = self.get_conds('hook')
+        has_hook = self.get_conds("hook")
         if len(has_hook):
             return self.evalue_les_conditions(has_hook).all()
 
@@ -319,7 +319,8 @@ class Condition:
 
     def _get_price_conds(self, pricetype_="*"):
         """Renvoie le mask pour les conditions de prix."""
-        prices = self.cond_frame.genre.isin(self.price_list).sort_values("value")
+        mask = self.cond_frame.genre.isin(self.price_list)
+        prices = self.cond_frame.loc[mask, :].sort_values("value")
 
         if pricetype_ == "*":
             return prices

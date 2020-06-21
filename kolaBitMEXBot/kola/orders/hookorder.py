@@ -130,9 +130,8 @@ class HookOrder(OrderConditionned):
             return True
 
         cond_hooked = self.condition.is_hooked()
-        self.logger.debug(
-            f"{self.__repr__(False) if cond_hooked else 'cond is not hooked'}"
-        )
+        if cond_hooked:
+            self.logger.debug("*Is hooked*: self.__repr__(False)")
 
         if self.condition.is_hooked():
             self.is_hooked = True
