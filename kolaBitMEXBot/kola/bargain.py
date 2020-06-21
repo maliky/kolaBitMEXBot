@@ -99,30 +99,30 @@ class Bargain:
         """Calculate currency delta for portfolio."""
         # à creuser
         portfolio = self.get_portfolio()
-        indexPrice_delta = 0
+        IndexPrice_delta = 0
         mark_delta = 0
         for self.symbol in portfolio:
             item = portfolio[self.symbol]
             if item["futureType"] == "Quanto":
-                indexPrice_delta += (
-                    item["currentQty"] * item["multiplier"] * item["indexPrice"]
+                IndexPrice_delta += (
+                    item["currentQty"] * item["multiplier"] * item["IndexPrice"]
                 )
                 mark_delta += (
-                    item["currentQty"] * item["multiplier"] * item["markPrice"]
+                    item["currentQty"] * item["multiplier"] * item["MarkPrice"]
                 )
             elif item["futureType"] == "Inverse":
-                indexPrice_delta += (item["multiplier"] / item["indexPrice"]) * item[
+                IndexPrice_delta += (item["multiplier"] / item["IndexPrice"]) * item[
                     "currentQty"
                 ]
-                mark_delta += (item["multiplier"] / item["markPrice"]) * item[
+                mark_delta += (item["multiplier"] / item["MarkPrice"]) * item[
                     "currentQty"
                 ]
             elif item["futureType"] == "Linear":
-                indexPrice_delta += item["multiplier"] * item["currentQty"]
+                IndexPrice_delta += item["multiplier"] * item["currentQty"]
                 mark_delta += item["multiplier"] * item["currentQty"]
-        basis_delta = mark_delta - indexPrice_delta
+        basis_delta = mark_delta - IndexPrice_delta
         delta = {
-            "indexPrice": indexPrice_delta,
+            "IndexPrice": IndexPrice_delta,
             "mark_price": mark_delta,
             "basis": basis_delta,
         }
@@ -221,7 +221,7 @@ class Bargain:
                 "currentTimestamp",
                 "timestamp",
                 "avgEntryPrice",
-                "lastPrice",
+                "LastPrice",
                 "currentCost",
                 "currentQty",
                 "liquidationPrice",
@@ -264,8 +264,8 @@ class Bargain:
                 "currentQty": float(position["currentQty"]),
                 "futureType": future_type,
                 "multiplier": multiplier,
-                "markPrice": float(instrument["markPrice"]),
-                "indexPrice": float(instrument["indicativeSettlePrice"]),
+                "MarkPrice": float(instrument["MarkPrice"]),
+                "IndexPrice": float(instrument["indicativeSettlePrice"]),
             }
 
         return portfolio
@@ -432,7 +432,7 @@ class Bargain:
             "reverse": "true",
         }
         # self.logger.debug(f'Got new price from curl {self.cached_refPrices}')
-        # not sure here about the markPrice for the indexPrice
+        # not sure here about the markPrice for the IndexPrice
         rep = self.bto._curl_bitmex(path, query)[0]
         self.logger.debug(f"asking: {path}, {query}. *Réponse: {rep}*")
 
@@ -444,7 +444,7 @@ class Bargain:
         """
         Show summary of current prices.
 
-        typeprice can be 'delta', 'indexPrice', 'market', 'askPrice',
+        typeprice can be 'delta', 'IndexPrice', 'market', 'askPrice',
 
         'midPrice', 'ref_delta','market_maker', 'lastMidPrice' or None
         (for all instrument prices)
@@ -457,9 +457,9 @@ class Bargain:
             k: v for (k, v) in self.bto.instrument(_symbol).items() if "rice" in k
         }
         # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice',
-        # 'lastPrice', 'lastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',
-        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'markPrice',
-        # 'markPrice', 'indicativeSettlePrice', 'lowPrice',
+        # 'LastPrice', 'LastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',
+        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'MarkPrice',
+        # 'MarkPrice', 'indicativeSettlePrice', 'lowPrice',
         # execInst, MarkPrice, LastPrice, IndexPrice
 
         ret = None
@@ -506,9 +506,9 @@ class Bargain:
             ret = self.prices("midPrice")  # this is close to the last price
         elif typeprice.lower() in ["market", "market_price", "markprice"]:
             # fairePrice is the marketPrice dans XBT check markMethod
-            ret = prices["markPrice"]
+            ret = prices["MarkPrice"]
         elif typeprice == "ref_delta":
-            ret = self.prices("midPrice") - self.prices("indexPrice")
+            ret = self.prices("midPrice") - self.prices("IndexPrice")
         elif typeprice:
             ret = prices[typeprice]
 
