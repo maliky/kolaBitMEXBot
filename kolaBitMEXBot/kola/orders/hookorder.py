@@ -197,32 +197,31 @@ class HookOrder(OrderConditionned):
 
     def get_new_cond_values(self, genre_, op_):
         """Renvoie les nouvelles valeurs relatives aux prix et temps courants."""
-        relative_condition_values = self.get_relative_condition_values()
+        _lowT, _highT, _initT = self.condition.get_relative_lh_temps()
+        _lowP, _highP, _initP = self.condition.get_relative_lh_price()
+
+        relative_condition_values = {
+            "temps": {">": _lowT, "<": _highT},
+            "price": {">": _lowP, "<": _highP},
+        }
 
         if genre_ == "price":
-            relative_values, _initVal = relative_condition_values[genre_]
+            relative_values, _initVal = relative_condition_values[genre_], _initP
             current_val = self.get_current_price()
         elif genre_ == "temps":
-            relative_values, _initVal = relative_condition_values[genre_]
+            relative_values, _initVal = relative_condition_values[genre_], _initT
             current_val = now()
         else:
             raise Exception(f"genre={genre_} pas pris en compte pour le moment.")
 
         self.logger.debug(
-            f"relative '{genre_}'[{op_}] {relative_values[op_]}, current_price = {current_val}, init {_initVal}"
+            f"~~'{genre_}'[{op_}] {relative_values[op_]}, current_val = {current_val}, init {_initVal}"
         )
 
         return current_val + relative_values[op_]
 
     def get_relative_condition_values(self):
         """renvois les valeurs de la condition."""
-        _lowT, _highT = self.condition.get_relative_lh_temps()
-        _lowP, _highP, prixCourant = self.condition.get_relative_lh_price()
-
-        return {
-            "temps": {">": _lowT, "<": _highT},
-            "price": ({">": _lowP, "<": _highP}, prixCourant),
-        }
 
     def conditions_remplies(self):
         """Check that conditions to start the ordrer."""

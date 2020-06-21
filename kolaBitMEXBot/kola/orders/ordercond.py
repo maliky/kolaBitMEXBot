@@ -83,7 +83,7 @@ class OrderConditionned(Thread):
 
     def canceled(self):
         return self._canceled
-    
+
     def add_condition(self, condition):
         """Ajoute une ou des conditions à la condition existante."""
         self.condition.add_condition(condition)
@@ -109,7 +109,7 @@ class OrderConditionned(Thread):
                 self.logger.info(f"Déclenchement {self} '{condition_sortie}'")
                 execValidation = self.send_order()
                 if isinstance(execValidation, dict):
-                    if execValidation.get('ordStatus', False) == 'Canceled' :
+                    if execValidation.get("ordStatus", False) == "Canceled":
                         self._canceled = True
                 break
 
@@ -225,6 +225,5 @@ class OrderConditionned(Thread):
 
         if self.canceled():
             reason += ">>>> IS CANCELED <<<<"
-            
-        self.logger.info(f"with {reason}")
 
+        self.logger.info(f"with {reason}")
