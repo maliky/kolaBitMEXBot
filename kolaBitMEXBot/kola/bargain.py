@@ -514,6 +514,7 @@ class Bargain:
                 ret = prices[typeprice]
         except Exception as e:
             self.logger.error(f"prices={prices}, e={e}")
+            raise(e)
             
         return prices if not ret else round_sprice(ret, self.symbol)
 
