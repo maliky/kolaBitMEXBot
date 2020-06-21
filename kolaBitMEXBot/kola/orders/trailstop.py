@@ -314,15 +314,15 @@ class TrailStop(OrderConditionned):
     def set_tail_strategy(self):
         """Définie la longueur de la trace en pourcentage.
         Utilise pour cela la position des prix du marché (midPrice)
-        par rapport à ceux de référecence (indexPrice).  L'hypothèse est
+        par rapport à ceux de référecence (IndexPrice).  L'hypothèse est
         que le marché tends vers le prix de ref.  Aussi il s'agit de détecter
-        les contre courant.  Nous suivant le prix de réf (indexPrice) donc lui
+        les contre courant.  Nous suivant le prix de réf (IndexPrice) donc lui
         a tendance à aller vers le marché
-        1) Si je suis à l'achat mais que le indexPrice est > au marché alors on
-        allonge la trace du pourcentage la différence |midprice - indexPrice| par
-        rapport au indexPrice. Sinon en garde le pourcentage d'initialisation
-        2) A contrario si je suis en vente mais que le indexPrice est < au marché
-        alors on alonge la trace du pourcentage la différence |midprice - indexPrice|
+        1) Si je suis à l'achat mais que le IndexPrice est > au marché alors on
+        allonge la trace du pourcentage la différence |midprice - IndexPrice| par
+        rapport au IndexPrice. Sinon en garde le pourcentage d'initialisation
+        2) A contrario si je suis en vente mais que le IndexPrice est < au marché
+        alors on alonge la trace du pourcentage la différence |midprice - IndexPrice|
         par rapport au maché.  Sinon status quo."""
 
         return self.pegOffset_perc

@@ -65,7 +65,7 @@ def get_args():
     quantity_help = f"quantité de l'ordre.  Doit toujours être positive ici.  Mais peut être exprimier en %% de la balance dispo ou en valeur Absolue (default={quantity_def})"
     tailPrice_help = f"C'est l'epaisseur de la queue (tail) qui suit le pri;  en %%, valeur absolu ou prix de départ (default={tailPrice_def})"
     aType_help = f"définie comment interpréter les arguments --prix (p), --quantity (q), --tailPrice (t). Suivant les lettres ajouter A, D ou %% pour en valeur Absolue, Differentiel ou pourcentage.  Exemple:  p%%qAt%% pour prix en pourcentage, quantité Absolue et t%% en pourcentage (default={aType_def})"
-    oType_help = f"Declenchement price type. One of one of indexPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop indexPrice,  markePrice (markPrice) et lastPrice (default ={oType_def})"
+    oType_help = f"Declenchement price type. One of one of IndexPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop IndexPrice,  markePrice (markPrice) et lastPrice (default ={oType_def})"
     logLevel_help = f"le niveau pour le log (default={logLevel_def})"
     logFile_help = f"Le fichier de sorti log. (default {logFile_def})"
     liveRun_help = "Si présent effectue un live run sinon sur tests"
@@ -73,7 +73,7 @@ def get_args():
     updatePause_help = f"Le temps  (moyen) nentre deux update de la tail (en s), (default={updatePause_def})"
     logPause_help = f"Le temps (moyen) entre deux logs de l'évolution des prix. (default={logPause_def})"
     argFile_help = f"Indique le nom d'un fichier contenant multiples orders to run in one go. (default {argFile_def})"
-    tType_help = f"one of indexPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop indexPrice,  markePrice (markPrice) et lastPrice.  Du moins au plus volatille. Default (default {tType_def})"
+    tType_help = f"one of IndexPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop IndexPrice,  markePrice (markPrice) et lastPrice.  Du moins au plus volatille. Default (default {tType_def})"
     dr_pause_help = f"Indique une durée de pause lorsqu'un ordre fini. C'est approximatif.  attend au moins 10 secondes puis rnd.exp (default={dr_pause_def}) min"
     hook_help = f"define the name of the order to hook to and the status to wait for. F for filled, N for new, C for cancel and P for partial... formed as name_F (default={hook_def})"
 

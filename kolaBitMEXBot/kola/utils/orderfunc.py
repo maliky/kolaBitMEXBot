@@ -78,7 +78,7 @@ def get_abbv_from_ID(oClOrdID_: str):
 
 # @log_args()
 def create_order(
-    side, _q, opType, ordtype, execinst, prices=None, absdelta=.5, text=None
+    side, _q, opType, ordtype, execinst, prices=None, absdelta=0.5, text=None
 ):
     """
     Crée un 'side' ordre de type ordtype et de volume '_q'.  
@@ -91,7 +91,9 @@ def create_order(
         raise Exception("qty is too small _q={_q}")
 
     if prices is None and ordtype != "Market":
-        raise Exception(f"if ordtype {ordtype} need prices to immediatly place limit or stop. prices={prices}.")
+        raise Exception(
+            f"if ordtype {ordtype} need prices to immediatly place limit or stop. prices={prices}."
+        )
 
     # création de l'ordre principal
     order = {"side": side, "orderQty": _q}
@@ -206,7 +208,6 @@ def set_price_type(pricekey, side):
     avec la pricekey i, l ou m renvois le type de prix pour le suivi du déclenchement de la peg.
     Attention dans condition,  j'utilise ask et bid mais pour exec if faut LastPrice qui ont des stopPx.
 priceType can be None if exist but not in PT
-    
     """
     if pricekey is None:
         # defaultPriceType = 'bidPrice' if side is None or side == 'buy' else 'askPrice'
@@ -218,8 +219,6 @@ priceType can be None if exist but not in PT
         "i": "IndexPrice",
         "l": "lastMidPrice",
         "m": "MarkPrice",
-        "market": "MarketPrice",
-        "indexPrice": "IndexPrice",
     }
     priceType = PT.get(pricekey, defaultPriceType)
 

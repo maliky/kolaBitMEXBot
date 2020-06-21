@@ -110,13 +110,13 @@ class BitMEXWebsocket:
             ticker = {}
             ticker["mid"] = ticker["buy"] = ticker["sell"] = ticker[
                 "last"
-            ] = instrument["markPrice"]
+            ] = instrument["MarkPrice"]
         # Normal instrument
         else:
-            bid = instrument["bidPrice"] or instrument["lastPrice"]
-            ask = instrument["askPrice"] or instrument["lastPrice"]
+            bid = instrument["bidPrice"] or instrument["LastPrice"]
+            ask = instrument["askPrice"] or instrument["LastPrice"]
             ticker = {
-                "last": instrument["lastPrice"],
+                "last": instrument["LastPrice"],
                 "buy": bid,
                 "sell": ask,
                 "mid": (bid + ask) / 2,

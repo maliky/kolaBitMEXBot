@@ -428,7 +428,7 @@ def get_execPrice(
     - symbol: the symbol to get the price for
     """
     if typeprice is None:
-        # 'lastMidPrice'  # == markPrice ?
+        # 'lastMidPrice'  # == MarkPrice ?
         assert deftypeprice is not None
         typePrice = deftypeprice
     elif isinstance(typeprice, dict):

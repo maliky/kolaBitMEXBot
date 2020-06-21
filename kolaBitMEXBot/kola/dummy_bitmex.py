@@ -61,7 +61,7 @@ class DummyBitMEX:
 
     def instrument(self, symbol=None):
         refPrice = self.current_dum_price
-        markPrice = refPrice + round_price(rnd.normal(), self.prec)
+        MarkPrice = refPrice + round_price(rnd.normal(), self.prec)
 
         return {
             "multiplier": 1,
@@ -71,15 +71,15 @@ class DummyBitMEX:
             "isInverse": False,
             "isQuanto": False,
             "isInverse": False,
-            "markPrice": markPrice,
-            "markPrice": markPrice,
+            "MarkPrice": MarkPrice,
+            "MarkPrice": MarkPrice,
             "indicativeSettlePrice": refPrice,
             "symbol": self.symbol,
-            "askPrice": markPrice + 0.5,
-            "bidPrice": markPrice - 1,
-            "midPrice": markPrice - 0.25,
-            "lastMidPrice": markPrice - 0.25,
-            "lastPrice": markPrice - 0.25,
+            "askPrice": MarkPrice + 0.5,
+            "bidPrice": MarkPrice - 1,
+            "midPrice": MarkPrice - 0.25,
+            "lastMidPrice": MarkPrice - 0.25,
+            "LastPrice": MarkPrice - 0.25,
         }
 
     def cancel(self, ids):
@@ -169,7 +169,7 @@ class DummyBitMEX:
             "currentTimestamp": None,
             "timestamp": now(),
             "avgEntryPrice": None,
-            "lastPrice": self.current_dum_price,
+            "LastPrice": self.current_dum_price,
             "currentCost": "?",
             "currentQty": 100,
             "liquidationPrice": "?",

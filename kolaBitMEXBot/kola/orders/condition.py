@@ -9,14 +9,14 @@ from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.bargain import Bargain
 from kolaBitMEXBot.kola.kolatypes import ordStatusL
 from kolaBitMEXBot.kola.orders.orders import get_execPrice
-from kolaBitMEXBot.kola.utils.constantes import PRICELISTDFT
+from kolaBitMEXBot.kola.utils.constantes import PRICELIST_DFT
 
 
 class Condition:
     """
     Définie la condition d'exécution et d'évaluation d'un ordre.
 
-    # Extension: Ajouter des options extra pour le prix, indexPrice price, ect...
+    # Extension: Ajouter des options extra pour le prix, IndexPrice price, ect...
     # pour que l'on puisse choisir sur quoi s'applique la condition
     # c'est ici que l'évaluation ou l'appel à des indicateur aura lieu.
     # voir donc côté volume bin ect..
@@ -38,18 +38,8 @@ class Condition:
         self.logger = get_logger(logger, sLL="DEBUG", name=__name__)
 
         # Une liste de mots clef pour le prix
-        # Fairprice = market price et lastPrice ~= midPrice
-        self.price_list: List[str] = [
-            "lastPrice",
-            "indexPrice",
-            "bidPrice",
-            "askPrice",
-            "markPrice",
-            "IndexPrice",
-            "LastPrice",
-            "MarkPrice",
-            "lastMidPrice",
-        ]
+        # Fairprice = market price et LastPrice ~= midPrice
+        self.price_list: List[str] = PRICELIST_DFT
 
         # to cached hooked ID, il ne doit y en avoir qu'un
         self.hookedSrcID: str = ""
@@ -87,15 +77,13 @@ class Condition:
                 ret += f"\n--------Hook to Exclude: {self.get_excludeIDs()}"
         return ret
 
-    def get_default_prices(
-        self, priceList_: List[str] = PRICELISTDFT
-    ) -> Dict[str, float]:
+    def get_default_prices(self) -> Dict[str, float]:
         """
         Ask the bargainer for the prices in pricelist.
-        
-        PRICELISTDFT = ["indexPrice", "markPrice", "lastPrice", "lastMidPrice", "bidPrice", "askPrice"]
+
+        PRICELIST_DFT = {"Index", "Mark", "Last", "lastMid", "bid", "ask"}price
         """
-        return {f"{p}": self.brg.prices(p) for p in priceList_}
+        return {f"{p}": self.brg.prices(p) for p in self.price_list}
 
     def timed_out(self):
         """Regarde si il y a une condition de temps qui ne peut plus être vraie."""

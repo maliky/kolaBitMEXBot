@@ -26,11 +26,11 @@ SETTLEMENTPRICES = {"XBTUSD": ".BXBT", "ADAM20": ".BADAXBT30M"}
 PRICE_PRECISION = {"XBTUSD": 0.5, "ADAM20": 1e-8}
 
 # used in condition
-PRICELISTDFT = [
-    "indexPrice",
-    "markPrice",
-    "lastPrice",
-    "lastMidPrice",
-    "bidPrice",
+PRICELIST_DFT = [
+    "IndexPrice",
+    "LastPrice",
+    "MarkPrice",
     "askPrice",
+    "bidPrice",
+    "lastMidPrice",
 ]
