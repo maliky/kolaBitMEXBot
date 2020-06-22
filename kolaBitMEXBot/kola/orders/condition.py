@@ -203,25 +203,27 @@ class Condition:
                 return "Init"
             else:
                 raise ae
-        except Exception:
-            raise Exception(f"cond={cond_frame}")
+        except Exception as e:
+            raise Exception(f"{e}: cond={cond_frame}")
 
         return test
 
     def evalue_une_condition(self, cond: Series):
         """
         Évalue une condition en fonction du genre.
-
-        Les plus simple sont prix et temps.
         """
-        if cond.genre in self.price_list:
-            current_price = self.brg.prices(cond.genre)
-            return self.evalue(current_price, cond.op, cond.value)
+        try:
+            if cond.genre in self.price_list:
+                current_price = self.brg.prices(cond.genre)
+                return self.evalue(current_price, cond.op, cond.value)
 
-        return {
-            "temps": self.evalue(now(), cond.op, cond.value),
-            "hook": self.evalue_un_hook(cond),
-        }[cond.genre]
+            return {
+                "temps": self.evalue(now(), cond.op, cond.value),
+                "hook": self.evalue_un_hook(cond),
+            }[cond.genre]
+        except Exception as ex:
+            self.logger.error(f"cond={cond}")
+            raise (ex)
 
     def is_(self, t_value):
         """
@@ -239,7 +241,7 @@ class Condition:
 
     def evalue(self, a, op: str, b) -> bool:
         """Retourne <bool> a op b où op est un operateur de type string."""
-        assert op in ["<", ">"]
+        assert op in ["<", ">"], f"op={op}, a,b={a,b}"
         return bool(a < b) if op == "<" else bool(a > b)
 
     def is_hooked(self):
