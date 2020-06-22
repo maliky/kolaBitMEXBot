@@ -265,10 +265,10 @@ class Condition:
             if clID not in self.excludeIDs
         ]
 
-        self.logger.debug(
-            f"~~~~ self.brg.get_exec_(srcKey_=cond_.op)="
-            f"{self.brg.get_exec_clID_with_(srcKey_=cond_.op, debug_=False)}"
-        )
+        # self.logger.debug(
+        #     f"~~~~ self.brg.get_exec_(srcKey_=cond_.op)="
+        #     f"{self.brg.get_exec_clID_with_(srcKey_=cond_.op, debug_=False)}"
+        # )
 
         if len(clOrdIDs):
             tv = self.brg.order_reached_status(clOrdIDs[-1], cond_.value)
@@ -282,10 +282,9 @@ class Condition:
 
     def get_low_high(self, _genre):
         """get low high value for _genre condition."""
-        mask = {
-            "temps": self.get_conds("temps"),
-            "price": self.get_conds("price"),
-        }[_genre]
+        mask = {"temps": self.get_conds("temps"), "price": self.get_conds("price"),}[
+            _genre
+        ]
 
         assert len(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
         try:
@@ -322,7 +321,9 @@ class Condition:
         if pricetype_ == "*":
             return prices
         else:
-            assert pricetype_ in prices.genre
+            assert (
+                pricetype_ in prices.genre.values
+            ), f"pricetype_={pricetype_}, prices={prices}"
             return prices.loc[prices.genre == pricetype_]
 
     def get_current_price(self, pricetype_=None):
