@@ -274,8 +274,8 @@ class Condition:
         ]
 
         self.logger.debug(
-            f"get_exec_clID={self.brg.get_exec_clID_with_(srcKey_=cond_.op, debug_=False)}\n"
-            f"~~~~{cond_}~~~~"
+            f"~~~~\nget_exec_clID={self.brg.get_exec_clID_with_(srcKey_=cond_.op, debug_=False)}\n"
+            f"{cond_}\n~~~~"
         )
 
         if len(clOrdIDs):
