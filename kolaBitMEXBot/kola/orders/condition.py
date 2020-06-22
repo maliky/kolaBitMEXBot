@@ -2,7 +2,7 @@
 """Conditions pour les ordres."""
 from numpy import array
 from pandas import DataFrame, concat, Timestamp, Series
-from typing import Set, Optional, Union, List, Dict
+from typing import Set, Optional, Union, List, Dict, Tuple
 
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now
@@ -282,20 +282,20 @@ class Condition:
 
     def get_low_high(self, _genre):
         """get low high value for _genre condition."""
-        mask = {"temps": self.get_conds("temps"), "price": self.get_conds("price"),}[
+        _conds = {"temps": self.get_conds("temps"), "price": self.get_conds("price"),}[
             _genre
         ]
 
-        assert len(mask) == 2, f"mask={mask}, self.cond_frame={self.cond_frame}"
+        assert len(_conds) == 2, f"conds={_conds}, cond_frame={self.cond_frame}"
         try:
-            sorted_cond = self.cond_frame.loc[mask.index, "value"].sort_values()
+            sorted_cond = self.cond_frame.loc[_conds.index, "value"].sort_values()
         except Exception as e:
-            self.logger.error(f"mask={mask}")
+            self.logger.error(f"conds={_conds}")
             raise e
 
         return sorted_cond.values
 
-    def get_relative_low_high(self, _genre):
+    def get_relative_low_high(self, _genre) -> Tuple[float, float, float]:
         """Return the initial difference for genre condition"""
         assert _genre in ["temps", "price"], f"{_genre} is not implemented."
         low, high = self.get_low_high(_genre)
@@ -306,17 +306,17 @@ class Condition:
 
         return low - initVal, high - initVal, initVal
 
-    def get_conds(self, genre_, pricetype_="*"):
+    def get_conds(self, genre_, pricetype_="*") -> DataFrame:
         """Renvoie le mask pour les conditions de temps."""
         if "price" in genre_.lower():
             return self._get_price_conds(pricetype_)
 
         return self.cond_frame.loc[self.cond_frame.genre == genre_].sort_values("value")
 
-    def _get_price_conds(self, pricetype_="*"):
+    def _get_price_conds(self, pricetype_="*") -> DataFrame:
         """Renvoie le mask pour les conditions de prix."""
-        mask = self.cond_frame.genre.isin(self.price_list)
-        prices = self.cond_frame.loc[mask, :].sort_values("value")
+        with_price = self.cond_frame.genre.isin(self.price_list)
+        prices: DataFrame = self.cond_frame.loc[with_price, :].sort_values("value")
 
         if pricetype_ == "*":
             return prices
@@ -326,7 +326,7 @@ class Condition:
             ), f"pricetype_={pricetype_}, prices={prices}"
             return prices.loc[prices.genre == pricetype_]
 
-    def get_current_price(self, pricetype_=None):
+    def get_current_price(self, pricetype_: str = None):
         """
         Renvoie un prix courant. Devrait gérer les prix de diff type. ??
 
@@ -334,12 +334,12 @@ class Condition:
         Si plusieurs condition prix, nécessite de préciser le pricetype_
         """
         _pricetype = self.get_price_type() if pricetype_ is None else pricetype_
-        prices = self._get_price_conds(_pricetype).values
+        prices: Series = self._get_price_conds(_pricetype).value
 
         currentSellPx = get_execPrice(self.brg, "sell", _pricetype, _forceLive=True)
         currentBuyPx = get_execPrice(self.brg, "buy", _pricetype, _forceLive=True)
 
-        useSellPrice = currentSellPx <= max(prices.values) if len(prices) else True
+        useSellPrice = currentSellPx <= max(prices) if len(prices) else True
 
         return currentSellPx if useSellPrice else currentBuyPx
 
