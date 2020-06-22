@@ -249,7 +249,7 @@ class Condition:
         If so, we say that the condition is hooked.
         """
         has_hook = self.get_conds("hook")
-        self.logger.debug(f"is_hooked? {has_hook}")
+        self.logger.debug(f"is_hooked? {has_hook.values}")
 
         if len(has_hook):
             return self.evalue_les_conditions(has_hook).all()
@@ -274,8 +274,7 @@ class Condition:
         ]
 
         self.logger.debug(
-            f"~~~~\nget_exec_clID={self.brg.get_exec_clID_with_(srcKey_=cond_.op, debug_=False)}\n"
-            f"{cond_}\n~~~~"
+            f"~~~~{cond_.values}: get_exec_clID={self.brg.get_exec_clID_with_(srcKey_=cond_.op, debug_=False)}"
         )
 
         if len(clOrdIDs):

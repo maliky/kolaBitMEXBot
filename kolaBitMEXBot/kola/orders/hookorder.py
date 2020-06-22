@@ -179,7 +179,7 @@ class HookOrder(OrderConditionned):
             else:
                 self.order["stopPx"] = decl_price
 
-        self.logger.info(f"*updated order* old={_old_order}, new={self.order}")
+        self.logger.info(f"*updated order*\nold={_old_order},\nnew={self.order}")
 
         return None
 
