@@ -222,7 +222,7 @@ class Condition:
                 "hook": self.evalue_un_hook(cond),
             }[cond.genre]
         except Exception as ex:
-            self.logger.error(f"cond={cond}")
+            self.logger.error(f"{ex}:\n{cond}")
             raise (ex)
 
     def is_(self, t_value):
@@ -266,16 +266,17 @@ class Condition:
         Vérifie ensuite que ces ordres ont le status cond_.value
         (eg. Filled, Triggered, Canceled)
         """
+        
         clOrdIDs = [
             clID
             for clID in self.brg.get_exec_clID_with_(srcKey_=cond_.op)
             if clID not in self.excludeIDs
         ]
 
-        # self.logger.debug(
-        #     f"~~~~ self.brg.get_exec_(srcKey_=cond_.op)="
-        #     f"{self.brg.get_exec_clID_with_(srcKey_=cond_.op, debug_=False)}"
-        # )
+        self.logger.debug(
+            f"~~~~\nget_exec_clID={self.brg.get_exec_clID_with_(srcKey_=cond_.op, debug_=False)}\n"
+            f"{cond}\n~~~~"
+        )
 
         if len(clOrdIDs):
             tv = self.brg.order_reached_status(clOrdIDs[-1], cond_.value)
