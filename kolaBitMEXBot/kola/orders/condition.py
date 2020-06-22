@@ -209,18 +209,16 @@ class Condition:
         return test
 
     def evalue_une_condition(self, cond: Series):
-        """
-        Évalue une condition en fonction du genre.
-        """
+        """Évalue une condition en fonction du genre."""
         try:
             if cond.genre in self.price_list:
                 current_price = self.brg.prices(cond.genre)
                 return self.evalue(current_price, cond.op, cond.value)
-
-            return {
-                "temps": self.evalue(now(), cond.op, cond.value),
-                "hook": self.evalue_un_hook(cond),
-            }[cond.genre]
+            elif cond.genre == "hook":
+                return self.evalue_un_hook(cond)
+            elif cond.genre == "temps":
+                return self.evalue(now(), cond.op, cond.value)
+            
         except Exception as ex:
             self.logger.error(f"{ex}:\n{cond}")
             raise (ex)
@@ -266,6 +264,7 @@ class Condition:
         Vérifie ensuite que ces ordres ont le status cond_.value
         (eg. Filled, Triggered, Canceled)
         """
+        assert cond_.genre == "hook", f"~~~~cond_\n{cond_}~~~~"
         
         clOrdIDs = [
             clID
