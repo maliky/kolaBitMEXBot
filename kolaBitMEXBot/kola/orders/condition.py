@@ -218,7 +218,7 @@ class Condition:
                 return self.evalue_un_hook(cond)
             elif cond.genre == "temps":
                 return self.evalue(now(), cond.op, cond.value)
-            
+
         except Exception as ex:
             self.logger.error(f"{ex}:\n{cond}")
             raise (ex)
@@ -250,7 +250,7 @@ class Condition:
         """
         has_hook = self.get_conds("hook")
         self.logger.debug(f"is_hooked? {has_hook}")
-        
+
         if len(has_hook):
             return self.evalue_les_conditions(has_hook).all()
 
@@ -266,7 +266,7 @@ class Condition:
         (eg. Filled, Triggered, Canceled)
         """
         assert cond_.genre == "hook", f"~~~~cond_\n{cond_}~~~~"
-        
+
         clOrdIDs = [
             clID
             for clID in self.brg.get_exec_clID_with_(srcKey_=cond_.op)

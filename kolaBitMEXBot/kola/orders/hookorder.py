@@ -2,10 +2,12 @@
 """Hooked Order"""
 from itertools import product
 from time import sleep
+from pandas import DataFrame
 
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.general import trim_dic
 from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
+from kolaBitMEXBot.kola.orders.conditions import Condition
 from kolaBitMEXBot.kola.utils.datefunc import now
 
 
@@ -55,7 +57,8 @@ class HookOrder(OrderConditionned):
             symbol=symbol,
         )
 
-        self.init_cond_frame = self.condition.cond_frame.copy()
+        _cond: Condition = self.condition
+        self.init_cond_frame: DataFrame = _cond.cond_frame.copy()
 
         self.logger = get_logger(logger, sLL="DEBUG", name=__name__)
 
@@ -135,7 +138,9 @@ class HookOrder(OrderConditionned):
             self.is_hooked = True
             self.startTime = now()
 
+            self.logger.debug("*updating cond*")
             self.update_cond_with_relative_values()
+            self.update_prices_with_relative_values()
 
             self.logger.info(
                 f"*After update* {self} is hooking with ID '{self.condition.hookedSrcID}'\n"
@@ -152,27 +157,31 @@ class HookOrder(OrderConditionned):
         current_price = self.condition.get_current_price()
         return current_price
 
-    def update_price_with_relatie_values(self):
+    def update_prices_with_relative_values(self):
         """Change l'ordre pour qu'il soit mise à jour par chronos."""
-        old_order = self.order.copy()
+        _old_order = self.order.copy()
+        _side = _old_order["side"]
+        _old_price = self.order.get("price", None)
+        _old_stopPx = self.order.get("stopPx", None)
 
-        old_price = self.order.get("price", None)
-        old_stopPx = self.order.get("stopPx", None)
+        cond_h_price = self.get_new_cond_values("price", "<")
+        cond_l_price = self.get_new_cond_values("price", ">")
 
-        high = self.get_new_cond_values("price", "<")
-        low = self.get_new_cond_values("price", ">")
+        decl_price = {"buy": cond_l_price, "sell": cond_h_price}[_side]
 
-        new_price = (high + low) / 2
+        if _old_price is not None:
+            self.order["price"] = decl_price
 
-        self.order["price"] = new_price
+        if _old_stopPx is not None:
+            if _old_price is not None:
+                price_delta = _old_price - _old_stopPx
+                self.order["stopPx"] = decl_price - price_delta
+            else:
+                self.order["stopPx"] = decl_price
 
-        if old_stopPx is not None:
-            assert old_price is not None, f"oldprice none but oldstop ok, self={self}"
+        self.logger.info(f"*updated order* old={_old_order}, new={self.order}")
 
-            price_delta = old_price - old_stopPx
-            self.order["stopPx"] = new_price - price_delta
-
-        self.logger.info(f"old_order={old_order}, new_order={self.order}")
+        return None
 
     def update_cond_with_relative_values(self):
         """Met à jour les valeurs des conditions."""

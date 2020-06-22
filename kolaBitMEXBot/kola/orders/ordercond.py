@@ -9,6 +9,8 @@ from kolaBitMEXBot.kola.utils.orderfunc import (
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.general import trim_dic
 from kolaBitMEXBot.kola.utils.datefunc import setdef_timedelta
+from kolaBitMEXBot.kola.order.condition import Condition
+
 from time import sleep
 from threading import Thread
 import pandas as pd
@@ -45,7 +47,7 @@ class OrderConditionned(Thread):
         self.send_queue = send_queue
         self.valid_queue = valid_queue
         self._canceled = False
-        self.condition = cond
+        self.condition: Condition = cond
         self.stop = False
         self.orderIDPrefix = "mlk_"
         self.order = order  # a dict ex. {'side': 'buy', 'orderQty': 100, 'options'...}

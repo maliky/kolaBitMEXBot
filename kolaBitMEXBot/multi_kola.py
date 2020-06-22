@@ -31,7 +31,7 @@ from kolaBitMEXBot.kola.utils.argfunc import (
     price_type_trad,
     get_args,
 )
-from  kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.utils.conditions import cVraieTpsDeA, cVraiePrixDeA, cHook
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
@@ -227,7 +227,7 @@ class MarketAuditeur:
         oType = price_type_trad(oType, side)
         opType, ordType, execInst = oType
         # decl du stop (tail Type).
-        tType = price_type_trad(tType, side)  
+        tType = price_type_trad(tType, side)
         tpType, tOrdType, tExecInst = tType
 
         # #### On commence la boucle qui va gérer le run.
@@ -273,6 +273,7 @@ class MarketAuditeur:
             )
 
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst
+            # penser à faire un objet order pour faciliter la mise à jour et l'init
             order = create_order(
                 side, _q, opType, ordType, execInst, oPrices, oDelta
             )
@@ -337,7 +338,7 @@ class MarketAuditeur:
                 refPrice=tpType,
                 execinst=tExecInst,
                 ordtype=tOrdType,
-                tDelta=tDelta
+                tDelta=tDelta,
             )
 
             # on active le tout, à partir de la tail
@@ -566,10 +567,10 @@ def coerce_types(s):
                 el1 = -90 if el1 == "-" else float(el1)
                 el2 = 90 if el2 == "+" else float(el2)
             if "pD" in atype:
-                el1 = float(el2)*10 if el1 == "-" else float(el1)
-                el2 = float(el1)*10 if el2 == "+" else float(el2)
+                el1 = float(el2) * 10 if el1 == "-" else float(el1)
+                el2 = float(el1) * 10 if el2 == "+" else float(el2)
             if "pA" in atype:
-                el1 = int(float(elt2) /10) if el1 == "-" else float(el1)
+                el1 = int(float(elt2) / 10) if el1 == "-" else float(el1)
                 el2 = int(float(el1) * 10) if el2 == "+" else float(el2)
         return float(el1), float(el2)
 
