@@ -197,14 +197,18 @@ class Condition:
         except AttributeError as ae:
             if "NoneType" in ae.__repr__():
                 # On est en initialisation passons après un warning.
-                self.logger.warning(f"Ignoring exception {ae}. Returning 'Init'")
+                self.logger.warning(
+                    f"Ignoring exception {ae}. Returning 'Init': debug {self}, {cond_frame_}"
+                )
                 return "Init"
+            else:
+                raise ae
         except Exception:
             raise Exception(f"cond={cond_frame}")
 
         return test
 
-    def evalue_une_condition(self, cond):
+    def evalue_une_condition(self, cond: Series):
         """
         Évalue une condition en fonction du genre.
 
@@ -214,10 +218,10 @@ class Condition:
             current_price = self.brg.prices(cond.genre)
             return self.evalue(current_price, cond.op, cond.value)
 
-        elif cond.genre in ["temps"]:
-            return self.evalue(now(), cond.op, cond.value)
-        elif cond.genre == "hook":
-            return self.evalue_un_hook(cond)
+        return {
+            "temps": self.evalue(now(), cond.op, cond.value),
+            "hook": self.evalue_un_hook(cond),
+        }[cond.genre]
 
     def is_(self, t_value):
         """
@@ -245,6 +249,7 @@ class Condition:
         If so, we say that the condition is hooked.
         """
         has_hook = self.get_conds("hook")
+        self.logger(f"is_hooked? {has_hook}")
         if len(has_hook):
             return self.evalue_les_conditions(has_hook).all()
 
