@@ -249,7 +249,8 @@ class Condition:
         If so, we say that the condition is hooked.
         """
         has_hook = self.get_conds("hook")
-        self.logger(f"is_hooked? {has_hook}")
+        self.logger.debug(f"is_hooked? {has_hook}")
+        
         if len(has_hook):
             return self.evalue_les_conditions(has_hook).all()
 
