@@ -370,20 +370,27 @@ class Condition:
         - op: l'opérateur de la condition
         - value_: la nouvelle valeur
         """
-        mask = self.get_conds(genre_).values & (self.cond_frame.op == op_).values
+        _conds = self.get_conds(genre_)
+        idx = _conds.loc[_conds.op == op_].index
+
+        # try:
+        #     mask = self.get_conds(genre_).values & (self.cond_frame.op == op_).values
+        # except Exception as ex:
+        #     self.logger.error(f"cond_frame = {self.cond_frame}, get_conds[{genre_}]{self.get_conds(genre_)}")
+        #     raise(ex)
 
         def msg_debug(_msg_):
             return (
                 f">>>>>>>>>>>>>>>> genre={genre_}, op={op_}, value_={value_}\n"
-                f"{_msg_}.\n{genre_, op_},\n {self.cond_frame}.\n mask={mask}."
+                f"{_msg_}.\n{genre_, op_},\n {self.cond_frame}.\n _conds={_conds}."
             )
 
-        assert sum(mask) <= 1, msg_debug("Update several conditions at once")
+        assert len(idx) <= 1, msg_debug("Update several conditions at once")
 
-        if sum(mask) == 0:
+        if len(idx) == 0:
             self.logger.warning(msg_debug("Trying to update condition but none found"))
             return self
 
-        self.cond_frame.loc[mask, "value"] = value_
+        self.cond_frame.loc[idx, "value"] = value_
 
         return self
