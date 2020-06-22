@@ -197,14 +197,18 @@ class Condition:
         except AttributeError as ae:
             if "NoneType" in ae.__repr__():
                 # On est en initialisation passons après un warning.
-                self.logger.warning(f"Ignoring exception {ae}. Returning 'Init'")
+                self.logger.warning(
+                    f"Ignoring exception {ae}. Returning 'Init': debug {self}, {cond_frame_}"
+                )
                 return "Init"
+            else:
+                raise ae
         except Exception:
             raise Exception(f"cond={cond_frame}")
 
         return test
 
-    def evalue_une_condition(self, cond):
+    def evalue_une_condition(self, cond: Series):
         """
         Évalue une condition en fonction du genre.
 
@@ -214,10 +218,10 @@ class Condition:
             current_price = self.brg.prices(cond.genre)
             return self.evalue(current_price, cond.op, cond.value)
 
-        elif cond.genre in ["temps"]:
-            return self.evalue(now(), cond.op, cond.value)
-        elif cond.genre == "hook":
-            return self.evalue_un_hook(cond)
+        return {
+            "temps": self.evalue(now(), cond.op, cond.value),
+            "hook": self.evalue_un_hook(cond),
+        }[cond.genre]
 
     def is_(self, t_value):
         """
@@ -245,6 +249,7 @@ class Condition:
         If so, we say that the condition is hooked.
         """
         has_hook = self.get_conds("hook")
+        self.logger(f"is_hooked? {has_hook}")
         if len(has_hook):
             return self.evalue_les_conditions(has_hook).all()
 
@@ -365,20 +370,27 @@ class Condition:
         - op: l'opérateur de la condition
         - value_: la nouvelle valeur
         """
-        mask = self.get_conds(genre_).values & (self.cond_frame.op == op_).values
+        _conds = self.get_conds(genre_)
+        idx = _conds.loc[_conds.op == op_].index
+
+        # try:
+        #     mask = self.get_conds(genre_).values & (self.cond_frame.op == op_).values
+        # except Exception as ex:
+        #     self.logger.error(f"cond_frame = {self.cond_frame}, get_conds[{genre_}]{self.get_conds(genre_)}")
+        #     raise(ex)
 
         def msg_debug(_msg_):
             return (
                 f">>>>>>>>>>>>>>>> genre={genre_}, op={op_}, value_={value_}\n"
-                f"{_msg_}.\n{genre_, op_},\n {self.cond_frame}.\n mask={mask}."
+                f"{_msg_}.\n{genre_, op_},\n {self.cond_frame}.\n _conds={_conds}."
             )
 
-        assert sum(mask) <= 1, msg_debug("Update several conditions at once")
+        assert len(idx) <= 1, msg_debug("Update several conditions at once")
 
-        if sum(mask) == 0:
+        if len(idx) == 0:
             self.logger.warning(msg_debug("Trying to update condition but none found"))
             return self
 
-        self.cond_frame.loc[mask, "value"] = value_
+        self.cond_frame.loc[idx, "value"] = value_
 
         return self
