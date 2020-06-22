@@ -9,7 +9,7 @@ from kolaBitMEXBot.kola.utils.orderfunc import (
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.utils.general import trim_dic
 from kolaBitMEXBot.kola.utils.datefunc import setdef_timedelta
-from kolaBitMEXBot.kola.order.condition import Condition
+from kolaBitMEXBot.kola.orders.condition import Condition
 
 from time import sleep
 from threading import Thread
