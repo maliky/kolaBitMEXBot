@@ -60,7 +60,7 @@ class HookOrder(OrderConditionned):
         _cond: Condition = self.condition
         self.init_cond_frame: DataFrame = _cond.cond_frame.copy()
 
-        self.logger = get_logger(logger, sLL="DEBUG", name=__name__)
+        self.logger = get_logger(logger, sLL="INFO", name=__name__)
 
     def __repr__(self, short=True):
         """Repr self."""
@@ -187,8 +187,8 @@ class HookOrder(OrderConditionned):
         """Met à jour les valeurs des conditions."""
         for op_, genre_ in product(["<", ">"], ["price", "temps"]):
             new_value = self.get_new_cond_values(genre_, op_)
-            self.logger.debug(
-                f"Updating cond genre_={genre_}, op_={op_}, new_value={new_value}"
+            self.logger.info(
+                f"Updating cond `{genre_}`, op={op_}, new_value={new_value}"
             )
             self.condition = self.condition.update_cond(genre_, op_, new_value)
 
@@ -200,7 +200,7 @@ class HookOrder(OrderConditionned):
         relative_val = {">": _lowD, "<": _highD}
         current_val = {"temps": now(), "price": self.get_current_price()}
 
-        self.logger.debug(
+        self.logger.info(
             f"~'{genre_, op_}'~ init={_initV}, rel_val={relative_val[op_]},"
             f" current_val={current_val[genre_]}"
         )

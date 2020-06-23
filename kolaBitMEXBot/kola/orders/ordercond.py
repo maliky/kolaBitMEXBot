@@ -42,7 +42,7 @@ class OrderConditionned(Thread):
         """
         Thread.__init__(self, name=nameT)
 
-        self.logger = get_logger(logger, sLL="DEBUG", name=__name__)
+        self.logger = get_logger(logger, sLL="INFO", name=__name__)
         self.symbol = symbol
         self.send_queue = send_queue
         self.valid_queue = valid_queue
