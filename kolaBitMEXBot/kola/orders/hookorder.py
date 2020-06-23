@@ -7,7 +7,7 @@ from pandas import DataFrame
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.general import trim_dic
 from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
-from kolaBitMEXBot.kola.orders.conditions import Condition
+from kolaBitMEXBot.kola.orders.condition import Condition
 from kolaBitMEXBot.kola.utils.datefunc import now
 
 
