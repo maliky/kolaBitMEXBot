@@ -186,7 +186,7 @@ class HookOrder(OrderConditionned):
 
     def update_cond_with_relative_values(self):
         """Met à jour les valeurs des conditions."""
-        for op_, genre_ in product(["price", "temps"], ["<", ">"]):
+        for genre_, op_ in product(["price", "temps"], ["<", ">"]):
             new_value = self.get_new_cond_values(genre_, op_)
             self.logger.info(
                 f"Updating cond `{genre_}`, op={op_}, new_value={new_value}"
