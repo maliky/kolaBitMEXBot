@@ -139,8 +139,9 @@ class HookOrder(OrderConditionned):
             self.startTime = now()
 
             self.logger.debug("*updating cond*")
-            self.update_cond_with_relative_values()
+
             self.update_prices_with_relative_values()
+            self.update_cond_with_relative_values()
 
             self.logger.info(
                 f"*After update* {self} is hooking with ID '{self.condition.hookedSrcID}'\n"
@@ -185,7 +186,7 @@ class HookOrder(OrderConditionned):
 
     def update_cond_with_relative_values(self):
         """Met à jour les valeurs des conditions."""
-        for op_, genre_ in product(["<", ">"], ["price", "temps"]):
+        for op_, genre_ in product(["price", "temps"], ["<", ">"]):
             new_value = self.get_new_cond_values(genre_, op_)
             self.logger.info(
                 f"Updating cond `{genre_}`, op={op_}, new_value={new_value}"
