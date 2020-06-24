@@ -94,7 +94,9 @@ class PriceObj:
             index=Index(create_index(self.main_window_size), name="PriceObj.data"),
             columns=PRICE_COLUMNS,
         )
-        self.data.loc[:, :] = self.get_current_prices(price, refPrice).T.values
+        self.data.loc[:, :] = DataFrame(
+            self.get_current_prices(price, refPrice)
+        ).T.values
 
         # On s'assure que la colonne date est au bon format
         self.logger.info(f"$$$$$$$$$$$$$$$${self.data}")
@@ -118,7 +120,7 @@ class PriceObj:
         sOfsP=None,
         fOfsD=None,
         fScale=None,
-    ) -> DataFrame:
+    ) -> Series:
         """Renvois les prix actuels pour remplir ou mettre à jour la df"""
         if refPrice is None:
             refPrice = self.get_refPrice()
@@ -154,7 +156,7 @@ class PriceObj:
         # current_prices = (now(), price, refPrice, stopTail, refTail, flexTail, sOfsD,
         #                   fOfsD, sOfsP, fScale)
 
-        return DataFrame(Series(current_prices))
+        return Series(current_prices)
 
     def __repr__(self, short=3):
         """representation for the price obj. pass a number != 0 to trim the df output.
@@ -438,7 +440,9 @@ def create_index(core_size_: int):
     avec la dernière appelée init et les deux premières current et previous.
     """
     assert core_size_ > 1, f"core_size={core_size_}"
-    idx = ["current", "previous"] + [f"{i}" for i in range(2, core_size_ - 1)] + ["init"]
+    idx = (
+        ["current", "previous"] + [f"{i}" for i in range(2, core_size_ - 1)] + ["init"]
+    )
     return idx
 
 
