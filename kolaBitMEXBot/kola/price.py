@@ -83,7 +83,7 @@ class PriceObj:
 
         # on initialise les prix et la df qui les contiendra
         # define self.data
-        self.data = DataFrame()
+        self.data = DataFrame(index=create_index(self.main_window_size))
         self.data = self.__init_price_df(price, refPrice)
 
         # on définie l'épaisseur du stop
@@ -93,20 +93,6 @@ class PriceObj:
 
     def __init_price_df(self, price, refPrice) -> DataFrame:
         """Initialise la df qui contiendra l'historique des prix"""
-
-        def create_index():
-            """
-            Créer une df de taille n (n ligne).
-
-            avec la dernière appelée init et les deux premières current et previous.
-            """
-            ind = (
-                ["current", "previous"]
-                + ["{i}" for i in range(2, self.main_window_size - 1)]
-                + ["init"]
-            )
-            # ind[0], ind[1], ind[-1] =
-            return ind
 
         index = Index(create_index(), name="PriceObj.data")
         columns = [
@@ -180,11 +166,11 @@ class PriceObj:
 
     def __neg_exps(self, max_var, N):
         """Plotter pour voir mais il s'agit de valeurs pour x => -np.exp(x)"""
+
         def neg_exp(x):
             return lambda x: -np.exp(x)
-        data = list(
-            map(neg_exp, np.linspace(start=1, stop=max_var, num=N))
-        )
+
+        data = list(map(neg_exp, np.linspace(start=1, stop=max_var, num=N)))
         return data
 
     def __repr__(self, short=3):
@@ -464,3 +450,14 @@ def not_array(arr):
         return not x
 
     return map(not_func, arr)
+
+
+def create_index(core_size_: int):
+    """
+    Créer une df de taille n (n ligne).
+
+    avec la dernière appelée init et les deux premières current et previous.
+    """
+    assert core_size_ > 1, f"core_size={core_size_}"
+    idx = ["current", "previous"] + ["{i}" for i in range(2, core_size_ - 1)] + ["init"]
+    return idx
