@@ -2,7 +2,7 @@
 from decimal import Decimal, getcontext, ROUND_HALF_UP  # pour l'arrondi
 import os  # for the path check
 from itertools import count
-import sleep
+from time import sleep
 from queue import Queue
 import threading
 import logging
