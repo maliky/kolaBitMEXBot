@@ -1,11 +1,13 @@
-# -*- coding: utf-8 -*-
+# -*- Codingn: Utf-8 -*-
 """Conditions pour les ordres."""
 from numpy import array
 from pandas import DataFrame, concat, Timestamp, Series
 from typing import Set, Optional, Union, List, Dict, Tuple
 
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
+
+from kolaBitMEXBot.kola.utils.logfunc import get_logger, throttled_log, get_logfunc
 from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBitMEXBot.kola.utils.general import compteur
 from kolaBitMEXBot.kola.bargain import Bargain
 from kolaBitMEXBot.kola.kolatypes import ordStatusL
 from kolaBitMEXBot.kola.orders.orders import get_execPrice
@@ -23,7 +25,7 @@ class Condition:
     # faire une condtion toujours vrai, ou toujorus fause
     """
 
-    def __init__(self, brg: Bargain, cond, logger=None):
+    def __init__(self, brg: Bargain, cond, logLevel_="INFO"):
         """
         Initialise cond_frame et des hookedSrcID to exclude from evaluation.
 
@@ -34,8 +36,9 @@ class Condition:
         There can only be one price condition (for now)
         """
         self.brg: Bargain = brg
-
-        self.logger = get_logger(logger, sLL="INFO", name=__name__)
+        self.cpt_call = compteur()  # use to compte number of self calls
+        self.logLevel = logLevel_
+        self.logger = get_logger(sLL=self.logLevel, name=__name__)
 
         # Une liste de mots clef pour le prix
         # Fairprice = market price et LastPrice ~= midPrice
@@ -249,12 +252,24 @@ class Condition:
         If so, we say that the condition is hooked.
         """
         has_hook = self.get_conds("hook")
-        self.logger.debug(f"is_hooked? {has_hook.values}")
-
         if len(has_hook):
+
+            self.throttled_log(f"is_hooked? {has_hook}", "DEBUG", one_in_=10)
+
             return self.evalue_les_conditions(has_hook).all()
 
         return False
+
+    def throttled_log(self, msg_, level_=None, one_in_: int = 10):
+        """Log a message after one_in_ self.call"""
+        _level = self.logLevel if level_ is None else level_
+        log_func = self.get_logfunc(_level)
+        i = self.cpt_call()
+        return throttled_log(i, log_func, msg_, one_in_)
+
+    def get_logfunc(self, level_="INFO"):
+        """Return the object logger with level_."""
+        return get_logfunc(self.logger, level_)
 
     def evalue_un_hook(self, cond_):
         """

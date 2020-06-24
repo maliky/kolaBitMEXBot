@@ -71,7 +71,9 @@ class BitMEX(object):
         self.session.headers.update({"accept": "application/json"})
 
         # Create websocket for streaming data
-        ws = BitMEXWebsocket(self.apiKey, self.apiSecret, logger=self.logger, symbol=symbol)
+        ws = BitMEXWebsocket(
+            self.apiKey, self.apiSecret, logger=self.logger, symbol=symbol
+        )
         self.ws = ws
         self.logger.debug(f"ws={ws}")
         self.ws.connect(base_url, symbol, shouldAuth=shouldWSAuth)
@@ -288,7 +290,7 @@ class BitMEX(object):
     def amend(self, order, **kwargs):
         """
         Amend an order.
-        
+
         - bto <BitMex Object>:,
         - orderID <str>: one existing bitmex orderID,
         - stopPx <int>: new stop price,
@@ -360,7 +362,7 @@ class BitMEX(object):
     def cancel(self, orderID):
         """Cancel an existing order. (or List or  dict from split_ids)"""
         path = "order"
-        self.logger.debug(f'canceling ={orderID}')
+        self.logger.debug(f"canceling ={orderID}")
 
         if isinstance(orderID, dict):
             clIDList = orderID.get("clIDList")
@@ -370,7 +372,7 @@ class BitMEX(object):
             if clIDList:
                 postdict = {"clOrdID": clIDList}
                 sleep(HTTP_SIMPLE_RATE_LIMITE)
-                ret["clID"]: self._curl_bitmex(
+                ret["clID"] = self._curl_bitmex(
                     path=path, postdict=postdict, verb="DELETE"
                 )
 
@@ -466,7 +468,7 @@ class BitMEX(object):
         try:
             return self.ws.market_depth(symbol)
         except Exception:
-            self.logger.exception(f"market_depth")
+            self.logger.exception("market_depth")
 
     @authentication_required
     def open_orders(self):
@@ -474,7 +476,7 @@ class BitMEX(object):
         try:
             return self.ws.open_orders(self.orderIDPrefix)
         except Exception:
-            self.logger.exception(f"open_orders")
+            self.logger.exception("open_orders")
 
     @authentication_required
     def exec_orders(self, exectype=None):
@@ -486,7 +488,7 @@ class BitMEX(object):
         try:
             orders = self.ws.exec_orders(self.orderIDPrefix)
         except Exception:
-            self.logger.exception(f"exec_orders")
+            self.logger.exception("exec_orders")
         return [o for o in orders if o["execType"] == exectype] if exectype else orders
 
     @authentication_required
@@ -522,7 +524,7 @@ class BitMEX(object):
     def create_order(self, side, orderQty, clOrdID=None, **opts):
         """
         Create an postdic for an order, using orderQty in contracts.
-        
+
         Quantities are always positives
         """
         # Generate a unique clOrdID with our prefix so we can identify it.
@@ -537,12 +539,9 @@ class BitMEX(object):
         orderQty = round(orderQty)
 
         # we handle number of contracts not crypto
-        postdict.update(
-            {
-                "orderQty": orderQty,  # on suppose orderQty >=1 et on ne veux pas afficher 0
-                # 'displayQty': int(random.random() * (abs(orderQty) - 1)) + 1  # crypt_qty
-            }
-        )
+        # on suppose orderQty >=1 et on ne veux pas afficher 0
+        # 'displayQty': int(random.random() * (abs(orderQty) - 1)) + 1  # crypt_qty
+        postdict["orderQty"] = orderQty
 
         self.checking_positive_value(opts, "price", "stopPx")
 
@@ -575,13 +574,13 @@ class BitMEX(object):
         try:
             return self.ws.position(symbol)
         except Exception:
-            self.logger.exception(f"position")
+            self.logger.exception("position")
 
     def recent_trades(self):
         try:
             return self.ws.recent_trades()
         except Exception:
-            self.logger.exception(f"recent_trades")
+            self.logger.exception("recent_trades")
 
     def set_leverage(self, symbol, leverage):
         """making a name more meaningfull for me"""
@@ -594,7 +593,7 @@ class BitMEX(object):
         try:
             return self.ws.get_ticker(symbol)
         except Exception:
-            self.logger.exception(f"ticker_data")
+            self.logger.exception("ticker_data")
 
     @authentication_required
     def withdraw(self, amount, fee, address):
@@ -630,7 +629,7 @@ class BitMEX(object):
 
         if self.retries >= max_retries:
             raise ke.MaxRetries(
-                e=exception, load=postdict, extra=f"{path}: Max retries hit"
+                exception, load=postdict, extra=f"{path}: Max retries hit"
             )
 
         tps1 = random.uniform(1, 2)

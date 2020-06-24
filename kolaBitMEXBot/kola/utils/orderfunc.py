@@ -2,12 +2,12 @@
 from base64 import b64encode
 from uuid import uuid4
 import re
+from typing import Optional
 
 from kolaBitMEXBot.kola.utils.pricefunc import get_prix_decl, setdef_stopPrice
-from kolaBitMEXBot.kola.utils.general import opt_add_to_, contains, log_args
+from kolaBitMEXBot.kola.utils.general import opt_add_to_, contains
 from kolaBitMEXBot.kola.settings import LOGNAME, ORDERID_PREFIX
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 
 mlogger = get_logger(name=f"{LOGNAME}.{__name__}")
 
@@ -18,7 +18,7 @@ mlogger = get_logger(name=f"{LOGNAME}.{__name__}")
 
 def toggle_order(order):
     """
-    prendre un order (un dict) qui a une action et renvois ce dict avec l'action toggled 
+    prendre un order (un dict) qui a une action et renvois ce dict avec l'action toggled
     """
     toggle_order = order.copy()
     # will pop action toggle it and put it back in dict
@@ -44,11 +44,13 @@ def toggle_sides(chaine):
 
 def is_valid_stop(side, price, stopPx):
     """
-    On sell orders, the order will trigger if the triggering price is lower than the stopPx. On buys, higher.
+    On sell orders, the order will trigger if the triggering price is lower
+    than the stopPx. On buys, higher.
+
     Params:
     - side,
     - price: price for the new limit order that will be place,
-    - stopPx: stop price that will trigger the limit order.  
+    - stopPx: stop price that will trigger the limit order.
     """
     if side == "buy" and price > stopPx:
         raise Exception("will buy at price higer than max of market")
@@ -61,7 +63,7 @@ def is_valid_stop(side, price, stopPx):
 def newClID(prefix=ORDERID_PREFIX, abbv_=""):
     """
     Génère un nouvel identifiant avec un prefix 'mlk_' par défaut.
-    
+
     Ajout l'abbreviation to facilitate hook.
     les _ sont dans les prefix et abbv_ (eg Bl1-P).
     """
@@ -70,7 +72,7 @@ def newClID(prefix=ORDERID_PREFIX, abbv_=""):
 
 def get_abbv_from_ID(oClOrdID_: str):
     """Identify dans oClOrdID_ ce qui ressemble à une abbrevation de hook.
-    
+
     le préfix a été étendu avec nomT-PO ou nomT-SO
     """
     return oClOrdID_.split(ORDERID_PREFIX)[-1].split("-O")[0]
@@ -81,7 +83,7 @@ def create_order(
     side, _q, opType, ordtype, execinst, prices=None, absdelta=0.5, text=None
 ):
     """
-    Crée un 'side' ordre de type ordtype et de volume '_q'.  
+    Crée un 'side' ordre de type ordtype et de volume '_q'.
     Ajoute les options 'execinst'.
     Si ordtype is stopLimit ou LimitIfTouched, absdelta détermine l'écart entre
     le prix d'entrée sur le marché et le stopPrice.
@@ -91,9 +93,11 @@ def create_order(
         raise Exception("qty is too small _q={_q}")
 
     if prices is None and ordtype != "Market":
-        raise Exception(
-            f"if ordtype {ordtype} need prices to immediatly place limit or stop. prices={prices}."
+        msg = (
+            f"if ordtype {ordtype} need prices to immediatly place limit or stop."
+            f" but prices={prices}."
         )
+        raise Exception(msg)
 
     # création de l'ordre principal
     order = {"side": side, "orderQty": _q}
@@ -125,7 +129,8 @@ def create_order(
 
 def get_order_from(rcvLoad):
     """
-    Find an order in the received load and return it, if the load is empty juste return it like that
+    Find an order in the received load and return it,
+    if the load is empty juste return it like that
     """
 
     if not rcvLoad:
@@ -155,7 +160,8 @@ def get_order_from(rcvLoad):
 # @log_args(logopt=__name__)
 def set_order_type(ordkey, _extype):
     """
-    Given the ordkey L, M, S, T, SL or TL, renvois le type d'ordre OrdType to be used par passer les ordres
+    Given the ordkey L, M, S, T, SL or TL, renvois le type d'ordre OrdType
+    to be used par passer les ordres
     """
     # order type translation
     OT = {
@@ -178,7 +184,7 @@ def set_order_type(ordkey, _extype):
 def set_exec_instructions(extrakey, execinst, ordtype, pricetype):
     """
     Renvois execInst correctement formaté et valide avec les ordtype
-    
+
     """
 
     execInst = ""
@@ -206,12 +212,13 @@ def set_exec_instructions(extrakey, execinst, ordtype, pricetype):
 def set_price_type(pricekey, side):
     """
     avec la pricekey i, l ou m renvois le type de prix pour le suivi du déclenchement de la peg.
-    Attention dans condition,  j'utilise ask et bid mais pour exec if faut LastPrice qui ont des stopPx.
-priceType can be None if exist but not in PT
+    Attention dans condition,  j'utilise ask et bid mais pour exec if faut LastPrice
+    qui ont des stopPx.
+    priceType can be None if exist but not in PT
     """
     if pricekey is None:
         # defaultPriceType = 'bidPrice' if side is None or side == 'buy' else 'askPrice'
-        defaultPriceType = "lastMidPrice"
+        defaultPriceType: Optional[str] = "lastMidPrice"
     else:
         defaultPriceType = None
 
@@ -257,7 +264,7 @@ def remove_execInst(cslist, val):
 
 def split_ids(idlist):
     """
-    Given a list of ids, returns two list one with oid and the other with clorid based on ORDERID_PREFIX 
+    Given a list of ids, returns two list one with oid and the other with clorid based on ORDERID_PREFIX
     """
     clIDList = []
     oIDList = []

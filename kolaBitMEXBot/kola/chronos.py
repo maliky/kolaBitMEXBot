@@ -356,7 +356,7 @@ class Chronos(threading.Thread):
         # problème avec les reply None
 
         if rcvload["order"]["ordType"].lower() == "cancel":
-            self.logger.info(f"ordType is cancel. rcvload={rcvload}")
+            self.logger.info(f"*ordType is canceled* rcvload={rcvload}")
             replyID = rcvload["order"]["clOrdID"]
         elif reply is None:
             # mais si ce n'est pas la bonne reply ? on va tester après
@@ -408,8 +408,8 @@ class Chronos(threading.Thread):
             validation = False
 
         self.logger.info(
-            f"Attendu {timeOut - pd.Timedelta(timeLeft, unit='s')}."
-            f"Change in reply for {replyID} is {bool(validation)}."
+            f"_Attendu {timeOut - pd.Timedelta(timeLeft, unit='s')}_  "
+            f"Validation for {replyID} is {bool(validation)}."
         )
         #self.logger.debug(f"Détail validation {validation} et reply")
 

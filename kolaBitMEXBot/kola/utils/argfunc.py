@@ -43,22 +43,20 @@ def get_args():
     tailPrice_def = 2
     tps_run_def = [-1, 800]
     updatePause_def = 10
-    oDelta_def = PRICE_PRECISION['XBTUSD']
-    tDelta_def = PRICE_PRECISION['XBTUSD']
+    oDelta_def = PRICE_PRECISION["XBTUSD"]
+    tDelta_def = PRICE_PRECISION["XBTUSD"]
     hook_def = ""
     symbol_def = "XBTUSD"  # define the market to listent too
 
-    name_help = f"Nom de l'ordre dans logs internes"
+    name_help = "Nom de l'ordre dans logs internes"
     symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAM20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
     oDelta_help = (
-        f"Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."
+        "Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."
         "  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={oDelta_def})"
     )
-    tDelta_help = (
-        f"Difference between trigger price and price for tail orders (default={tDelta_def})"
-    )
+    tDelta_help = f"Difference between trigger price and price for tail orders (default={tDelta_def})"
     tps_run_help = f"le temps en minute à partir du moment du lancement, doit être un tuple, indique la plage horaire pour laquelle l'ordre est valide. (default={tps_run_def})"
-    tOut_help = f"Temps d'attente de vérification in minutes de la validation de l'order.  Pour les limites order peut être très long. (default le temps du run) (default temps d'attente théorique d'un ordre ie, durée du run / nb orders)"
+    tOut_help = "Temps d'attente de vérification in minutes de la validation de l'order.  Pour les limites order peut être très long. (default le temps du run) (default temps d'attente théorique d'un ordre ie, durée du run / nb orders)"
     prix_help = f"Une fourchette de prix dans laquelle executer le ou les essais.  Si le prix sort de la fourchette rien faire.  La fourchette de prix peut être exprimer en %% du prix actuellent, en différentiel ou en valeur absolu. (default={prix_def})"
     nbEssai_help = f"nombre d'essaies à effectuer (default={nbEssai_def})"
     side_help = f"côte de l'ordre (default={side_def})"
@@ -112,7 +110,7 @@ def get_args():
         "--argFile", "-A", type=str, default=argFile_def, help=argFile_help
     )
     parser.add_argument(
-        "--oDelta", "-s", type=int, default=oDelta_def, help=oDelta_help
+        "--oDelta", "-d", type=int, default=oDelta_def, help=oDelta_help
     )
     parser.add_argument(
         "--tDelta", "-s", type=int, default=tDelta_def, help=tDelta_help
@@ -163,7 +161,7 @@ def set_order_args(
     # renvois le prix de référence pour la queue selon le tptype et side
     optype, ordtype, execinst = otype
     tptype, tordtype, texecinst = ttype
-    
+
     tailPrixRef = brg.prices(tptype, side)
 
     # renvois le prix de référence pour l'ordre principale selon optype et side
@@ -181,7 +179,7 @@ def set_order_args(
             f"Exception {e} >>>> atype={atype}, tptype={tptype} and tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}, symbol={symbol}"
         )
         raise e
-    
+
     # mlogger.info(
     #     f" >>>> atype={atype}, tptype={tptype} and"
     #     f" tailPrixRef={tailPrixRef} and ordPrixRef={ordPrixRef}, optype={optype}"
@@ -195,12 +193,16 @@ def set_order_args(
     # des options pour le tail
     if "tA" in atype:
         # le tail est en valeur absolue, prix ou doit être le tail / au prixPrevuTail
-        assert prixPrevuTail != 1 , f"tailRefPrices={tailRefPrices}, side={side}, atype={atype}."
+        assert (
+            prixPrevuTail != 1
+        ), f"tailRefPrices={tailRefPrices}, side={side}, atype={atype}."
 
         tp = abs((_tp / prixPrevuTail - 1) * 100)
     elif "tD" in atype:
         # c'est qu'on l'a donné en différentielle par rapport au prix en val abs.
-        assert prixPrevuTail !=0 , f"tailRefPrices={tailRefPrices}, side={side}, atype={atype}."
+        assert (
+            prixPrevuTail != 0
+        ), f"tailRefPrices={tailRefPrices}, side={side}, atype={atype}."
 
         tp = (_tp / prixPrevuTail) * 100
     else:
@@ -231,9 +233,9 @@ def price_type_trad(exType_, side=None):
     Transforme an order shorthand (exType_) in orders options.
 
     MarkPrice, LastPrice, IndexPrice: Used by stop and if-touched orders
-    to determine the triggering price. 
-    Use only one. By default, 'MarkPrice' is used. 
-    Also used for Pegged orders to define the value of 'LastPeg'.  
+    to determine the triggering price.
+    Use only one. By default, 'MarkPrice' is used.
+    Also used for Pegged orders to define the value of 'LastPeg'.
     It is bitMex fair price.
 
     Returns priceType, ordType et execInst.

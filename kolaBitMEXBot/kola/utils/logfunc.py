@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
+from logging import Logger, _nameToLevel
+
 from kolaBitMEXBot.kola.utils.general import confirm_path_existence_for
 from kolaBitMEXBot.kola.utils.datefunc import now
 from kolaBitMEXBot.kola.settings import LOGLEVELS, LOGFMT, LOGNAME, MAINLOGLEVEL
@@ -97,10 +99,36 @@ def add_uniq_streamhandler(logger, sh, level=None, fmt=None, prio=None):
     return add_uniq_type_handler(logger, sh, logging.StreamHandler, level, fmt, prio)
 
 
+def get_logfunc(logger_, level_="info"):
+    """Return the logging function at level_ for logger_."""
+
+    assert (
+        level_.upper() in _nameToLevel
+    ), f"level_, _nameToLevel={level_, _nameToLevel}"
+
+    assert isinstance(
+        logger_, Logger
+    ), f"logger_, type(logger_)={logger_, type(logger_)}"
+
+    return getattr(logger_, level_.lower())
+
+
+def throttled_log(cpt_, logFunc_, msg_, one_in_: int = 10):
+    """Log a message with logger after one_in_ cpt_() calls.
+
+    cpt_ must be an int"""
+    assert one_in_ >= 1 and isinstance(one_in_, int), f"one_in={one_in_, type(one_in_)}"
+    
+    if (cpt_ % one_in_) == 0:
+        logFunc_(msg_)
+
+    return None
+
+
 def get_logger(
     logger=None,
     name=None,
-    sLL=None,
+    sLL="WARNING",
     fLL=None,
     logFile=f"default",
     fmt_=None,
@@ -108,7 +136,7 @@ def get_logger(
 ):
     if name:
         logger = logging.getLogger(name)
-        logger.setLevel(LOGLEVELS[sLL])
+        logger.setLevel(sLL)
     else:
         logger = logging.getLogger(LOGNAME)
     return logger
@@ -176,3 +204,8 @@ def removeHandlers(logger):
     for h in handlers:
         logger.removeHandler(h)
     return logger
+
+
+def get_level_name(logger_):
+    """Return the name of the logger_ level."""
+    return logging.getLevelName(logger_.level)

@@ -45,7 +45,7 @@ def main_prg():
     fmt = (
         "%(asctime)s-%(levelname)s-%(filename)s@%(lineno)s(%(threadName)s): %(message)s"
     )
-    rlogger = get_logger(name=__name__, sLL=args.logLevel, fmt_=fmt)
+    rlogger, logLevel_dft = get_logger(name=__name__, sLL=args.logLevel, fmt_=fmt)
     run(live_=args.liveRun)
 
 

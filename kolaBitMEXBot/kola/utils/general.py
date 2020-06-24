@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
 from decimal import Decimal, getcontext, ROUND_HALF_UP  # pour l'arrondi
 import os  # for the path check
-import pandas as pd
-import numpy as np
-import queue
+from itertools import count
+import sleep
+from queue import Queue
 import threading
 import logging
+from logging import RootLogger, Logger
 import functools
+import numpy as np
+from typing import Union
+
 from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.settings import LOGLEVELS
 
@@ -17,18 +21,19 @@ def log_exception(logopt_=None, level_="ERROR"):
 
     - logopt: a logger object, a level or logger name.
     if level, will use the root logger with that level,
-    if name get the logger with that name,  default to the root logger, 
+    if name get the logger with that name,  default to the root logger,
     else use the logger passed.
-    
+
     Return decorator
     """
+
     def set_logger(logopt_, level_):
         """Set get a logger and a level."""
         if isinstance(logopt_, logging.RootLogger):
-            _logger = logopt_
+            _logger: Union[Logger, RootLogger] = logopt_
         elif isinstance(logopt_, str):
             assert logopt_ not in LOGLEVELS, f"Use a level not {logopt_}"
-            _logger = logging.getLogger(logopt)
+            _logger = logging.getLogger(logopt_)
         else:
             _logger = logging.getLogger(__name__)
 
@@ -39,17 +44,16 @@ def log_exception(logopt_=None, level_="ERROR"):
 
     def set_log_message(ex_, func_, args_=None, kwargs_=None, res=None):
         """Set the log message."""
-        # get / set the logger 
+        # get / set the logger
         msg = f"Catching exception >>>> {ex_}.\n"
         msg += f"{func_.__qualname__} Signature: args={args_}, kwargs={kwargs_}."
         if res is not None:
             msg += f" >>>> res={res}"
-            
+
         return msg
-        
+
     def decorator(func):
         @functools.wraps(func)  # what for ?
-
         def wrapped_func(*args, **kwargs):
             nonlocal logopt_, level_
 
@@ -60,7 +64,7 @@ def log_exception(logopt_=None, level_="ERROR"):
                 logger, level = set_logger(logopt_, level_)
                 msg = set_log_message(ex, func, args, kwargs, res)
                 logger.log(level, msg)
-                raise(ex)
+                raise (ex)
 
         return wrapped_func
 
@@ -87,7 +91,7 @@ def log_args(logopt=None, level="INFO"):
             if isinstance(logopt, logging.RootLogger):
                 logger = logopt
             elif isinstance(logopt, str):
-                assert logopt not in LOGLEVELS, f"utiliser level to set log level"
+                assert logopt not in LOGLEVELS, "utiliser level to set log level"
                 logger = logging.getLogger(logopt)
             else:
                 logger = logging.getLogger(__name__)
@@ -137,8 +141,7 @@ def in_interval(x, a, b, bornes="="):
         return a < x and x < b
 
 
-
-#@log_exception()
+# @log_exception()
 def get_precision(x_):
     """Return the decimal precision of x taking in account trailing 0."""
     if isinstance(x_, (int, float)) and int(x_) == x_:
@@ -147,13 +150,14 @@ def get_precision(x_):
     _s = str(x_)
     # case of scientific notation
     if "e" in _s:
-        _num, _expo = _s.split('e')
+        _num, _expo = _s.split("e")
         main_prec = get_precision(_num)
         sprec_ = int(_expo)
         return int(main_prec + -sprec_)
 
     # simple integer notation
-    return len(_s.split('.')[-1]) if "." in _s else 0
+    return len(_s.split(".")[-1]) if "." in _s else 0
+
 
 # def get_precision(x_):
 #     """Return the decimal precision of x taking in account trailing 0."""
@@ -166,11 +170,11 @@ def get_precision(x_):
 
 #     # if _x == 2e-05:
 #     #     import pdb; pdb.set_trace()
-    
+
 #     # case of scientific notation
 #     if sum(_s.isin(["e", "-"])) >= 2:
 #         _num_wo_expo = "".join(_s.iloc[:-4])  # num without exposant
-        
+
 #         main_prec = get_precision(_num_wo_expo)
 #         sprec_ = int("".join(_s.iloc[-2:]))
 #         return int(main_prec + sprec_)
@@ -195,10 +199,10 @@ def get_precision(x_):
 #         assert b_ >= a_
 #     else:
 #         b_ = len(s_) -1
-        
+
 #     return Series(s_[:a_]), Series(s_[b_:])
 
-    
+
 def round_price(price: float, precision_=0.5) -> float:
     """Set defaut to round an XBT price. see round_half_up"""
     assert precision_ is not None
@@ -214,7 +218,7 @@ def round_sprice(x, symbol_=None):
     x=.00005 -> au millionnième
     """
     # assert x != 0, f"symbol_={symbol_}, x={x}"
-    sprecision = PRICE_PRECISION.get(symbol_, 10**-get_precision(x))
+    sprecision = PRICE_PRECISION.get(symbol_, 10 ** -get_precision(x))
     return round_price(x, sprecision)
 
 
@@ -230,12 +234,13 @@ def round_half_up(x: float, precision_: float) -> float:
     # p = get_precision(y)
     getcontext().prec = 28  # set precision context
     prec_ = to_decimal(precision_)
-    arrondi = (to_decimal(x) / prec_).quantize(Decimal(1), rounding=ROUND_HALF_UP) * prec_
+    arrondi = (to_decimal(x) / prec_).quantize(
+        Decimal(1), rounding=ROUND_HALF_UP
+    ) * prec_
 
     # si precision_ = .5 -> 1 si 1e-7 -> 7
     round_precision = get_precision(precision_)
-    x_ = float(round(arrondi, round_precision) )
-    #logging.debug(f">>>> x_={x_} >>>> arrondi={arrondi}, round_precision={round_precision}.")
+    x_ = float(round(arrondi, round_precision))
     return x_
 
 
@@ -279,13 +284,17 @@ def current_thread():
 # voir https://stackoverflow.com/questions/6893968/how-to-get-the-return-value-from-a-thread-in-python
 def threaded(f, daemon=False):
     def wrapped_f(q, *args, **kwargs):
-        "Cette fonction appelle la fonction décorée et met le résultat dans une queue."
+        """Cette fonction appelle la fonction décorée et met le résultat dans une queue."""
         ret = f(*args, **kwargs)
         q.put(ret)
 
     def wrap(*args, **kwargs):
-        "Cette fonction est celle retourné par le décorateur.  Elle démare le thread et retour l'objet du thread avec la queue"
-        q = queue.Queue()
+        """
+        Cette fonction est celle retourné par le décorateur.
+
+        Elle démare le thread et retour l'objet du thread avec la queue
+        """
+        q : Queue = Queue()
 
         t = threading.Thread(target=wrapped_f, args=(q,) + args, kwargs=kwargs)
         t.daemon = daemon
@@ -345,7 +354,8 @@ def opt_add_to_(value_=None, opt_=None):
 
 def opt_pop_if_in_(val_=None, opt_=None):
     """
-    Given a val remove the element of the comma separated list if val is contained in on the elements.
+    Given a val remove the element of the comma separated list
+    if val is contained in on the elements.
     """
     if not val_:
         return opt_
@@ -370,13 +380,14 @@ def trim_dic(dic, trimlist=["", 0, None], trimid=0, droptime=False, others=None)
     Trim a dictionnary to only return entries not in trimList.
 
     defaut ('', 0, None),
-    trim id should be a number to shorten the ID, set droptime True to drop columns with time in their name. set a list of other cols to drop trim from the dictionnary
+    trim id should be a number to shorten the ID, set droptime True to drop columns
+    with time in their name. set a list of other cols to drop trim from the dictionnary
     """
     if not isinstance(dic, dict):
         # "object dic={dic} must have .item() but of type {type(dic)}"
         return dic
 
-    assert isinstance(trimid, int), f"Entrer un nombre pour reduire les ids"
+    assert isinstance(trimid, int), "Entrer un nombre pour reduire les ids"
 
     trimDic = {k: v for k, v in dic.items() if v not in trimlist}
     if trimid:
@@ -424,7 +435,8 @@ def sort_dic_list(diclist, key, reverse=False, default=None):
     dicList: a list of dictionnaryies
     key: the dic key for the sort
     reverse: (False) ascending, True, descending
-    default: (None) if not 'raise', the default value to return when the dict is not found in a dict
+    default: (None) if not 'raise', the default value to return when
+    the dict is not found in a dict
     """
     # a terme pourrait utilise pandas dataframe ici
     if default != "raise":
@@ -448,3 +460,25 @@ def car(expr_: str, sKey_: str = "_"):
     """Return the head part of a string split with sKey."""
     parts = expr_.split(sKey_)
     return parts[0] if len(parts) > 0 else parts
+
+
+def throttle(pause=0):
+    """Return a wrapper to throttle a function by pause seconds"""
+    assert pause is not None, "need explicite time for waiting (can be 0)."
+
+    def wrapper(func):
+        @functools.wraps(func)
+        def wrapped_func(*args, **kwargs):
+            nonlocal pause
+            sleep(pause)
+            return func(*args, **kwargs)
+
+        return wrapped_func
+
+    return wrapper
+
+
+def compteur(start=0, step=1):
+    """Return the function calling the next element of compting iterator."""
+    _count = count(0, 1)
+    return lambda: next(_count)

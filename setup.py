@@ -20,7 +20,7 @@ setup(
     author="Malik Koné",
     author_email="malikykone@gmail.com",
     url="https://github.com/maliky/kolaBitMEXBot",
-    packages=find_packages(exclude='secrets.py'),
+    packages=find_packages(exclude="secrets.py"),
     zip_safe=False,
     python_requires=">=3.8",
     entry_points={
@@ -28,19 +28,13 @@ setup(
             "run_multi_kola=kolaBitMEXBot.run_multi_kola:main_prg",
             "multi_kola=kolaBitMEXBot.multi_kola:main_prg",
             "test_kola=kolaBitMEXBot.tests.test_kola:main_prg",
-            
         ]
     },
-    install_requires=[
-        "pandas",
-        "numpy",
-        "websocket_client",
-        "requests",
-    ],
+    install_requires=["pandas", "numpy", "websocket_client", "requests",],
     extras_require={
-        'dev': ['mypy', 'flake8', 'black'],
-        'packaging': ['twine'],
-        "test": ['pytest', 'hypothesis'],
+        "dev": ["mypy", "flake8", "black"],
+        "packaging": ["twine"],
+        "test": ["pytest", "hypothesis"],
     },
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -58,5 +52,5 @@ setup(
         "Topic :: Utilities",
         "Topic :: System :: Monitoring",
     ],
-    package_data={"Doc": ["Doc/*"], "demo_Orders": ["Oders/*demo*.tsv"]},
+    package_data={"Doc": ["Doc/*"], "demo_Orders": ["Orders/*demo*.tsv"]},
 )

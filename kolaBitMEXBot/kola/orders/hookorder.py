@@ -4,7 +4,6 @@ from itertools import product
 from time import sleep
 from pandas import DataFrame
 
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.general import trim_dic
 from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
 from kolaBitMEXBot.kola.orders.condition import Condition
@@ -25,7 +24,7 @@ class HookOrder(OrderConditionned):
         nameT,
         timeout,
         brg,
-        logger=None,
+        logLevel_="INFO",
         excludeIDs_=None,
         symbol="XBTUSD",
     ):
@@ -51,7 +50,8 @@ class HookOrder(OrderConditionned):
             order=order,
             cond=cond,
             valid_queue=valid_queue,
-            logger=logger,
+            logName_=__name__,
+            logLevel=self.logLevel,
             nameT=nameT,
             timeout=timeout,
             symbol=symbol,
@@ -60,7 +60,7 @@ class HookOrder(OrderConditionned):
         _cond: Condition = self.condition
         self.init_cond_frame: DataFrame = _cond.cond_frame.copy()
 
-        self.logger = get_logger(logger, sLL="INFO", name=__name__)
+        # self.logger = get_logger(logger, sLL="INFO", name=__name__)
 
     def __repr__(self, short=True):
         """Repr self."""
@@ -121,6 +121,7 @@ class HookOrder(OrderConditionned):
         # on renvois les informations sur cet ordre pour les chained orders
         return execValidation
 
+    # @throttle(pause=5)
     def hasbeen_hooked(self):
         """
         Update self.is_hooked.

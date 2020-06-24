@@ -80,8 +80,8 @@ class MarketAuditeur:
         if logger:
             self.logger = logger
         else:
-            self.logger = get_logger(
-                logger, name=__name__, sLL="INFO", logFile=logfile
+            self.logger, self.logLevel_dft = get_logger(
+                logger, name=__name__, sLL="INFO"
             )
 
         # to cache the hooks
@@ -283,10 +283,9 @@ class MarketAuditeur:
                 "send_queue": self.fileDattente,
                 "order": order,
                 "cond": cVraieTpsDeA(
-                    self.brg, self.tpsDeb, self.tpsFin, logger=self.logger
+                    self.brg, self.tpsDeb, self.tpsFin
                 ),
                 "valid_queue": self.fileDeConfirmation,
-                "logger": self.logger,
                 "nameT": f"{nameT}-PO",
                 "timeout": timeOut,
                 "symbol": self.symbol,
@@ -319,12 +318,12 @@ class MarketAuditeur:
             # ou ["LastPrice", 'IndexPrice', 'MarkPrice']
             self.ocp.add_condition(
                 cVraiePrixDeA(
-                    self.brg, opType, oPrices[0], oPrices[1], logger=self.logger
+                    self.brg, opType, oPrices[0], oPrices[1]
                 )
             )
 
             msg = f"### OrdrePrincipal défini ### {self.ocp.__repr__(short=False)}"
-            self.logger.info(msg)
+            self.logger.debug(msg)
 
             # on accroche un stop (tail, trail) to follow the main order
             self.oct: TrailStop = TrailStop(
@@ -332,7 +331,7 @@ class MarketAuditeur:
                 self.brg,
                 pegOffset_perc=_tp,
                 updatepause=updatepause,
-                logger=self.logger,
+                logLevel_='INFO',
                 logpause=logpause,
                 nameT=f"{nameT}-SO",
                 refPrice=tpType,
@@ -422,7 +421,7 @@ class MarketAuditeur:
 
         # info sur la durée de l'essai
         self.logger.info(
-            f"#### Fin de l'essai {i+1}/{n}, Résultats:\n"
+            f"\n\n#### Fin de l'essai {i+1}/{n}, Résultats:\n"
             f"{self.resultats.iloc[-1,:]}"
         )
 
@@ -445,9 +444,9 @@ class MarketAuditeur:
         """
         # On devrait mettre en place une tail sur la totalité de la position engagée,
         self.logger.info(
-            f"################ Fin des {essais} essais:"
+            f"\n\n################ Fin des {essais} essais:"
             f"{self.resultats}"
-            "\n################ close and cancel ################"
+            "\n################ close and cancel ################\n\n"
         )
         # self.stop = True car va arrêter tous les ordres même les autres
         # si q == 0 close all position.  q mesure la réduction de la position
@@ -480,7 +479,8 @@ class MarketAuditeur:
 
             self.logger.info(
                 f"Temps de l'essai {dr_essai} (theo: {dr_essai_theo})."
-                f"  Going to sleep for {_dr_pause}."
+                f"  Going to sleep for {_dr_pause}.\n"
+                "****************"
             )
 
             sleep(_dr_pause.seconds)
@@ -573,11 +573,11 @@ def coerce_types(s):
                 if el1 == "-":
                     # pas mal d'assertion à faire ici,
                     # pb de précision, d'arrondi
-                    el1 = int(float(elt2) / 10) 
+                    el1 = int(float(el2) / 10)
                 else:
                     el1 = float(el1)
 
-                if el2 == "+" :    
+                if el2 == "+":
                     el2 = int(float(el1) * 10)
                 else:
                     el2 = float(el2)

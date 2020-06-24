@@ -3,7 +3,7 @@
 from collections import OrderedDict
 
 import numpy as np
-import pandas as pd
+from pandas import Series, Index, DataFrame, to_datetime, concat, Timedelta, isna
 
 from kolaBitMEXBot.kola.utils.general import round_sprice, contains
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
@@ -78,12 +78,12 @@ class PriceObj:
         self.max_var = max_var
         N = 100
         self.neg_exps = self.__neg_exps(self.max_var, N)
-        self.var_dist_hist = pd.Series(index=range(N), data=self.neg_exps)
+        self.var_dist_hist = Series(index=range(N), data=self.neg_exps)
         self.min_flex = min_flex
 
         # on initialise les prix et la df qui les contiendra
         # define self.data
-        self.data = None
+        self.data = DataFrame()
         self.data = self.__init_price_df(price, refPrice)
 
         # on définie l'épaisseur du stop
@@ -91,7 +91,7 @@ class PriceObj:
             abs(self.data.refPrice.init - self.data.refTail.init), symbol
         )
 
-    def __init_price_df(self, price, refPrice):
+    def __init_price_df(self, price, refPrice) -> DataFrame:
         """Initialise la df qui contiendra l'historique des prix"""
 
         def create_index():
@@ -100,11 +100,15 @@ class PriceObj:
 
             avec la dernière appelée init et les deux premières current et previous.
             """
-            ind = list(range(self.main_window_size))
-            ind[0], ind[1], ind[-1] = "current", "previous", "init"
+            ind = (
+                ["current", "previous"]
+                + ["{i}" for i in range(2, self.main_window_size - 1)]
+                + ["init"]
+            )
+            # ind[0], ind[1], ind[-1] =
             return ind
 
-        index = pd.Index(create_index(), name="PriceObj.data")
+        index = Index(create_index(), name="PriceObj.data")
         columns = [
             "date",
             "price",
@@ -115,13 +119,13 @@ class PriceObj:
             "sOfsD",
             "fScale",
         ]
-        # self.data = pd.DataFrame(index=index, columns=columns)
+        # self.data = DataFrame(index=index, columns=columns)
 
         current_prices = self.get_current_prices(price, refPrice)
-        data = pd.DataFrame(index=index, columns=columns)
+        data = DataFrame(index=index, columns=columns)
         data.loc[:, :] = current_prices.values
         # On s'assure que la colonne date est au bon format
-        data.date = pd.to_datetime(data.date)
+        data.date = to_datetime(data.date)
         self.logger.debug(f"Init df prices Object:\n{data.describe()}")
         return data
 
@@ -172,12 +176,14 @@ class PriceObj:
         # current_prices = (now(), price, refPrice, stopTail, refTail, flexTail, sOfsD,
         #                   fOfsD, sOfsP, fScale)
 
-        return pd.Series(current_prices)
+        return Series(current_prices)
 
     def __neg_exps(self, max_var, N):
         """Plotter pour voir mais il s'agit de valeurs pour x => -np.exp(x)"""
+        def neg_exp(x):
+            return lambda x: -np.exp(x)
         data = list(
-            map(lambda x: -np.exp(x), np.linspace(start=1, stop=max_var, num=N))
+            map(neg_exp, np.linspace(start=1, stop=max_var, num=N))
         )
         return data
 
@@ -190,8 +196,8 @@ class PriceObj:
             ) & set(self.data.columns)
             data = self.data.loc[:, self.data.columns].drop_duplicates(subset=fCols)
             initRow = self.data.tail(1)  # return df
-            data = pd.concat([data.head(3), initRow])
-            rep = pd.concat([data.head(short), initRow]) if short else f"{data}"
+            data = concat([data.head(3), initRow])
+            rep = concat([data.head(short), initRow]) if short else f"{data}"
             return f"{rep}\n"
         else:
             return "Data not initialised yet but price, refPrice, are {price, refPrice}"
@@ -267,7 +273,7 @@ class PriceObj:
         si le tableau est rempli.
         JE me base sur ça pour calculer l'offset
         """
-        if pd.isna(refTail):
+        if isna(refTail):
             refTail = self.get_refTail(refPrice)
 
         # if self.enought_data():
@@ -299,15 +305,15 @@ class PriceObj:
             return 0, 0, 0
         # on suppose que le data à les données nécessaire pour les calculs suivants
         # définit les mask avec les unité de temps Unit Time (UT)
-        oneUTAgo = now() - pd.Timedelta(self.timeBin, "s")
-        twoUTAgo = now() - pd.Timedelta(2 * self.timeBin, "s")
+        oneUTAgo = now() - Timedelta(self.timeBin, "s")
+        twoUTAgo = now() - Timedelta(2 * self.timeBin, "s")
         currUT_mask = (self.data.date > oneUTAgo).values
         prevUT_mask = (self.data.date > twoUTAgo).values & list(not_array(currUT_mask))
 
         mean_curr_price = self.data.loc[currUT_mask].refPrice.mean()
         mean_prev_price = self.data.loc[prevUT_mask].refPrice.mean()
 
-        if any(pd.isna([mean_prev_price, mean_curr_price])):
+        if any(isna([mean_prev_price, mean_curr_price])):
             return 0, mean_prev_price, mean_curr_price
         else:
             return (
@@ -408,7 +414,7 @@ class PriceObj:
         try:
             min_date = self.data.date.min()
             max_date = self.data.date.max()
-            if any(pd.isna([min_date, max_date])):
+            if any(isna([min_date, max_date])):
                 return 0
             else:
                 date_range = max_date - min_date
@@ -428,7 +434,7 @@ class PriceObj:
         """
         if self.data is not None:
             elt = self.data.loc[temps].loc[nomElt]
-            if not pd.isna(elt):
+            if not isna(elt):
                 return elt
 
         if nomElt == "refPrice":
@@ -445,7 +451,7 @@ class PriceObj:
 
     def get_refPrice(self, refPrice=None):
         """Renvoie le prix de référence en s'assurant qu'il est définit.  """
-        if pd.isna(refPrice):
+        if isna(refPrice):
             return self.get_data("refPrice")
         else:
             return refPrice

@@ -2,7 +2,7 @@
 """Tools to bargain."""
 from pandas import Timedelta, DataFrame
 from numpy.random import randint
-from typing import Optional, Set
+from typing import Optional, Set, Dict, List
 
 from kolaBitMEXBot.kola.kolatypes import ordStatusT
 from kolaBitMEXBot.kola.custom_bitmex import BitMEX
@@ -304,9 +304,9 @@ class Bargain:
             # pb avec la table execution qui ne renvois pas des object tous de la même taille
             # va filtrer / trier
             execution = self.bto.ws.data["execution"]
-            EXEC = {}
+            EXEC: Dict[int, List] = {}
             for elt in execution:
-                EXEC[len(elt)] = EXEC.get(len(elt), []).append(elt)
+                EXEC.get(len(elt), []).append(elt)
 
             self.logger.exception(
                 f"Exception {ve}: We have {len(EXEC)} diff execution shape returning the longuest of {list(map(len, EXEC.values()))}"
@@ -522,10 +522,10 @@ class Bargain:
     def camelCase_price(self, priceName):
         """
         CamelCase the price name so it matches the instrument keys.
-        
+
         keys:
         prices= [f"{suf}Price" for suf in ['max', 'prevClose', 'prev', 'high', 'low',
-        'last', 'bid', 'mid', 'ask', 'impactBid', 'impactMid', 'impactAsk', 
+        'last', 'bid', 'mid', 'ask', 'impactBid', 'impactMid', 'impactAsk',
         'fair', 'mark', 'indicativeSettle']] + [lastPriceProtected]
         """
 

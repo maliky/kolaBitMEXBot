@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- Coding: utf-8 -*-
 """Trail stops"""
 from kolaBitMEXBot.kola.orders.condition import Condition
 from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
@@ -7,7 +7,6 @@ from kolaBitMEXBot.kola.settings import API_ERROR_INTERVAL
 from kolaBitMEXBot.kola.price import PriceObj
 from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.utils.orderfunc import (
-    get_logger,
     toggle_sides,
     get_order_from,
     opt_add_to_,
@@ -31,7 +30,7 @@ class TrailStop(OrderConditionned):
         brg,
         pegOffset_perc=0.5,
         updatepause=None,
-        logger=None,
+        logLevel_="INFO",
         logpause=60,
         nameT=None,
         refPrice=None,
@@ -46,8 +45,6 @@ class TrailStop(OrderConditionned):
         - pegOffset_perc in [0, 100] % du prix de ref pour la trace
         - updatepause, c'est le temps moyen à attendre entre deux mise-à-jour
         """
-        self.logger = get_logger(logger, sLL="INFO", name=__name__)
-
         self.main_oc = main_oc
         self.brg = brg
         self.pegOffset_perc = pegOffset_perc
@@ -99,7 +96,8 @@ class TrailStop(OrderConditionned):
             self.op = ">"
             args = (self.refPrice_type, ">", 1e9)
 
-        self.tailStop_triggerCond = Condition(self.brg, args, logger=self.logger)
+        self.logLevel = logLevel_
+        self.tailStop_triggerCond = Condition(self.brg, args, logLevel_=self.logLevel)
 
         OrderConditionned.__init__(
             self,
@@ -108,10 +106,13 @@ class TrailStop(OrderConditionned):
             order=self.init_order,
             cond=self.main_oc.condition,
             valid_queue=self.main_oc.valid_queue,
-            logger=self.logger,
+            logName_=__name__,
+            logLevel_=self.logLevel,
             nameT=nameT,
             symbol=self.main_oc.symbol,
         )
+
+        #        self.logger = get_logger(logger, sLL=self.log_level_dft, name=__name__)
 
     def __repr__(self, tracing=False, short=True, cond=False):
         ret = "----TrailStop"
@@ -165,7 +166,6 @@ class TrailStop(OrderConditionned):
 
             self.logger.info(f"Tail{self.main_oc} en place! Reply: {orderRef}")
 
-            i = 0
             # boucle qui check the update condition
             while not self.stop:
 
@@ -190,10 +190,9 @@ class TrailStop(OrderConditionned):
                 pause = pause if pause > 0 else 0
                 sleep(pause)
 
-                i += 1
                 # si int(60), log environs toutes les i * logPause
-                if i % int(self.logPause / self.updatePause) == 0:
-                    self.logger.info(f"{self.__repr__(cond=True)}\n{self.PO}")
+                pause = (int(self.logPause / self.updatePause),)
+                self.log(f"{self.__repr__(cond=True)}\n{self.PO}", "INFO", pause)
 
             # On sort de la boucle si stop et true ou condition met
             # et finalise (..méthode héritée)

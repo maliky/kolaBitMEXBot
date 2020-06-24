@@ -33,13 +33,11 @@ def cVraieTpsDiffDeA(brg, x, y):
     return Condition(brg, (("temps", ">", tpsDeb), ("temps", "<", tpsFin)))
 
 
-def cVraieTpsDeA(brg, tpsDeb, tpsFin, logger=None):
+def cVraieTpsDeA(brg, tpsDeb, tpsFin):
     """Condition vraie pour un temps compris de tpsDeb A tpsFin."""
     if tpsDeb > tpsFin:
         raise Exception("tps départ(%s) > tps d'arrivé (%s)" % (tpsDeb, tpsFin))
-    return Condition(
-        brg, (("temps", ">", tpsDeb), ("temps", "<", tpsFin)), logger=logger
-    )
+    return Condition(brg, (("temps", ">", tpsDeb), ("temps", "<", tpsFin)))
 
 
 def cVraiePrixDiffDeA(brg, price_type, x, y):
@@ -70,14 +68,12 @@ def cVraiePrixDiffInf(brg, price_type, x):
     return Condition(brg, (price_type, "<", prixSup))
 
 
-def cVraiePrixDeA(brg, price_type, prixInf, prixSup, logger=None):
+def cVraiePrixDeA(brg, price_type, prixInf, prixSup):
     """Condition vraie pour un prix compris entre x usd et y usd."""
 
     assert prixInf < prixSup, f"prix départ({prixInf}) > prix d'arrivé ({prixSup})"
     # logging.warning(f'Setting Price type={price_type}, inf {prixInf}, sup {prixSup}')
-    return Condition(
-        brg, ((price_type, "<", prixSup), (price_type, ">", prixInf)), logger=None
-    )
+    return Condition(brg, ((price_type, "<", prixSup), (price_type, ">", prixInf)))
 
 
 def cVraiePrixSup(brg, price_type, prixInf):
@@ -98,7 +94,7 @@ def cVraieToujours(brg):
 def cHook(brg, hSrc, srcStatus="Filled", exclIDs=[]):
     """
     Créer la condtion Hook.
-    
+
     le genre hook,
     hSrcva servir à récupérer le clOrdID au moment de l'éval
     status est l'état cherché pour le hook

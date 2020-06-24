@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBitMEXBot.kola.utils.logfunc import get_logger, throttled_log, get_logfunc
 from kolaBitMEXBot.kola.utils.orderfunc import (
     newClID,
     toggle_order,
@@ -7,7 +7,7 @@ from kolaBitMEXBot.kola.utils.orderfunc import (
     remove_execInst,
 )
 from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.general import trim_dic
+from kolaBitMEXBot.kola.utils.general import trim_dic, compteur
 from kolaBitMEXBot.kola.utils.datefunc import setdef_timedelta
 from kolaBitMEXBot.kola.orders.condition import Condition
 
@@ -25,7 +25,8 @@ class OrderConditionned(Thread):
         order,
         cond,
         valid_queue=None,
-        logger=None,
+        logName_=__name__,
+        logLevel_="INFO",
         nameT=None,
         timeout=None,
         symbol="XBTUSD",
@@ -42,7 +43,10 @@ class OrderConditionned(Thread):
         """
         Thread.__init__(self, name=nameT)
 
-        self.logger = get_logger(logger, sLL="INFO", name=__name__)
+        self.cpt_call = compteur()
+        self.logLevel = logLevel_
+        _logName = __name__ if logName_ is None else logName_
+        self.logger = get_logger(sLL=self.logLevel, name=_logName)
         self.symbol = symbol
         self.send_queue = send_queue
         self.valid_queue = valid_queue
@@ -123,6 +127,17 @@ class OrderConditionned(Thread):
 
         # on renvois les informations sur cet ordre pour les chained orders
         return execValidation
+
+    def get_logfunc(self, level_="INFO"):
+        """Return the object logger with level_."""
+        return get_logfunc(self.logger, level_)
+
+    def log(self, msg_, level_=None, one_in_: int = 10):
+        """a throttled log a message after one_in_ self.call"""
+        _level = self.logLevel if level_ is None else level_
+        log_func = self.get_logfunc(_level)
+        i = self.cpt_call()
+        return throttled_log(i, log_func, msg_, one_in_)
 
     def explain(self):
         """Find reason."""
