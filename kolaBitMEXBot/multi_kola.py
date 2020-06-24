@@ -570,8 +570,17 @@ def coerce_types(s):
                 el1 = float(el2) * 10 if el1 == "-" else float(el1)
                 el2 = float(el1) * 10 if el2 == "+" else float(el2)
             if "pA" in atype:
-                el1 = int(float(elt2) / 10) if el1 == "-" else float(el1)
-                el2 = int(float(el1) * 10) if el2 == "+" else float(el2)
+                if el1 == "-":
+                    # pas mal d'assertion à faire ici,
+                    # pb de précision, d'arrondi
+                    el1 = int(float(elt2) / 10) 
+                else:
+                    el1 = float(el1)
+
+                if el2 == "+" :    
+                    el2 = int(float(el1) * 10)
+                else:
+                    el2 = float(el2)
         return float(el1), float(el2)
 
     def coerce_to(ctype, elt):
