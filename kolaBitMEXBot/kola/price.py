@@ -12,6 +12,18 @@ from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
 from kolaBitMEXBot.kola.kolatypes import symbT, sideT, priceT
 
 
+PRICE_COLUMNS = [
+    "date",
+    "price",
+    "refPrice",
+    "stopTail",
+    "refTail",
+    "flexTail",
+    "sOfsD",
+    "fScale",
+]
+
+
 class PriceObj:
     """This classe keeps track of a price and element associated with this price
     L'objet prix à un sens, une tête et plusieurs queues
@@ -83,37 +95,21 @@ class PriceObj:
 
         # on initialise les prix et la df qui les contiendra
         # define self.data
-        self.data = DataFrame(index=create_index(self.main_window_size))
-        self.data = self.__init_price_df(price, refPrice)
+
+        self.data: DataFrame = DataFrame(
+            index=Index(create_index(self.main_window_size), name="PriceObj.data"),
+            columns=PRICE_COLUMNS,
+        )
+        self.data.loc[:, :] = self.get_current_prices(price, refPrice)
+        # On s'assure que la colonne date est au bon format
+        self.data.date = to_datetime(self.data.date)
+
+        self.logger.debug(f"Init df prices Object:\n{self.data.describe()}")
 
         # on définie l'épaisseur du stop
         self.tail_base_width = round_sprice(
             abs(self.data.refPrice.init - self.data.refTail.init), symbol
         )
-
-    def __init_price_df(self, price, refPrice) -> DataFrame:
-        """Initialise la df qui contiendra l'historique des prix"""
-
-        index = Index(create_index(self.main_window_size), name="PriceObj.data")
-        columns = [
-            "date",
-            "price",
-            "refPrice",
-            "stopTail",
-            "refTail",
-            "flexTail",
-            "sOfsD",
-            "fScale",
-        ]
-        # self.data = DataFrame(index=index, columns=columns)
-
-        current_prices = self.get_current_prices(price, refPrice)
-        data = DataFrame(index=index, columns=columns)
-        data.loc[:, :] = current_prices.values
-        # On s'assure que la colonne date est au bon format
-        data.date = to_datetime(data.date)
-        self.logger.debug(f"Init df prices Object:\n{data.describe()}")
-        return data
 
     def get_current_prices(
         self,
