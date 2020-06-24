@@ -55,3 +55,8 @@ INSTRUMENT_PRICES = [
         "indicativeSettle",
     ]
 ] + ["lastPriceProtected"]
+
+
+# price variation in % to reach to short to the maximun the tail (stop)
+# used to set a e^-f(t) fonction controling the tail's size.
+MAX_PRICE_VARIATION = {"XBTUSD": 2.6, "ADAM20": 2}
