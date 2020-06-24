@@ -96,8 +96,7 @@ class TrailStop(OrderConditionned):
             self.op = ">"
             args = (self.refPrice_type, ">", 1e9)
 
-        self.logLevel = logLevel_
-        self.tailStop_triggerCond = Condition(self.brg, args, logLevel_=self.logLevel)
+        self.tailStop_triggerCond = Condition(self.brg, args, logLevel_=logLevel_)
 
         OrderConditionned.__init__(
             self,
@@ -107,7 +106,7 @@ class TrailStop(OrderConditionned):
             cond=self.main_oc.condition,
             valid_queue=self.main_oc.valid_queue,
             logName_=__name__,
-            logLevel_=self.logLevel,
+            logLevel_=logLevel_,
             nameT=nameT,
             symbol=self.main_oc.symbol,
         )

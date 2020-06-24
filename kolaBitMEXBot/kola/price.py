@@ -94,7 +94,7 @@ class PriceObj:
     def __init_price_df(self, price, refPrice) -> DataFrame:
         """Initialise la df qui contiendra l'historique des prix"""
 
-        index = Index(create_index(), name="PriceObj.data")
+        index = Index(create_index(self.main_window_size), name="PriceObj.data")
         columns = [
             "date",
             "price",

@@ -51,7 +51,7 @@ class HookOrder(OrderConditionned):
             cond=cond,
             valid_queue=valid_queue,
             logName_=__name__,
-            logLevel_=self.logLevel,
+            logLevel_=logLevel,
             nameT=nameT,
             timeout=timeout,
             symbol=symbol,
