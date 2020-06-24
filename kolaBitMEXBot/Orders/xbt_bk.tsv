@@ -1,0 +1,48 @@
+name	tps_run	essais	tOut	pause	side	oType	oDelta	tType	tDelta	atype	q	tp	prix	hook
+# buy  
+################
+XTop	0 5440	1			sell	S		S-		qAt%pA	2000	2.6	7995 8009
+
+####
+XBlH1	0 5440	100	6	1	sell	Si		S-		qAtDpD	5050	10	- -5	XBlx1-S_F
+XBlx1	0 5440	200	6	.5	buy	Si		S-		qAtDpD	5000	20	74 +
+####
+
+#XSell3	0 5440	1400	8	10	sell	LT		SL	2	qAtDpD	303	.5	6.5 +
+#XSell0	0 5440	1400	5	5	sell	LT		SL	2	qAtDpD	200	.5	.5 +
+
+# ################ ################  market price  ####################  ################
+#XBuy1	0 5440	1400	5	5	buy	LT		SL	2	qAtDpD	201	.5	- -.5
+#XBuy2	0 5440	1400	8	10	buy	LT		SL	2	qAtDpD	302	.5	- -6
+
+####
+XBrx	0 5440	100	6	.1	sell	Si		SL		qAtDpD	5001	20	- -75
+XBrH	0 5440	100	6	1	buy	Si		S-		qAtDpD	5002	60	.5 +	XBrx-S_T
+####
+
+XStop	0 5440	1			sell	S		S-		qAtDpA	2000	230	7995 8009
+
+################
+
+
+
+# #### Notes ####
+# oType = order price Type
+# tType = tail Price Type
+# Differents values des Types
+
+# i, l, m (index, Last et Mark trigger Prices)  # par défaut last price which seem to be ask and bid prices
+
+# M, L, S, MT, SL, LT: Market, Limit, Stop, MarketIfTouched, StopLimit, LimitIfTouched orders
+# L toucher par rapport à LastPrice ?
+# 
+# !, - ParticipateDoNotInitiate et ReduceOnly, incompatible avec Market orders
+# utiliser les SL et LT avec des limites juste à côte du trigger par défaut et dans le même sens
+# tOut et pause sont en minutes
+
+# sDelta (en diff nominal pour l'ordre principal seulement)  par défaut = 1  pour le stop
+
+# sell SL, trigger when mark price < price given et le limit sera sell aussi
+
+# temps: 24h 1440m, 48h 2880m,  4j 5760m, 7j ~10000m.
+
