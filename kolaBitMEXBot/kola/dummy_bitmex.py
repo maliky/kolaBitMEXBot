@@ -72,7 +72,7 @@ class DummyBitMEX:
             "isQuanto": False,
             "isInverse": False,
             "MarkPrice": MarkPrice,
-            "MarkPrice": MarkPrice,
+            "markPrice": MarkPrice,
             "indicativeSettlePrice": refPrice,
             "symbol": self.symbol,
             "askPrice": MarkPrice + 0.5,

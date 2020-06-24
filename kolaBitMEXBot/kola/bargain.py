@@ -299,7 +299,10 @@ class Bargain:
         transactTime ascendant.
         """
         try:
-            df = DataFrame(self.bto.ws.data["execution"])
+            if self.dbo is None:
+                df = DataFrame(self.bto.ws.data["execution"])
+            else:
+                df =  DataFrame(index=range(10), columns=EXECOLS, data="dummy")
         except ValueError as ve:
             # pb avec la table execution qui ne renvois pas des object tous de la même taille
             # va filtrer / trier

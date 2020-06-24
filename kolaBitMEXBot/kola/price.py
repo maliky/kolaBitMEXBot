@@ -94,8 +94,10 @@ class PriceObj:
             index=Index(create_index(self.main_window_size), name="PriceObj.data"),
             columns=PRICE_COLUMNS,
         )
-        self.data.loc[:, :] = self.get_current_prices(price, refPrice)
+        self.data.loc[:, :] = self.get_current_prices(price, refPrice).T.values
+
         # On s'assure que la colonne date est au bon format
+        self.logger.info(f"$$$$$$$$$$$$$$$${self.data}")
         self.data.date = to_datetime(self.data.date)
 
         self.logger.debug(f"Init df prices Object:\n{self.data.describe()}")
@@ -116,7 +118,7 @@ class PriceObj:
         sOfsP=None,
         fOfsD=None,
         fScale=None,
-    ):
+    ) -> DataFrame:
         """Renvois les prix actuels pour remplir ou mettre à jour la df"""
         if refPrice is None:
             refPrice = self.get_refPrice()
@@ -152,12 +154,12 @@ class PriceObj:
         # current_prices = (now(), price, refPrice, stopTail, refTail, flexTail, sOfsD,
         #                   fOfsD, sOfsP, fScale)
 
-        return Series(current_prices)
+        return DataFrame(Series(current_prices))
 
     def __repr__(self, short=3):
         """representation for the price obj. pass a number != 0 to trim the df output.
         default 3.  return only rows with price change"""
-        if self.data is not None:
+        if getattr(self, "data", None) is not None:
             fCols = set(
                 [c for c in self.data.columns if contains(["price", "tail"], c.lower())]
             ) & set(self.data.columns)
@@ -264,7 +266,7 @@ class PriceObj:
 
     def get_current_variation(self):
         """Renvoie var % des derniers et avant derniers prix moyens."""
-        if self.data is None:
+        if getattr(self, "data", None) is None:
             return 0, 0, 0
         # on suppose que le data à les données nécessaire pour les calculs suivants
         # définit les mask avec les unité de temps Unit Time (UT)
@@ -371,7 +373,7 @@ class PriceObj:
         """Renvoie la date range timedelta (en seconds) converte par le price data"""
         min_date, max_date, date_range = None, None, None
 
-        if self.data is None:
+        if getattr(self, "data", None) is None:
             return 0
 
         try:
@@ -395,7 +397,7 @@ class PriceObj:
         Renvoie un element du data si il existe.
         Si refPrice ou date demandés, envoie des valeurs par défaut
         """
-        if self.data is not None:
+        if getattr(self, "data", None) is not None:
             elt = self.data.loc[temps].loc[nomElt]
             if not isna(elt):
                 return elt
@@ -431,12 +433,12 @@ def not_array(arr):
 
 def create_index(core_size_: int):
     """
-    Créer une df de taille n (n ligne).
+    Créer a str index of size core_size. with specific first and last names
 
     avec la dernière appelée init et les deux premières current et previous.
     """
     assert core_size_ > 1, f"core_size={core_size_}"
-    idx = ["current", "previous"] + ["{i}" for i in range(2, core_size_ - 1)] + ["init"]
+    idx = ["current", "previous"] + [f"{i}" for i in range(2, core_size_ - 1)] + ["init"]
     return idx
 
 
