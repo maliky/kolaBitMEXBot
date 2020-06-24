@@ -1,0 +1,85 @@
+usage: multi_kola [-h] [--tps_run TPS_RUN TPS_RUN] [--name NAME] [--tOut TOUT]
+                  [--drPause DRPAUSE] [--prix PRIX PRIX] [--quantity QUANTITY]
+                  [--tailPrice TAILPRICE] [--logLevel LOGLEVEL]
+                  [--symbol SYMBOL] [--updatePause UPDATEPAUSE]
+                  [--logPause LOGPAUSE] [--argFile ARGFILE] [--sDelta SDELTA]
+                  [--nbEssais NBESSAIS] [--oType OTYPE] [--tType TTYPE]
+                  [--side SIDE] [--aType ATYPE] [--logFile LOGFILE]
+                  [--liveRun] [--dummy] [--Hook HOOK]
+
+Un bot pour faire du trading de cryptomonnaie.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --tps_run TPS_RUN TPS_RUN, -t TPS_RUN TPS_RUN
+                        le temps en minute à partir du moment du lancement,
+                        doit être un tuple, indique la plage horaire pour
+                        laquelle l'ordre est valide. (default=[-1, 800])
+  --name NAME, -m NAME  Nom de l'ordre dans logs internes
+  --tOut TOUT, -O TOUT  Temps d'attente de vérification in minutes de la
+                        validation de l'order. Pour les limites order peut
+                        être très long. (default le temps du run) (default
+                        temps d'attente théorique d'un ordre ie, durée du run
+                        / nb orders)
+  --drPause DRPAUSE, -p DRPAUSE
+                        Indique une durée de pause lorsqu'un ordre fini. C'est
+                        approximatif. attend au moins 10 secondes puis rnd.exp
+                        (default=None) min
+  --prix PRIX PRIX, -x PRIX PRIX
+                        Une fourchette de prix dans laquelle executer le ou
+                        les essais. Si le prix sort de la fourchette rien
+                        faire. La fourchette de prix peut être exprimer en %
+                        du prix actuellent, en différentiel ou en valeur
+                        absolu. (default=[-1, 1])
+  --quantity QUANTITY, -q QUANTITY
+                        quantité de l'ordre. Doit toujours être positive ici.
+                        Mais peut être exprimier en % de la balance dispo ou
+                        en valeur Absolue (default=75)
+  --tailPrice TAILPRICE, -T TAILPRICE
+                        C'est l'epaisseur de la queue (tail) qui suit le pri;
+                        en %, valeur absolu ou prix de départ (default=2)
+  --logLevel LOGLEVEL, -l LOGLEVEL
+                        le niveau pour le log (default=INFO)
+  --symbol SYMBOL, -S SYMBOL
+                        Market to listen too. could be XBTM20 XBTU20 ADAM20
+                        BCHM20 ETHUSD LTCM20 (default=XBTUSD)
+  --updatePause UPDATEPAUSE, -U UPDATEPAUSE
+                        Le temps (moyen) nentre deux update de la tail (en s),
+                        (default=10)
+  --logPause LOGPAUSE, -F LOGPAUSE
+                        Le temps (moyen) entre deux logs de l'évolution des
+                        prix. (default=60)
+  --argFile ARGFILE, -A ARGFILE
+                        Indique le nom d'un fichier contenant multiples orders
+                        to run in one go. (default None)
+  --sDelta SDELTA, -s SDELTA
+                        Différence entre le prix de l'ordre et le prix
+                        déclencheur de l'ordre. Utilisé pour les ordres de
+                        StopLimit et LimitIfTouched (default={sDelta_def})
+  --nbEssais NBESSAIS, -n NBESSAIS
+                        nombre d'essaies à effectuer (default=3)
+  --oType OTYPE, -o OTYPE
+                        Declenchement price type. One of one of indexPrice,
+                        markPrice, lastPrice, respectivement pour le
+                        déclenchement des stop indexPrice, markePrice
+                        (markPrice) et lastPrice (default =M)
+  --tType TTYPE, -y TTYPE
+                        one of indexPrice, markPrice, lastPrice,
+                        respectivement pour le déclenchement des stop
+                        indexPrice, markePrice (markPrice) et lastPrice. Du
+                        moins au plus volatille. Default (default Si-)
+  --side SIDE, -c SIDE  côte de l'ordre (default=buy)
+  --aType ATYPE, -a ATYPE
+                        définie comment interpréter les arguments --prix (p),
+                        --quantity (q), --tailPrice (t). Suivant les lettres
+                        ajouter A, D ou % pour en valeur Absolue, Differentiel
+                        ou pourcentage. Exemple: p%qAt% pour prix en
+                        pourcentage, quantité Absolue et t% en pourcentage
+                        (default=p%q%t%)
+  --logFile LOGFILE, -f LOGFILE
+                        Le fichier de sorti log. (default ./log.org)
+  --liveRun, -L         Si présent effectue un live run sinon sur tests
+  --dummy, -D           Si présent utilise un dummy bitmex
+  --Hook HOOK, -H HOOK  define the name of the order to hook to and the status
+                        to wait for. F for filled, N for new, C for cancel and
+                        P for partial... formed as name_F (default=)
