@@ -164,7 +164,7 @@ class PriceObj:
         """Plotter pour voir mais il s'agit de valeurs pour x => -np.exp(x)"""
 
         def neg_exp(x):
-            return lambda x: -np.exp(x)
+            return -np.exp(x)
 
         data = list(map(neg_exp, np.linspace(start=1, stop=max_var, num=N)))
         return data
