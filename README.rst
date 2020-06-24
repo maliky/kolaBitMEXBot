@@ -8,7 +8,7 @@ KolaBot is a program to handle concurrently several pairs of orders in
 the BitMEX exchange. A pair is a main order (amoung those allowed by
 BitMEX) and an opposite order (again among allowed) that acts as a stop.
 Each order enter the book based on conditions you set in
-`morders.tsv <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/morders.tsv>`__.
+`morders.tsv <https://github.com/maliky/kolaBot/blob/master/kolaBot/morders.tsv>`__.
 
 Main conditions
 ~~~~~~~~~~~~~~~
@@ -50,7 +50,7 @@ Units
 Options specific to the stop order
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-By defaut kolaBitMEXBot runs an opening order (main) and a close order
+By defaut kolaBot runs an opening order (main) and a close order
 (secondary or tail or trail). If your main is a buy, the secondary will
 be a close and vice-versa. It is possible to run only one of the two
 order by setting automatic cancelation condition on the not wanted
@@ -127,11 +127,11 @@ Installation
 Download or clone the repository
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Git Project URL: https://github.com/maliky/kolaBitMEXBot
+Git Project URL: https://github.com/maliky/kolaBot
 
 .. code:: bash
 
-   git clone https://github.com/maliky/kolaBitMEXBot.git
+   git clone https://github.com/maliky/kolaBot.git
    cd kolaBitMexBot
 
 Install dependencies
@@ -149,13 +149,13 @@ system. *note To install mutliple python on your system, check
    pip install -r requirements.txt
 
    # run main programmes
-   python -m  kolaBitMEXBot.run_multi_kola -h
-   python -m  kolaBitMEXBot.multi_kola -h
+   python -m  kolaBot.run_multi_kola -h
+   python -m  kolaBot.multi_kola -h
 
 pip install
 ~~~~~~~~~~~
 
-If you just want to use kolaBitMEXBot, you can install the module
+If you just want to use kolaBot, you can install the module
 directly with \`pip\`
 
 .. code:: bash
@@ -174,7 +174,7 @@ would recommand doing it as a pip editable module with:
    # install the package from local source
    pip install -e . 
 
-Add you API keys in \`kolaBitMEXBot/kola/secret.py\`
+Add you API keys in \`kolaBot/kola/secret.py\`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This file created and it should contain the 4 variable keys:
@@ -186,7 +186,7 @@ This file created and it should contain the 4 variable keys:
    TEST_KEY = "THEn_XATESTgXOcfKEYbuttz"
    TEST_SECRET = "ANDjmJ3tbACz12VERYnzJS7LONGrPKI3r4uSECRETMU2C4HO"
 
-Write your orders in the `morder.tsv <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/morders.tsv>`__
+Write your orders in the `morder.tsv <https://github.com/maliky/kolaBot/blob/master/kolaBot/morders.tsv>`__
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Test your orders on testnet.BitMEX.com
@@ -194,7 +194,7 @@ Test your orders on testnet.BitMEX.com
 
 .. code:: bash
 
-   python -m kolaBitMEXBot.run_multi_kola -l INFO > testlog.org
+   python -m kolaBot.run_multi_kola -l INFO > testlog.org
 
 Check the testlog.org file
 
@@ -270,7 +270,7 @@ Core program files
 
 ::
 
-   kolaBitMEXBot
+   kolaBot
    ├── cancel_all.py  ->  cancel and close all order on testnet
    ├── kola
    │   ├── bargain.py  ->  handle connections to markets

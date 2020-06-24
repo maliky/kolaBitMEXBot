@@ -33,7 +33,7 @@ def log_exception(logopt_=None, level_="ERROR"):
             _logger = logging.getLogger(__name__)
 
         if isinstance(level_, str):
-            _level = LOGLEVELS[level]
+            _level = LOGLEVELS[level_]
 
         return _logger, _level
 
@@ -138,30 +138,68 @@ def in_interval(x, a, b, bornes="="):
 
 
 
-@log_exception()
-def get_precision(x):
-    """Renvois la précision décimale avec laquelle a été écrite x."""
-    if isinstance(x, int):
+#@log_exception()
+def get_precision(x_):
+    """Return the decimal precision of x taking in account trailing 0."""
+    if isinstance(x_, (int, float)) and int(x_) == x_:
         return 0
 
-    # l'ordre des chiffres est préservés
-    s = pd.Series(list(str(x)))
-
+    _s = str(x_)
     # case of scientific notation
-    if sum(s.isin(["e", "-"])) == 2:
-        main_prec = get_precision(float("".join(s.iloc[:-4])))
-        sprec_ = int("".join(s.iloc[-2:]))
-        return int(main_prec + sprec_)
+    if "e" in _s:
+        _num, _expo = _s.split('e')
+        main_prec = get_precision(_num)
+        sprec_ = int(_expo)
+        return int(main_prec + -sprec_)
 
-    # somme des conditions suivantes vraies
-    # que les valeurs dont l'index est plus grand que celui du point
-    # juste récupérer la valeur
-    if not len(s.loc[s == "."].index):
-        logging.debug(f"Getting_precision for s={s}. but something is wrong...")
+    # simple integer notation
+    return len(_s.split('.')[-1]) if "." in _s else 0
 
-    return int(sum(s.index > (s.loc[s == "."].index.values[0])))
+# def get_precision(x_):
+#     """Return the decimal precision of x taking in account trailing 0."""
+#     if isinstance(x_, int):
+#         return 0
+
+#     # l'ordre des chiffres est préservés
+#     _x = str(x_)
+#     _s = pd.Series(list(_x))
+
+#     # if _x == 2e-05:
+#     #     import pdb; pdb.set_trace()
+    
+#     # case of scientific notation
+#     if sum(_s.isin(["e", "-"])) >= 2:
+#         _num_wo_expo = "".join(_s.iloc[:-4])  # num without exposant
+        
+#         main_prec = get_precision(_num_wo_expo)
+#         sprec_ = int("".join(_s.iloc[-2:]))
+#         return int(main_prec + sprec_)
+
+#     # simple integer notation
+#     if "." not in _x:
+#         return 0
+
+#     return int(sum(_s.index > (_s.loc[_s == "."].index.values[0])))
+
+# def ecarte(s_:str, a_:int, b_:int=None) -> Tuple(Series):
+#     """
+#     remove from a string the elements between start and end index.
+
+#     if end index is None, split the string base on start index
+#     start index by default the len of the string
+#     ecarte return a Tuple:
+#     by default contains the string by default and "",
+#     else the first substring (car) and cdr substring
+#     """
+#     if b_ is not None:
+#         assert b_ >= a_
+#     else:
+#         b_ = len(s_) -1
+        
+#     return Series(s_[:a_]), Series(s_[b_:])
 
 
+    
 def round_price(price: float, precision_=0.5) -> float:
     """Set defaut to round an XBT price. see round_half_up"""
     assert precision_ is not None

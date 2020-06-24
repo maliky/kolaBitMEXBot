@@ -133,13 +133,12 @@ class HookOrder(OrderConditionned):
             return True
 
         if self.condition.is_hooked():
-            self.logger.debug(f"*is hooked*: {self.__repr__(False)}")
+            self.logger.info(f"*is hooked*: {self.__repr__(False)}")
 
             self.is_hooked = True
             self.startTime = now()
 
-            self.logger.debug("*updating cond*")
-
+            self.logger.debug("*Updating cond and order*")
             self.update_prices_with_relative_values()
             self.update_cond_with_relative_values()
 
