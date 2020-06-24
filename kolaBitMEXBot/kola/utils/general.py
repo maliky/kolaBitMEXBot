@@ -22,7 +22,7 @@ def log_exception(logopt_=None, level_="ERROR"):
     
     Return decorator
     """
-    def set_logger(logopt_, level_):
+    def set_logger(logopt_, level_="INFO"):
         """Set get a logger and a level."""
         if isinstance(logopt_, logging.RootLogger):
             _logger = logopt_
@@ -157,7 +157,7 @@ def get_precision(x):
     # que les valeurs dont l'index est plus grand que celui du point
     # juste récupérer la valeur
     if not len(s.loc[s == "."].index):
-        logger.debug(f"Getting_precision for s={s}. but something is wrong...")
+        logging.debug(f"Getting_precision for s={s}. but something is wrong...")
 
     return int(sum(s.index > (s.loc[s == "."].index.values[0])))
 
