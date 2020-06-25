@@ -300,34 +300,47 @@ class Bargain:
         """
         try:
             if self.dbo is None:
-                df = DataFrame(self.bto.ws.data["execution"])
+                _execution = self.bto.ws.data["execution"]
+                df = DataFrame(_execution)
             else:
                 df = DataFrame(index=range(10), columns=EXECOLS, data="dummy")
         except ValueError as ve:
             # pb: la table execution qui ne renvois pas des objects tous de même taille
             # sol: filtrer / trier
-            execution = self.bto.ws.data["execution"]
-
-            EXEC: Dict[int, List] = {}
-            try:
-                for elt in execution:
-                    EXEC[len(elt)] = EXEC.get(len(elt), []) + [elt]
-            except Exception as e:
-                self.logger.exception(
-                    f'"{e}", EXEC={EXEC}, execution={execution}, elt={elt}'
-                )
+            # should be a list of dictionnaries, some of different length
+            _execution = self.bto.ws.data["execution"]
 
             self.logger.exception(
-                f"Exception '{ve}': We have {EXEC, len(EXEC)} diff execution shape."
-                " Returning the longuest of {list(map(len, EXEC.values()))}"
+                f"Exception '{ve}': We Probably have different execution shape. "
+                "Execution type, nb keys and value length: "
+                f"{type(_execution), len(_execution), set([len(e) for e in _execution])}"
+                f"\n{_execution}\n"
             )
-            df = DataFrame(EXEC.get(max(EXEC.keys()), []))
-            self.logger.warning(f"Returning only {df}")
+
+            # we regroupe the dictionnary by the number of their keys
+            EXEC: Dict[int, List] = {}
+            try:
+                for exec_dic in _execution:
+                    EXEC[len(exec_dic)] = EXEC.get(len(exec_dic), []) + [exec_dic]
+            except Exception as e:
+                self.logger.exception(f'"{e}" for exec_dic={exec_dic, len(exec_dic)}')
+
+            # keys are length of exec_dics
+            _biggest_key = max(EXEC.keys())
+            df = DataFrame(EXEC.get(_biggest_key, []))
+            # we return only one the execution, the one with the most colums
+            _other_dics = {k: v for (k, v) in EXEC.items() if k != _biggest_key}
+
+            self.logger.warning(f"Returning {df}.\n Ignoring {_other_dics}")
 
         if len(df):
             df = df.sort_values("transactTime")
 
         if clOrdID_ is not None:
+            assert clOrdID_ in df, (
+                f"clOrdID_={clOrdID_} not in df.columns={df.columns}."
+                f"  May be in _other_dics={_other_dics}"
+            )
             mask = df.loc[:, "clOrdID"] == clOrdID_
             return df.loc[mask, :]
 
