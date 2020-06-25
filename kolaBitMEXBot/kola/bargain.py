@@ -337,10 +337,7 @@ class Bargain:
             df = df.sort_values("transactTime")
 
         if clOrdID_ is not None:
-            assert clOrdID_ in df, (
-                f"clOrdID_={clOrdID_} not in df.columns={df.columns}."
-                f"  May be in _other_dics={_other_dics}"
-            )
+            assert "clOrdID" in df, f"'clOrdID' not in df.columns={df.columns}."
             mask = df.loc[:, "clOrdID"] == clOrdID_
             return df.loc[mask, :]
 
