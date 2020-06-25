@@ -207,7 +207,7 @@ class Condition:
             else:
                 raise ae
         except Exception as e:
-            raise Exception(f"{e}: cond={cond_frame}")
+            raise Exception(f"'{e}', cond_frame:\n{cond_frame}")
 
         return test
 

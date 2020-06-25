@@ -302,17 +302,24 @@ class Bargain:
             if self.dbo is None:
                 df = DataFrame(self.bto.ws.data["execution"])
             else:
-                df =  DataFrame(index=range(10), columns=EXECOLS, data="dummy")
+                df = DataFrame(index=range(10), columns=EXECOLS, data="dummy")
         except ValueError as ve:
-            # pb avec la table execution qui ne renvois pas des object tous de la même taille
-            # va filtrer / trier
+            # pb: la table execution qui ne renvois pas des objects tous de même taille
+            # sol: filtrer / trier
             execution = self.bto.ws.data["execution"]
+
             EXEC: Dict[int, List] = {}
-            for elt in execution:
-                EXEC.get(len(elt), []).append(elt)
+            try:
+                for elt in execution:
+                    EXEC[len(elt)] = EXEC.get(len(elt), []) + [elt]
+            except Exception as e:
+                self.logger.exception(
+                    f'"{e}", EXEC={EXEC}, execution={execution}, elt={elt}'
+                )
 
             self.logger.exception(
-                f"Exception {ve}: We have {len(EXEC)} diff execution shape returning the longuest of {list(map(len, EXEC.values()))}"
+                f"Exception '{ve}': We have {EXEC, len(EXEC)} diff execution shape."
+                " Returning the longuest of {list(map(len, EXEC.values()))}"
             )
             df = DataFrame(EXEC.get(max(EXEC.keys()), []))
             self.logger.warning(f"Returning only {df}")
