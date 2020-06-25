@@ -190,7 +190,7 @@ class TrailStop(OrderConditionned):
                 sleep(pause)
 
                 # si int(60), log environs toutes les i * logPause
-                pause = (int(self.logPause / self.updatePause),)
+                pause = int(self.logPause / self.updatePause)
                 self.log(f"{self.__repr__(cond=True)}\n{self.PO}", "INFO", pause)
 
             # On sort de la boucle si stop et true ou condition met
