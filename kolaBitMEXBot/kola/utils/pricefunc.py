@@ -34,7 +34,7 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT
     elif "pD" in atype:
         # prix en différentiel par rapport au prix de référence
         newPrix = _round(refPrice + prix[0]), _round(refPrice + prix[1])
-        logging.info(f"refPrice={refPrice}, prix={prix}, newPrix={newPrix}, symbol={symbol}")
+        logging.debug(f"refPrice={refPrice}, prix={prix}, newPrix={newPrix}, symbol={symbol}")
 
     return newPrix
 

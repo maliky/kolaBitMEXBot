@@ -190,7 +190,7 @@ class MarketAuditeur:
             "timeout": f"{timeout}m",
             "balance": self.balance(),
         }
-        self.logger.info(f"#### Go with args :\n{pd.DataFrame(index=[0], data=_info)}")
+        self.logger.debug(f"#### Go with args :\n{pd.DataFrame(index=[0], data=_info)}")
 
         # Init. des paramètres temps pour la condition de validité de l'ocp
         self.tpsDeb = now() + pd.Timedelta(tps_run[0], unit="m")
