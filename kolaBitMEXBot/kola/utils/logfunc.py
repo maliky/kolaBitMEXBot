@@ -117,7 +117,7 @@ def throttled_log(cpt_, logFunc_, msg_, one_in_: int = 10):
     """Log a message with logger after one_in_ cpt_() calls.
 
     cpt_ must be an int"""
-    print(f"one_in_,type(one_in_), msg_={one_in_,type(one_in_), msg_}")
+
     assert (one_in_ >= 1) and isinstance(
         one_in_, int
     ), f"one_in={one_in_, type(one_in_)}"
