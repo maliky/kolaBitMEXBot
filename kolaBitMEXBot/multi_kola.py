@@ -190,7 +190,7 @@ class MarketAuditeur:
             "timeout": f"{timeout}m",
             "balance": self.balance(),
         }
-        self.logger.debug(f"#### Go with args :\n{pd.DataFrame(index=[0], data=_info)}")
+        self.logger.debug(f"#### Go with args :\n{pd.DataFrame(index=[0,1], data=_info)}")
 
         # Init. des paramètres temps pour la condition de validité de l'ocp
         self.tpsDeb = now() + pd.Timedelta(tps_run[0], unit="m")
@@ -268,7 +268,7 @@ class MarketAuditeur:
                 "timeOut": timeOut,
             }
             self.logger.info(
-                f"### Essais {i+1}/{essais}, ({nameT}):\n{pd.DataFrame(index=[0],data=_info)}"
+                f"### Essais {i+1}/{essais}, ({nameT}):\n{pd.DataFrame(index=[0,1],data=_info)}"
             )
 
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst
