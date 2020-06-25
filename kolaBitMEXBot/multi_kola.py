@@ -8,7 +8,6 @@ import os
 import threading
 import time
 from typing import Optional, Union, Set
-
 import numpy as np
 import pandas as pd
 
@@ -191,7 +190,7 @@ class MarketAuditeur:
             "timeout": f"{timeout}m",
             "balance": self.balance(),
         }
-        self.logger.info(f"#### Go with args :\n{pd.Series(_info)}")
+        self.logger.info(f"#### Go with args :\n{pd.DataFrame(index=[0], data=_info)}")
 
         # Init. des paramètres temps pour la condition de validité de l'ocp
         self.tpsDeb = now() + pd.Timedelta(tps_run[0], unit="m")
@@ -269,7 +268,7 @@ class MarketAuditeur:
                 "timeOut": timeOut,
             }
             self.logger.info(
-                f"### Essais {i+1}/{essais}, ({nameT}):\n{pd.Series(_info)}"
+                f"### Essais {i+1}/{essais}, ({nameT}):\n{pd.DataFrame(index=[0],data=_info)}"
             )
 
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst

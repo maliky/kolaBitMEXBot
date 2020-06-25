@@ -99,7 +99,6 @@ class PriceObj:
         ).T.values
 
         # On s'assure que la colonne date est au bon format
-        self.logger.info(f"$$$$$$$$$$$$$$$${self.data}")
         self.data.date = to_datetime(self.data.date)
 
         self.logger.debug(f"Init df prices Object:\n{self.data.describe()}")
