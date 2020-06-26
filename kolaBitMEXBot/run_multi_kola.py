@@ -90,7 +90,7 @@ def get_cmd_args():
     dummy_help = "Si présent utilise un dummy bitmex"
     liveRun_help = "Si présent utilise live bitmex !"
     symbol_def = "XBTUSD"  # define the market to listent too
-    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAM20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
+    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAU20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
 
     morders_def = f"./{symbol_def.lower()[:3]}orders.tsv"
     morders_help = f"Path to the 'tsv' file containing the market orders. usually one per symbol (f{morders_def})."

@@ -158,7 +158,7 @@ class BitMEXWebsocket:
         # Filter to only open orders (leavesQty > 0) and those that we actually placed
         return [o for o in orders if str(o["clOrdID"]).startswith(clOrdIDPrefix)]
 
-    def position(self, symbol_=None):
+    def position(self, symbol_=None, full=False):
         """Get the position for symbol."""
         _symbol = self.symbol if symbol_ is None else symbol_
         positions = self.data["position"]

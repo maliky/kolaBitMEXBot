@@ -22,7 +22,7 @@ def run(logger_, func_, live_: bool = False, symbol_=None):
     tma = MarketAuditeur(live=False, logger=logger_, symbol=symbol_)
     tma.start_server()
     offset, offsetPx, offsetStop = [PRICE_PRECISION[symbol_] * x for x in [4, 20, 30]]
-    qty = {'XBTUSD': 40, 'ADAM20': 5000}.get(symbol_, 40)
+    qty = {'XBTUSD': 40, 'ADAU20': 5000}.get(symbol_, 40)
 
     T = Test(tma, 'LastPrice', qty, offset, offsetPx, offsetStop)
 
