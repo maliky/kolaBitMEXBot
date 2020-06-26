@@ -79,9 +79,7 @@ class MarketAuditeur:
         if logger:
             self.logger = logger
         else:
-            self.logger, self.logLevel_dft = get_logger(
-                logger, name=__name__, sLL="INFO"
-            )
+            self.logger = get_logger(logger, name=__name__, sLL="INFO")
 
         # to cache the hooks
         self.hookedIDs: Set[str] = set()
@@ -190,7 +188,9 @@ class MarketAuditeur:
             "timeout": f"{timeout}m",
             "balance": self.balance(),
         }
-        self.logger.debug(f"#### Go with args :\n{pd.DataFrame(pd.Series(data=_info)).T}")
+        self.logger.debug(
+            f"#### Go with args :\n{pd.DataFrame(pd.Series(data=_info)).T}"
+        )
 
         # Init. des paramètres temps pour la condition de validité de l'ocp
         self.tpsDeb = now() + pd.Timedelta(tps_run[0], unit="m")
@@ -281,9 +281,7 @@ class MarketAuditeur:
             kwargs = {
                 "send_queue": self.fileDattente,
                 "order": order,
-                "cond": cVraieTpsDeA(
-                    self.brg, self.tpsDeb, self.tpsFin
-                ),
+                "cond": cVraieTpsDeA(self.brg, self.tpsDeb, self.tpsFin),
                 "valid_queue": self.fileDeConfirmation,
                 "nameT": f"{nameT}-PO",
                 "timeout": timeOut,
@@ -316,9 +314,7 @@ class MarketAuditeur:
             # On ajoute la condition de prix
             # ou ["LastPrice", 'IndexPrice', 'MarkPrice']
             self.ocp.add_condition(
-                cVraiePrixDeA(
-                    self.brg, opType, oPrices[0], oPrices[1]
-                )
+                cVraiePrixDeA(self.brg, opType, oPrices[0], oPrices[1])
             )
 
             msg = f"### OrdrePrincipal défini ### {self.ocp.__repr__(short=False)}"
@@ -330,7 +326,7 @@ class MarketAuditeur:
                 self.brg,
                 pegOffset_perc=_tp,
                 updatepause=updatepause,
-                logLevel_='INFO',
+                logLevel_="INFO",
                 logpause=logpause,
                 nameT=f"{nameT}-SO",
                 refPrice=tpType,
