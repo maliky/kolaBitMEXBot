@@ -49,7 +49,7 @@ def get_args():
     symbol_def = "XBTUSD"  # define the market to listent too
 
     name_help = "Nom de l'ordre dans logs internes"
-    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAM20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
+    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAU20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
     oDelta_help = (
         "Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."
         "  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={oDelta_def})"
@@ -156,7 +156,7 @@ def set_order_args(
     Se base sur atype (argtype) et prix type (tRefPrice tail).
     Si recompute is False, ne recalcule pas les pourcentages
     -tptype: tail price type
-    - symbol: XBTUSD ou ADAM20 for exemple. used to set rounding
+    - symbol: XBTUSD ou ADAU20 for exemple. used to set rounding
     """
     # renvois le prix de référence pour la queue selon le tptype et side
     optype, ordtype, execinst = otype
