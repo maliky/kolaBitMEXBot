@@ -368,6 +368,6 @@ def simp(id):
 if __name__ == "__main__":
     logging.getLogger("").setLevel("DEBUG")
     tma = MarketAuditeur(live=False)
-    ama = MarketAuditeur(live=False)
+    ama = MarketAuditeur(live=False, symbol='ADAU20')
     tma.start_server()
     T = Test(tma)

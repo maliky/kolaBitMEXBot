@@ -3,6 +3,7 @@
 from pandas import Timedelta, DataFrame
 from numpy.random import randint
 from typing import Optional, Set, Dict, List
+from copy import deepcopy
 
 from kolaBitMEXBot.kola.kolatypes import ordStatusT
 from kolaBitMEXBot.kola.custom_bitmex import BitMEX
@@ -300,7 +301,10 @@ class Bargain:
         """
         try:
             if self.dbo is None:
-                _execution = self.bto.ws.data["execution"]
+                # doi y avoir quelque chose avec un état mutalbe, une mise à au moment de
+                # de la création de la df.  (deep copy.)
+
+                _execution = deepcopy(self.bto.ws.data["execution"])
                 df = DataFrame(_execution)
             else:
                 df = DataFrame(index=range(10), columns=EXECOLS, data="dummy")
