@@ -8,6 +8,7 @@ import sys
 import threading
 import websocket
 from websocket import create_connection
+from pandas import DataFrame
 
 from kolaBitMEXBot.kola.connexion.auth import generate_nonce, generate_signature
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
@@ -100,6 +101,23 @@ class BitMEXWebsocket:
         )
         return instrument
 
+    def get_instrument2(self, symbol=SYMBOL)->DataFrame:
+        """
+        Return an instrument. see docs for keys.
+        - symbol is different from root symbol
+        """
+        ins = DataFrame(self.data["instrument"])
+        ins_open = (ins.state == "Open").values
+        ins_symbol = (ins.symbol == symbol).values
+        instrument = ins.loc[ins_open & ins_symbol]
+        assert len(instrument) > 0, "Check {symbol} in {ins.loc[ins.state == 'Open'].symbol}"
+        # converting the DataFrame to the Serie
+        instrument = instrument.iloc[0]
+        instrument["tickLog"] = (
+            decimal.Decimal(str(instrument["tickSize"])).as_tuple().exponent * -1
+        )
+        return instrument
+
     def get_ticker(self, symbol=SYMBOL):
         """Return a ticker object. Generated from instrument."""
 
@@ -172,6 +190,25 @@ class BitMEXWebsocket:
                 "symbol": _symbol,
             }
         return pos[0]
+
+    def position2(self, symbol_=None, full=False):
+        """Get the position for symbol."""
+        _symbol = self.symbol if symbol_ is None else symbol_
+        positions = DataFrame(self.data["position"])
+        pos = positions.loc[positions.symbol == _symbol]
+
+        assert len(pos) > 1, "More than one positions? {positions}"
+
+        if len(pos) == 0:
+            # No position found; stub it
+            return {
+                "avgCostPrice": 0,
+                "avgEntryPrice": 0,
+                "currentQty": 0,
+                "symbol": _symbol,
+            }
+        return dict(pos)
+
 
     def recent_trades(self):
         return self.data["trade"]
