@@ -47,7 +47,7 @@ class BitMEXWebsocket:
 
     def __del__(self):
         self.exit()
-        
+
     def single_connection(self, endpoint=TEST_URL, symbol=SYMBOL, shouldAuth=True):
         """Erreur pas de __subscribe"""
         self.subscriptions = self.__subscribe(symbol, shouldAuth)
@@ -101,7 +101,7 @@ class BitMEXWebsocket:
         )
         return instrument
 
-    def get_instrument2(self, symbol=SYMBOL)->DataFrame:
+    def get_instrument2(self, symbol=SYMBOL) -> DataFrame:
         """
         Return an instrument. see docs for keys.
         - symbol is different from root symbol
@@ -110,7 +110,9 @@ class BitMEXWebsocket:
         ins_open = (ins.state == "Open").values
         ins_symbol = (ins.symbol == symbol).values
         instrument = ins.loc[ins_open & ins_symbol]
-        assert len(instrument) > 0, "Check {symbol} in {ins.loc[ins.state == 'Open'].symbol}"
+        assert (
+            len(instrument) > 0
+        ), "Check {symbol} in {ins.loc[ins.state == 'Open'].symbol}"
         # converting the DataFrame to the Serie
         instrument = instrument.iloc[0]
         instrument["tickLog"] = (
@@ -208,7 +210,6 @@ class BitMEXWebsocket:
                 "currentQty": 0,
                 "symbol": _symbol,
             }
-
 
     def recent_trades(self):
         return self.data["trade"]

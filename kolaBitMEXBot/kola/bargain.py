@@ -181,7 +181,7 @@ class Bargain:
 
     def get_leverage(self):
         """Get leverage for symbol."""
-        return self.bto.position(self.symbol)["leverage"]
+        return self.bto.position(self.symbol).get("leverage", 1)
 
     def get_open_orders(self, summary=True):
         """Get the open orders."""
