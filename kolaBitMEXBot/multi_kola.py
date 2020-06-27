@@ -10,7 +10,7 @@ import time
 from typing import Optional, Union, Set
 import numpy as np
 import pandas as pd
-
+from pprint import pprint
 
 from kolaBitMEXBot.kola.bargain import Bargain
 from kolaBitMEXBot.kola.chronos import Chronos
@@ -189,7 +189,7 @@ class MarketAuditeur:
             "balance": self.balance(),
         }
         self.logger.debug(
-            f"#### Go with args :\n{pd.DataFrame(pd.Series(data=_info)).T}"
+            f"#### Go with args :\n{pprint(_info).T}"
         )
 
         # Init. des paramètres temps pour la condition de validité de l'ocp
@@ -268,7 +268,7 @@ class MarketAuditeur:
                 "timeOut": timeOut,
             }
             self.logger.info(
-                f"### Essais {i+1}/{essais}, ({nameT}):\n{pd.DataFrame(pd.Series(data=_info)).T}"
+                f"### Essais {i+1}/{essais}, ({nameT}):\n{pprint(_info)}"
             )
 
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst

@@ -23,7 +23,11 @@ EXECOLS_L = EXECOLS + ["lastQty", "lastPx", "lastMkt", "commission"]
 SETTLEMENTPRICES = {"XBTUSD": ".BXBT", "ADAU20": ".BADAXBT30M"}
 
 # used to round price before passing orders
+ROOT2SYMB = {"XBT": "XBTUSD", "ADA": "ADAU20"}
+PRICE_TICKLOG = {"XBT": 1, "ADA": 8}
+
 PRICE_PRECISION = {"XBTUSD": 0.5, "ADAU20": 1e-8}
+
 
 # used in condition
 PRICELIST_DFT = [
