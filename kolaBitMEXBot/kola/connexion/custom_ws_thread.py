@@ -195,11 +195,12 @@ class BitMEXWebsocket:
         """Get the position for symbol."""
         _symbol = self.symbol if symbol_ is None else symbol_
         positions = DataFrame(self.data["position"])
-        pos = positions.loc[positions.symbol == _symbol]
+        if len(positions):
+            pos = positions.loc[positions.symbol == _symbol]
 
-        assert len(pos) > 1, "More than one positions? {positions}"
-
-        if len(pos) == 0:
+            assert len(pos) > 1, "More than one positions? {positions}"
+            return dict(pos)
+        else:
             # No position found; stub it
             return {
                 "avgCostPrice": 0,
@@ -207,7 +208,6 @@ class BitMEXWebsocket:
                 "currentQty": 0,
                 "symbol": _symbol,
             }
-        return dict(pos)
 
 
     def recent_trades(self):
