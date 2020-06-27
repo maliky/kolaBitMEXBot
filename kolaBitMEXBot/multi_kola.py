@@ -189,7 +189,7 @@ class MarketAuditeur:
             "balance": self.balance(),
         }
         self.logger.debug(
-            f"#### Go with args :\n{pprint(_info).T}"
+            f"#### Go with args :\n{_info}"
         )
 
         # Init. des paramètres temps pour la condition de validité de l'ocp
@@ -268,7 +268,7 @@ class MarketAuditeur:
                 "timeOut": timeOut,
             }
             self.logger.info(
-                f"### Essais {i+1}/{essais}, ({nameT}):\n{pprint(_info)}"
+                f"### Essais {i+1}/{essais}, ({nameT}):\n{_info}"
             )
 
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst
