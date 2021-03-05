@@ -68,8 +68,7 @@ class MarketAuditeur:
 
         # on garde un suivi de la balance ici pour further analysis
         self.resultats = pd.DataFrame(
-            index=pd.DatetimeIndex(data=[], name="start_time"),
-            columns=["balance", "benef"],
+            index=pd.DatetimeIndex(data=[], name="start_time")
         )
         daynum = pd.Timestamp.now().strftime("%j")
         prefix = "tma" + daynum if live else "fma" + daynum
@@ -412,7 +411,7 @@ class MarketAuditeur:
         # revoir le calcul de la balance
         self.resultats.loc[now(), "balance"] = self.balance()
         res_delta = self.resultats.iloc[-1] - self.resultats.iloc[-2]
-        self.resultats.iloc[-1].loc["benef"] = res_delta.loc["balance"]
+        self.resultats.loc[resultat.index[-1], "benef"] = res_delta.loc["balance"]
 
         # info sur la durée de l'essai
         self.logger.info(
