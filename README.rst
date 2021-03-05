@@ -4,11 +4,11 @@ Kola BitMEX Bot
 Presentation
 ------------
 
-KolaBot is a program to handle concurrently several pairs of orders in
-the BitMEX exchange. A pair is a main order (amoung those allowed by
-BitMEX) and an opposite order (again among allowed) that acts as a stop.
-Each order enter the book based on conditions you set in
-`morders.tsv <https://github.com/maliky/kolaBot/blob/master/kolaBot/morders.tsv>`__.
+KolaBitMEXBot is a program to handle concurrently several pairs of
+orders in the BitMEX exchange. A pair is a main order (amoung those
+allowed by BitMEX) and an opposite order (again among allowed) that acts
+as a stop. Each order enter the book based on conditions you set in
+`morders.tsv <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/morders.tsv>`__.
 
 Main conditions
 ~~~~~~~~~~~~~~~
@@ -38,19 +38,19 @@ Units
    params, in seconds.
 -  price units can be:
 
-   -  relative to market price (index, mark or last Price)
+   -  **relative** to market price (index, mark or last Price)
 
       -  in %, of the activating price (eg. if price move by 5% from
          order activation)
       -  in differential of the activating price (eg if price move by
          -80ø from order activation)
 
-   -  absolute, (eg. if price reach 3500ø)
+   -  **absolute**, (eg. if price reach 3500ø)
 
 Options specific to the stop order
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-By defaut kolaBot runs an opening order (main) and a close order
+By defaut kolaBitMEXBot runs an opening order (main) and a close order
 (secondary or tail or trail). If your main is a buy, the secondary will
 be a close and vice-versa. It is possible to run only one of the two
 order by setting automatic cancelation condition on the not wanted
@@ -103,16 +103,17 @@ state defined in the condition. The states can be Filled (F), Triggered
 (T), Canceled (C) or PartiallyFilled (P) Since orders are always passed
 in pairs. The hook condition can apply to the Principal order (the one
 to enter the book) or the Secondary order (the one to exit). The syntax
-to define the hook condition is as follow \`<name>-[P|S]-[F|C|T|P]\`
+to define the hook condition is as follow
+\`<name>-[P\|S]\_[F\|C\|T\|P]\`
 
 -  Examples:
 
-   -  src1-P-F, will hook when the principal order of the pair named
-      src1 will be filled
-   -  src1-P-C, will hook when the principal order of the pair named
-      src1 will cancel
-   -  foo-S-P, will hook when the principal order of the pair named foo
-      will partially fill …
+   -  src1-P\ :sub:`F`, will hook when the principal order of the pair
+      named src1 will be filled
+   -  src1-P\ :sub:`C`, will hook when the principal order of the pair
+      named src1 will cancel
+   -  foo-S\ :sub:`P`, will hook when the principal order of the pair
+      named foo will partially fill ...
 
 #. Why hooks ?
 
@@ -127,66 +128,65 @@ Installation
 Download or clone the repository
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Git Project URL: https://github.com/maliky/kolaBot
+Git Project URL: https://github.com/maliky/kolaBitMEXBot
 
 .. code:: bash
 
-   git clone https://github.com/maliky/kolaBot.git
-   cd kolaBitMexBot
+    git clone https://github.com/maliky/kolaBitMEXBot.git
+    cd kolaBitMexBot
 
 Install dependencies
 ~~~~~~~~~~~~~~~~~~~~
 
 This will create a virtualenv and install packages required by the
 program. You need to \`pip3\` and \`python3.8\` installed on your
-system. *note To install mutliple python on your system, check
-\`pyenv`.*
+system. *note To install mutliple python on your system, check pyenv\`.*
 
 .. code:: bash
 
-   virtualenv --python=</path/to/python3>  .
-   source ./bin/activate
-   pip install -r requirements.txt
+    virtualenv --python=</path/to/python3>  .
+    source ./bin/activate
+    pip install -r requirements.txt
 
-   # run main programmes
-   python -m  kolaBot.run_multi_kola -h
-   python -m  kolaBot.multi_kola -h
+    # run main programmes
+    python -m  kolaBitMEXBot.run_multi_kola -h
+    python -m  kolaBitMEXBot.multi_kola -h
 
 pip install
 ~~~~~~~~~~~
 
-If you just want to use kolaBot, you can install the module
+If you just want to use kolaBitMEXBot, you can install the module
 directly with \`pip\`
 
 .. code:: bash
 
-   pip install kolaBitMEX
+    pip install kolaBitMEX
 
 would recommand doing it as a pip editable module with:
 
 .. code:: bash
 
-   # build package with the setup.py
-   python setup.py sdist bdist_wheel; twine check dist/*
+    # build package with the setup.py
+    python setup.py sdist bdist_wheel; twine check dist/*
 
-   # if you used virtualenv wheel and twine will have been installed
+    # if you used virtualenv wheel and twine will have been installed
 
-   # install the package from local source
-   pip install -e . 
+    # install the package from local source
+    pip install -e . 
 
-Add you API keys in \`kolaBot/kola/secret.py\`
+Add you API keys in \`kolaBitMEXBot/kola/secret.py\`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This file created and it should contain the 4 variable keys:
+This file it should contain your keys and secrets as for example:
 
-::
+.. code:: example
 
-   LIVE_KEY = "zIKTHISISARANDOMKEYNHII3"
-   LIVE_SECRET = "HUMOI9OkK89aIoXDAND THIS IS A SECRET0KAthnauwKj0"
-   TEST_KEY = "THEn_XATESTgXOcfKEYbuttz"
-   TEST_SECRET = "ANDjmJ3tbACz12VERYnzJS7LONGrPKI3r4uSECRETMU2C4HO"
+    LIVE_KEY = "zIKTHISISARANDOMKEYNHII3"
+    LIVE_SECRET = "HUMOI9OkK89aIoXDAND THIS IS A SECRET0KAthnauwKj0"
+    TEST_KEY = "THEn_XATESTgXOcfKEYbuttz"
+    TEST_SECRET = "ANDjmJ3tbACz12VERYnzJS7LONGrPKI3r4uSECRETMU2C4HO"
 
-Write your orders in the `morder.tsv <https://github.com/maliky/kolaBot/blob/master/kolaBot/morders.tsv>`__
+Write your orders in the `morder.tsv <https://github.com/maliky/kolaBitMEXBot/blob/master/kolaBitMEXBot/morders.tsv>`__
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Test your orders on testnet.BitMEX.com
@@ -194,7 +194,7 @@ Test your orders on testnet.BitMEX.com
 
 .. code:: bash
 
-   python -m kolaBot.run_multi_kola -l INFO > testlog.org
+    python -m kolaBitMEXBot.run_multi_kola -l INFO > testlog.org
 
 Check the testlog.org file
 
@@ -203,18 +203,16 @@ Satified? Run it live!
 
 .. code:: bash
 
-   python run_multi_kola.py -l INFO --live
+    python run_multi_kola.py -l INFO --live
 
 Extension TODO
 --------------
 
-.. _make-chained-or-hooked-orders-2020-05-05-mar.:
-
 DONE make chained (or hooked) orders <2020-05-05 mar.>
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-That is, you can an orders starting based on the state of one or more
-other orders.
+CLOSED: [2020-05-19 mar. 08:41] That is, you can an orders starting
+based on the state of one or more other orders.
 
 Extend dummy bargain to have a personnal test net
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -234,23 +232,10 @@ Why is it free ?
 
 381b5ygUaK3CpHSKH2kKYCYKGMUbH4ruiw (BTC only)
 
-Did I loose money with that bot ?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Disclaimer
+~~~~~~~~~~
 
-No, but this is a personnal investissement. I spend a gift of 0.5 XBT to
-test it live, and during the development phase which I started in
-September 2017 I used most of it. The reasons are simple: I didn't know
-much about trading and I'm not a professional coder. Also, testnet is
-not as good as real market to make real tests. I'm confident that this
-bot is a great tool to help anyone willing to gain money. 🥂
-
-Warning !
-~~~~~~~~~
-
-Check the code! I'm not an professional programmer and if I made many
-tests along this 2 years journey on building kola BitMEX bot I did not
-consistently use a test framework yet. THEREFORE there are obviously
-many improvements to be made.
+Check the code! This is an EDUCATIONAL PROJECT. NO GARANTY is granted.
 
 That been published, THIS CODE IS LICENCE FREE. No Gnu, no MIT, no
 GitHub©, no what so ever regulation from my part. Although, I may be
@@ -258,9 +243,9 @@ obliged by some legal contracts I'm not consciously aware off because I
 did reused codes notably `BitMEX's API
 connectors <https://github.com/BitMEX/api-connectors>`__ and an
 uncountable number of functions from python's imported libraries
-(pandas, request, numpy, datetime…). I hope their authors don't really
+(pandas, request, numpy, datetime...). I hope their authors don't really
 care. We are born free, let's stay so. So, your are free to do what you
-want with this code BUT… do check it and understand it.
+want with this code BUT... do check it and understand it.
 
 File Index
 ----------
@@ -268,67 +253,67 @@ File Index
 Core program files
 ~~~~~~~~~~~~~~~~~~
 
-::
+.. code:: example
 
-   kolaBot
-   ├── cancel_all.py  ->  cancel and close all order on testnet
-   ├── kola
-   │   ├── bargain.py  ->  handle connections to markets
-   │   ├── chronos.py  ->  handle timeouts and thread of active orders
-   │   ├── connexion
-   │   │   ├── auth.py  ->  authentification to bitMEX
-   │   │   ├── custom_ws_thread.py  ->  websocket API
-   │   │   └── __init__.py
-   │   ├── custom_bitmex.py
-   │   ├── dummy_bitmex.py
-   │   ├── __init__.py
-   │   ├── orders
-   │   │   ├── condition.py  ->  hold condition object to activate orders
-   │   │   ├── hookorder.py  ->  orders that can hook to other orders
-   │   │   ├── __init__.py
-   │   │   ├── ordercond.py  ->  basic order with condition. other orders inherit it
-   │   │   ├── orders.py  ->  functions to places limit, stop, limit if touched ...
-   │   │   └── trailstop.py  ->  orders that follow price variation and update 
-   │   ├── price.py  ->  object to follow the different prices indexes
-   │   ├── settings.py  ->  setting files (where your keys may be)
-   │   ├── secrets.py  ->  where API keys could be
-   │   ├── types.py  ->  (new) types to start typing the programm
-   │   └── utils
-   │       ├── argfunc.py  ->  handle command line arguments
-   │       ├── conditions.py  ->  function to set conditions
-   │       ├── constantes.py  ->  constants
-   │       ├── datefunc.py  ->  function to handle dates
-   │       ├── exceptions.py  ->  customized exceptions
-   │       ├── general.py  ->  generic utils
-   │       ├── __init__.py
-   │       ├── logfunc.py  ->  log function
-   │       ├── orderfunc.py  ->  utils to set or check orders
-   │       └── pricefunc.py  ->  utils to set or get prices
-   ├── morders.tsv  ->  where you set your orders
-   ├── multi_kola.py  ->  handle the (multiple runs) of one pair of orders 
-   ├── pos_test.py  ->  (depreciated...)
-   ├── run_multi_kola.py  ->  handle multiple pairs of orders (parse morders.tsv)
-   └── tests
-       └── utils.py
+    kolaBitMEXBot
+    ├── cancel_all.py  ->  cancel and close all order on testnet
+    ├── kola
+    │   ├── bargain.py  ->  handle connections to markets
+    │   ├── chronos.py  ->  handle timeouts and thread of active orders
+    │   ├── connexion
+    │   │   ├── auth.py  ->  authentification to bitMEX
+    │   │   ├── custom_ws_thread.py  ->  websocket API
+    │   │   └── __init__.py
+    │   ├── custom_bitmex.py
+    │   ├── dummy_bitmex.py
+    │   ├── __init__.py
+    │   ├── orders
+    │   │   ├── condition.py  ->  hold condition object to activate orders
+    │   │   ├── hookorder.py  ->  orders that can hook to other orders
+    │   │   ├── __init__.py
+    │   │   ├── ordercond.py  ->  basic order with condition. other orders inherit it
+    │   │   ├── orders.py  ->  functions to places limit, stop, limit if touched ...
+    │   │   └── trailstop.py  ->  orders that follow price variation and update 
+    │   ├── price.py  ->  object to follow the different prices indexes
+    │   ├── settings.py  ->  setting files (where your keys may be)
+    │   ├── secrets.py  ->  where API keys could be
+    │   ├── types.py  ->  (new) types to start typing the programm
+    │   └── utils
+    │       ├── argfunc.py  ->  handle command line arguments
+    │       ├── conditions.py  ->  function to set conditions
+    │       ├── constantes.py  ->  constants
+    │       ├── datefunc.py  ->  function to handle dates
+    │       ├── exceptions.py  ->  customized exceptions
+    │       ├── general.py  ->  generic utils
+    │       ├── __init__.py
+    │       ├── logfunc.py  ->  log function
+    │       ├── orderfunc.py  ->  utils to set or check orders
+    │       └── pricefunc.py  ->  utils to set or get prices
+    ├── morders.tsv  ->  where you set your orders
+    ├── multi_kola.py  ->  handle the (multiple runs) of one pair of orders 
+    ├── pos_test.py  ->  (depreciated...)
+    ├── run_multi_kola.py  ->  handle multiple pairs of orders (parse morders.tsv)
+    └── tests
+        └── utils.py
 
-   5 directories, 33 files
+    5 directories, 33 files
 
 Setup and annexes program files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .python-version
-   pyenv local python-version, should be >=3.8
+    pyenv local python-version, should be >=3.8
 .dir-locals.el
-   a versatile IDE config file (emacs :))
+    a versatile IDE config file (emacs :))
 .gitignore
-   files that git should ignore
+    files that git should ignore
 setup.cfg
-   config file for flake, mypy
+    config file for flake, mypy
 LICENSE.txt
-   a permissive license
+    a permissive license
 README.rst
-   this README
+    this README
 requirements.txt
-   set of required modules
+    set of required modules
 setup.py
-   package file for python
+    package file for python
