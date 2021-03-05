@@ -411,7 +411,7 @@ class MarketAuditeur:
         # revoir le calcul de la balance
         self.resultats.loc[now(), "balance"] = self.balance()
         res_delta = self.resultats.iloc[-1] - self.resultats.iloc[-2]
-        self.resultats.loc[resultats.index[-1], "benef"] = res_delta.loc["balance"]
+        self.resultats.loc[self.resultats.index[-1], "benef"] = res_delta.loc["balance"]
 
         # info sur la durée de l'essai
         self.logger.info(

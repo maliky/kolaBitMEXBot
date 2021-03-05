@@ -92,8 +92,9 @@ class PriceObj:
 
         self.data: DataFrame = DataFrame(
             index=Index(create_index(self.main_window_size), name="PriceObj.data"),
-            columns=PRICE_COLUMNS,
         )
+        self.data.loc[:, PRICE_COLUMNS] = None
+        
         self.data.loc[:, :] = DataFrame(
             self.get_current_prices(price, refPrice)
         ).T.values
