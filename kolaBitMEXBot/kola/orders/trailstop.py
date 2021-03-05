@@ -65,12 +65,12 @@ class TrailStop(OrderConditionned):
         ), f"Trying to log ({self.logPause}) more often than update ({self.updatePause})"
 
         # Initialisation de la condition de trace
-        self.mPrice_type = "LastPrice"
+        self.mPrice_type = "lastPrice"
 
         # markPRICE IS THE FAIRE PRICE != marketPrice (~lastprice)
-        # refPrice contient 'IndexPrice', 'MarkPrice' ou 'LastPrice'
+        # refPrice contient 'fairPrice', 'markPrice' ou 'lastPrice'
         if not refPrice or refPrice == "lastMidPrice":
-            self.refPrice_type = "LastPrice"
+            self.refPrice_type = "lastPrice"
         else:
             self.refPrice_type = refPrice
 
@@ -208,7 +208,7 @@ class TrailStop(OrderConditionned):
         - ordType: un parmi 'Stop', 'StopLimit', 'MarketIfTouched', 'LimitIfTouched',
         - orderQty
         - stopPx
-        - execInst: parmi ParticipateDoNotInitiate; MarkPrice, LastPrice, IndexPrice;
+        - execInst: parmi ParticipateDoNotInitiate; markPrice, lastPrice, fairPrice;
         ReduceOnly; Close.
 
         Renvois le résultat de OC.send_order
@@ -312,15 +312,15 @@ class TrailStop(OrderConditionned):
     def set_tail_strategy(self):
         """Définie la longueur de la trace en pourcentage.
         Utilise pour cela la position des prix du marché (midPrice)
-        par rapport à ceux de référecence (IndexPrice).  L'hypothèse est
+        par rapport à ceux de référecence (fairPrice).  L'hypothèse est
         que le marché tends vers le prix de ref.  Aussi il s'agit de détecter
-        les contre courant.  Nous suivant le prix de réf (IndexPrice) donc lui
+        les contre courant.  Nous suivant le prix de réf (fairPrice) donc lui
         a tendance à aller vers le marché
-        1) Si je suis à l'achat mais que le IndexPrice est > au marché alors on
-        allonge la trace du pourcentage la différence |midprice - IndexPrice| par
-        rapport au IndexPrice. Sinon en garde le pourcentage d'initialisation
-        2) A contrario si je suis en vente mais que le IndexPrice est < au marché
-        alors on alonge la trace du pourcentage la différence |midprice - IndexPrice|
+        1) Si je suis à l'achat mais que le fairPrice est > au marché alors on
+        allonge la trace du pourcentage la différence |midprice - fairPrice| par
+        rapport au fairPrice. Sinon en garde le pourcentage d'initialisation
+        2) A contrario si je suis en vente mais que le fairPrice est < au marché
+        alors on alonge la trace du pourcentage la différence |midprice - fairPrice|
         par rapport au maché.  Sinon status quo."""
 
         return self.pegOffset_perc

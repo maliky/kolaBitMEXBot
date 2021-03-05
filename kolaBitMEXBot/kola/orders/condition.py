@@ -18,7 +18,7 @@ class Condition:
     """
     Définie la condition d'exécution et d'évaluation d'un ordre.
 
-    # Extension: Ajouter des options extra pour le prix, IndexPrice price, ect...
+    # Extension: Ajouter des options extra pour le prix, fairPrice price, ect...
     # pour que l'on puisse choisir sur quoi s'applique la condition
     # c'est ici que l'évaluation ou l'appel à des indicateur aura lieu.
     # voir donc côté volume bin ect..
@@ -41,7 +41,7 @@ class Condition:
         self.logger = get_logger(sLL=self.logLevel, name=__name__)
 
         # Une liste de mots clef pour le prix
-        # Fairprice = market price et LastPrice ~= midPrice
+        # Fairprice = market price et lastPrice ~= midPrice
         self.price_list: List[str] = PRICELIST_DFT
 
         # to cached hooked ID, il ne doit y en avoir qu'un
@@ -383,7 +383,7 @@ class Condition:
     def update_cond(self, genre_, op_, value_):
         """"
         Met à jour une condition.
-        - genre_ le genre de la condition 'temps, hook, IndexPrice, LastPrice...
+        - genre_ le genre de la condition 'temps, hook, fairPrice, lastPrice...
         - op: l'opérateur de la condition
         - value_: la nouvelle valeur
         """

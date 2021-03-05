@@ -31,9 +31,9 @@ PRICE_PRECISION = {"XBTUSD": 0.5, "ADAU20": 1e-8}
 
 # used in condition
 PRICELIST_DFT = [
-    "IndexPrice",
-    "LastPrice",
-    "MarkPrice",
+    "fairPrice",
+    "lastPrice",
+    "markPrice",
     "askPrice",
     "bidPrice",
     "lastMidPrice",

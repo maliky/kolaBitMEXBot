@@ -152,7 +152,7 @@ class MarketAuditeur:
 
         - atype define if price and quantity are set in %.
         use the string %p%q to set price and/or q in %
-        sinon le prix est définie en différentiel par rapport au IndexPrice price
+        sinon le prix est définie en différentiel par rapport au fairPrice price
         q is in % of available margin in [0,100]
         - tp peut être en % (defaut), absolue ou différentielle
         ajouter tA ou tD and les atypes
@@ -311,7 +311,7 @@ class MarketAuditeur:
             self.logger.debug(f"~~~~ Order = {order}")
 
             # On ajoute la condition de prix
-            # ou ["LastPrice", 'IndexPrice', 'MarkPrice']
+            # ou ["lastPrice", 'fairPrice', 'markPrice']
             self.ocp.add_condition(
                 cVraiePrixDeA(self.brg, opType, oPrices[0], oPrices[1])
             )

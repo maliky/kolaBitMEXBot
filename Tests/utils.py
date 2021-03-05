@@ -33,7 +33,7 @@ class Test:
     def __init__(
         self,
         tma,
-        pricetype="LastPrice",
+        pricetype="lastPrice",
         qty_: int = 40,
         offset_: float = 2,
         offsetPx_: float = 10,
@@ -44,7 +44,7 @@ class Test:
         
         from kolaBitMEXBot.kola.test.utils_test import Test; T = Test()
         tma: test market Auditeur
-        pricetype="LastPrice": reference price to place orders
+        pricetype="lastPrice": reference price to place orders
         qty_: int = 40,  default quantity
         offset_: float = 2, default offset for L and SL
         offsetPx_: float = 10, default offset for stop price

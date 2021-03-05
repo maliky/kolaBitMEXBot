@@ -101,30 +101,30 @@ class Bargain:
         """Calculate currency delta for portfolio."""
         # à creuser
         portfolio = self.get_portfolio()
-        IndexPrice_delta = 0
+        fairPrice_delta = 0
         mark_delta = 0
         for self.symbol in portfolio:
             item = portfolio[self.symbol]
             if item["futureType"] == "Quanto":
-                IndexPrice_delta += (
-                    item["currentQty"] * item["multiplier"] * item["IndexPrice"]
+                fairPrice_delta += (
+                    item["currentQty"] * item["multiplier"] * item["fairPrice"]
                 )
                 mark_delta += (
-                    item["currentQty"] * item["multiplier"] * item["MarkPrice"]
+                    item["currentQty"] * item["multiplier"] * item["markPrice"]
                 )
             elif item["futureType"] == "Inverse":
-                IndexPrice_delta += (item["multiplier"] / item["IndexPrice"]) * item[
+                fairPrice_delta += (item["multiplier"] / item["fairPrice"]) * item[
                     "currentQty"
                 ]
-                mark_delta += (item["multiplier"] / item["MarkPrice"]) * item[
+                mark_delta += (item["multiplier"] / item["markPrice"]) * item[
                     "currentQty"
                 ]
             elif item["futureType"] == "Linear":
-                IndexPrice_delta += item["multiplier"] * item["currentQty"]
+                fairPrice_delta += item["multiplier"] * item["currentQty"]
                 mark_delta += item["multiplier"] * item["currentQty"]
-        basis_delta = mark_delta - IndexPrice_delta
+        basis_delta = mark_delta - fairPrice_delta
         delta = {
-            "IndexPrice": IndexPrice_delta,
+            "fairPrice": fairPrice_delta,
             "mark_price": mark_delta,
             "basis": basis_delta,
         }
@@ -223,7 +223,7 @@ class Bargain:
                 "currentTimestamp",
                 "timestamp",
                 "avgEntryPrice",
-                "LastPrice",
+                "lastPrice",
                 "currentCost",
                 "currentQty",
                 "liquidationPrice",
@@ -266,8 +266,8 @@ class Bargain:
                 "currentQty": float(position["currentQty"]),
                 "futureType": future_type,
                 "multiplier": multiplier,
-                "MarkPrice": float(instrument["MarkPrice"]),
-                "IndexPrice": float(instrument["indicativeSettlePrice"]),
+                "markPrice": float(instrument["markPrice"]),
+                "fairPrice": float(instrument["indicativeSettlePrice"]),
             }
 
         return portfolio
@@ -457,7 +457,7 @@ class Bargain:
             "reverse": "true",
         }
         # self.logger.debug(f'Got new price from curl {self.cached_refPrices}')
-        # not sure here about the markPrice for the IndexPrice
+        # not sure here about the markPrice for the fairPrice
         rep = self.bto._curl_bitmex(path, query)[0]
         self.logger.debug(f"asking: {path}, {query}. *Réponse: {rep}*")
 
@@ -469,7 +469,7 @@ class Bargain:
         """
         Show summary of current prices.
 
-        typeprice can be 'delta', 'IndexPrice', 'market', 'askPrice',
+        typeprice can be 'delta', 'fairPrice', 'market', 'askPrice',
 
         'midPrice', 'ref_delta','market_maker', 'lastMidPrice' or None
         (for all instrument prices)
@@ -482,10 +482,10 @@ class Bargain:
             k: v for (k, v) in self.bto.instrument(_symbol).items() if "rice" in k
         }
         # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice',
-        # 'LastPrice', 'LastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',
-        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'MarkPrice',
-        # 'MarkPrice', 'indicativeSettlePrice', 'lowPrice',
-        # execInst, MarkPrice, LastPrice, IndexPrice
+        # 'lastPrice', 'lastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',
+        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'markPrice',
+        # 'markPrice', 'indicativeSettlePrice', 'lowPrice',
+        # execInst, markPrice, lastPrice, fairPrice
 
         ret = None
         typeprice = "" if typeprice is None else typeprice

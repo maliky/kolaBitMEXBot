@@ -119,7 +119,7 @@ def create_order(
 
     # on traduit le nom lastMidPrice en un nom de prix reconnu par Bitmex.
     # lastMidPrice nous sert pour définir correctement le stop price (il me semble)
-    opType = "LastPrice" if opType == "lastMidPrice" else opType
+    opType = "lastPrice" if opType == "lastMidPrice" else opType
     order["execInst"] = opt_add_to_(
         opType, execinst
     )  # ': 'ReduceOnly',  #'ParticipateDoNotInitiate',
@@ -212,7 +212,7 @@ def set_exec_instructions(extrakey, execinst, ordtype, pricetype):
 def set_price_type(pricekey, side):
     """
     avec la pricekey i, l ou m renvois le type de prix pour le suivi du déclenchement de la peg.
-    Attention dans condition,  j'utilise ask et bid mais pour exec if faut LastPrice
+    Attention dans condition,  j'utilise ask et bid mais pour exec if faut lastPrice
     qui ont des stopPx.
     priceType can be None if exist but not in PT
     """
@@ -223,9 +223,9 @@ def set_price_type(pricekey, side):
         defaultPriceType = None
 
     PT = {
-        "i": "IndexPrice",
+        "f": "fairPrice",
         "l": "lastMidPrice",
-        "m": "MarkPrice",
+        "m": "markPrice",
     }
     priceType = PT.get(pricekey, defaultPriceType)
 
@@ -243,7 +243,7 @@ def is_valid_order_options(ordtype, pricetype, execinst=""):
     car l'ordre va être passé immédiatement.
     """
     if ordtype in ["Market", "Limit"] and pricetype not in [
-        "LastPrice",
+        "lastPrice",
         "bidPrice",
         "askPrice",
         "lastMidPrice",
