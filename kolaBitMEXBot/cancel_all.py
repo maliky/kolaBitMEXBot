@@ -2,9 +2,9 @@
 """Cancel and close all open order on testnet."""
 
 import sys
-from tests.utils import Test
+from Tests.utils import Test
 import logging
-from multi_kola import MarketAuditeur
+from kolaBitMEXBot.multi_kola import MarketAuditeur
 
 
 def main_prg():
