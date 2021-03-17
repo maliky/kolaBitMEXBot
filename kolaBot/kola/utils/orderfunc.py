@@ -4,10 +4,10 @@ from uuid import uuid4
 import re
 from typing import Optional
 
-from kolaBitMEXBot.kola.utils.pricefunc import get_prix_decl, setdef_stopPrice
-from kolaBitMEXBot.kola.utils.general import opt_add_to_, contains
-from kolaBitMEXBot.kola.settings import LOGNAME, ORDERID_PREFIX
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
+from kolaBot.kola.utils.pricefunc import get_prix_decl, setdef_stopPrice
+from kolaBot.kola.utils.general import opt_add_to_, contains
+from kolaBot.kola.settings import LOGNAME, ORDERID_PREFIX
+from kolaBot.kola.utils.logfunc import get_logger
 
 mlogger = get_logger(name=f"{LOGNAME}.{__name__}")
 

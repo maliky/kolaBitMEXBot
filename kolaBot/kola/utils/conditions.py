@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-from kolaBitMEXBot.kola.orders.condition import Condition
-from kolaBitMEXBot.kola.utils.datefunc import tpsDans
+from kolaBot.kola.orders.condition import Condition
+from kolaBot.kola.utils.datefunc import tpsDans
 from pandas import Timestamp, Timedelta
 
 

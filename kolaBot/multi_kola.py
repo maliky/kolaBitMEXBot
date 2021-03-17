@@ -12,30 +12,30 @@ import numpy as np
 import pandas as pd
 from pprint import pprint
 
-from kolaBitMEXBot.kola.bargain import Bargain
-from kolaBitMEXBot.kola.chronos import Chronos
-from kolaBitMEXBot.kola.dummy_bitmex import DummyBitMEX
-from kolaBitMEXBot.kola.orders.hookorder import HookOrder
-from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
-from kolaBitMEXBot.kola.orders.trailstop import TrailStop
-from kolaBitMEXBot.kola.settings import (
+from kolaBot.kola.bargain import Bargain
+from kolaBot.kola.chronos import Chronos
+from kolaBot.kola.dummy_bitmex import DummyBitMEX
+from kolaBot.kola.orders.hookorder import HookOrder
+from kolaBot.kola.orders.ordercond import OrderConditionned
+from kolaBot.kola.orders.trailstop import TrailStop
+from kolaBot.kola.settings import (
     SYMBOL,
     HTTP_SIMPLE_RATE_LIMITE,
     LOGNAME,
     LOGFMT,
     ordStatusTrans,
 )
-from kolaBitMEXBot.kola.utils.argfunc import (
+from kolaBot.kola.utils.argfunc import (
     set_order_args,
     price_type_trad,
     get_args,
 )
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
-from kolaBitMEXBot.kola.utils.conditions import cVraieTpsDeA, cVraiePrixDeA, cHook
-from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
-from kolaBitMEXBot.kola.utils.orderfunc import create_order
-import kolaBitMEXBot.kola.utils.exceptions as ke
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.utils.conditions import cVraieTpsDeA, cVraiePrixDeA, cHook
+from kolaBot.kola.utils.datefunc import now
+from kolaBot.kola.utils.logfunc import get_logger, setup_logging
+from kolaBot.kola.utils.orderfunc import create_order
+import kolaBot.kola.utils.exceptions as ke
 
 # harmonization de la timezone pour le script. Que ce passe-t-il au niveau du système?
 # os.environ["TZ"] = "GMT"

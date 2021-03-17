@@ -11,8 +11,8 @@ import functools
 import numpy as np
 from typing import Union
 
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
-from kolaBitMEXBot.kola.settings import LOGLEVELS
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.settings import LOGLEVELS
 
 
 def log_exception(logopt_=None, level_="ERROR"):

@@ -10,11 +10,11 @@ import websocket
 from websocket import create_connection
 from pandas import DataFrame
 
-from kolaBitMEXBot.kola.connexion.auth import generate_nonce, generate_signature
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.utils.general import round_half_up, trim_dic
-from kolaBitMEXBot.kola.settings import SYMBOL, ORDERID_PREFIX, TEST_URL
-import kolaBitMEXBot.kola.utils.exceptions as ke
+from kolaBot.kola.connexion.auth import generate_nonce, generate_signature
+from kolaBot.kola.utils.logfunc import get_logger
+from kolaBot.kola.utils.general import round_half_up, trim_dic
+from kolaBot.kola.settings import SYMBOL, ORDERID_PREFIX, TEST_URL
+import kolaBot.kola.utils.exceptions as ke
 
 # Connects to BitMEX websocket for streaming realtime data or dummy data
 # The Marketmaker still interacts with this as if it were a REST Endpoint, but now it can get

@@ -1,12 +1,12 @@
 # -*- Coding: utf-8 -*-
 """Trail stops"""
-from kolaBitMEXBot.kola.orders.condition import Condition
-from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
-from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
-from kolaBitMEXBot.kola.settings import API_ERROR_INTERVAL
-from kolaBitMEXBot.kola.price import PriceObj
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
-from kolaBitMEXBot.kola.utils.orderfunc import (
+from kolaBot.kola.orders.condition import Condition
+from kolaBot.kola.orders.ordercond import OrderConditionned
+from kolaBot.kola.utils.pricefunc import setdef_stopPrice
+from kolaBot.kola.settings import API_ERROR_INTERVAL
+from kolaBot.kola.price import PriceObj
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.utils.orderfunc import (
     toggle_sides,
     get_order_from,
     opt_add_to_,

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""hypothesis tests strategies de kolaBitMEXBot."""
+"""hypothesis tests strategies de kolaBot."""
 from hypothesis.strategies import composite, integers, sampled_from, characters
 import logging
 

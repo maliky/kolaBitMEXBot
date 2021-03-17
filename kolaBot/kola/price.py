@@ -5,11 +5,11 @@ from collections import OrderedDict
 import numpy as np
 from pandas import Series, Index, DataFrame, to_datetime, concat, Timedelta, isna
 
-from kolaBitMEXBot.kola.utils.general import round_sprice, contains
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION, MAX_PRICE_VARIATION
-from kolaBitMEXBot.kola.kolatypes import symbT, sideT, priceT
+from kolaBot.kola.utils.general import round_sprice, contains
+from kolaBot.kola.utils.logfunc import get_logger
+from kolaBot.kola.utils.datefunc import now
+from kolaBot.kola.utils.constantes import PRICE_PRECISION, MAX_PRICE_VARIATION
+from kolaBot.kola.kolatypes import symbT, sideT, priceT
 
 
 PRICE_COLUMNS = [

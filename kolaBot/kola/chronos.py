@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 import threading
 from typing import Dict, Any
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.utils.datefunc import now, setdef_timedelta
-from kolaBitMEXBot.kola.utils.general import (
+from kolaBot.kola.utils.logfunc import get_logger
+from kolaBot.kola.utils.datefunc import now, setdef_timedelta
+from kolaBot.kola.utils.general import (
     contains,
     trim_dic,
     sort_dic_list,
     opt_pop_if_in_,
 )
-from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
-from kolaBitMEXBot.kola.utils.orderfunc import get_order_from
-from kolaBitMEXBot.kola.orders.trailstop import TrailStop
-from kolaBitMEXBot.kola.orders.orders import (
+from kolaBot.kola.utils.pricefunc import setdef_stopPrice
+from kolaBot.kola.utils.orderfunc import get_order_from
+from kolaBot.kola.orders.trailstop import TrailStop
+from kolaBot.kola.orders.orders import (
     place,
     place_stop,
     place_at_market,
@@ -23,13 +23,13 @@ from kolaBitMEXBot.kola.orders.orders import (
     get_execPrice,
     cancel_order,
 )
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
 
 from time import sleep
 import pickle
-import kolaBitMEXBot.kola.utils.exceptions as ke
+import kolaBot.kola.utils.exceptions as ke
 
-# from kolaBitMEXBot.kola.orders import orders
+# from kolaBot.kola.orders import orders
 import pandas as pd
 from queue import Queue, Empty
 

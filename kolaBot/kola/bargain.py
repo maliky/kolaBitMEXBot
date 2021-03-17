@@ -5,10 +5,10 @@ from numpy.random import randint
 from typing import Optional, Set, Dict, List
 from copy import deepcopy
 
-from kolaBitMEXBot.kola.kolatypes import ordStatusT
-from kolaBitMEXBot.kola.custom_bitmex import BitMEX
-from kolaBitMEXBot.kola.secrets import LIVE_KEY, LIVE_SECRET, TEST_KEY, TEST_SECRET
-from kolaBitMEXBot.kola.settings import (
+from kolaBot.kola.kolatypes import ordStatusT
+from kolaBot.kola.custom_bitmex_api import BitMEX
+from kolaBot.kola.secrets import LIVE_KEY, LIVE_SECRET, TEST_KEY, TEST_SECRET
+from kolaBot.kola.settings import (
     LIVE_URL,
     TEST_URL,
     SYMBOL,
@@ -18,10 +18,10 @@ from kolaBitMEXBot.kola.settings import (
     XBTSATOSHI,
     CONTRACTS,
 )
-from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.general import round_sprice, is_number, trim_dic, cdr, car
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.utils.constantes import (
+from kolaBot.kola.utils.datefunc import now
+from kolaBot.kola.utils.general import round_sprice, is_number, trim_dic, cdr, car
+from kolaBot.kola.utils.logfunc import get_logger
+from kolaBot.kola.utils.constantes import (
     EXECOLS,
     SETTLEMENTPRICES,
     PRICE_PRECISION,

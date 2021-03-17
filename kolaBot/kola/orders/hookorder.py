@@ -4,9 +4,9 @@ from itertools import product
 from time import sleep
 from pandas import DataFrame
 
-from kolaBitMEXBot.kola.utils.general import trim_dic
-from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
-from kolaBitMEXBot.kola.utils.datefunc import now
+from kolaBot.kola.utils.general import trim_dic
+from kolaBot.kola.orders.ordercond import OrderConditionned
+from kolaBot.kola.utils.datefunc import now
 
 
 class HookOrder(OrderConditionned):

@@ -5,13 +5,13 @@ from pandas import DataFrame, concat, Timestamp, Series
 from typing import Set, Optional, Union, List, Dict, Tuple
 
 
-from kolaBitMEXBot.kola.utils.logfunc import get_logger, throttled_log, get_logfunc
-from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.general import compteur
-from kolaBitMEXBot.kola.bargain import Bargain
-from kolaBitMEXBot.kola.kolatypes import ordStatusL
-from kolaBitMEXBot.kola.orders.orders import get_execPrice
-from kolaBitMEXBot.kola.utils.constantes import PRICELIST_DFT
+from kolaBot.kola.utils.logfunc import get_logger, throttled_log, get_logfunc
+from kolaBot.kola.utils.datefunc import now
+from kolaBot.kola.utils.general import compteur
+from kolaBot.kola.bargain import Bargain
+from kolaBot.kola.kolatypes import ordStatusL
+from kolaBot.kola.orders.orders import get_execPrice
+from kolaBot.kola.utils.constantes import PRICELIST_DFT
 
 
 class Condition:

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Test suite for kola.utils.logfunc.py."""
 from Tests.hypo_strategies import st_loggers, st_logger_levels
-from kolaBitMEXBot.kola.utils.logfunc import get_logfunc, throttled_log
+from kolaBot.kola.utils.logfunc import get_logfunc, throttled_log
 from hypothesis import given
 from hypothesis.strategies import integers, text
 

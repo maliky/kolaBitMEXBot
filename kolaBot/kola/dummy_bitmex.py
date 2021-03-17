@@ -6,11 +6,11 @@ from json import dumps
 import pandas as pd
 import numpy.random as rnd
 
-from kolaBitMEXBot.kola.utils.general import round_price
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.settings import XBTSATOSHI
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.utils.general import round_price
+from kolaBot.kola.utils.logfunc import get_logger
+from kolaBot.kola.utils.datefunc import now
+from kolaBot.kola.settings import XBTSATOSHI
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
 
 
 class DummyBitMEX:

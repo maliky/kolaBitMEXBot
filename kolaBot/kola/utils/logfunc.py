@@ -2,9 +2,9 @@
 import logging
 from logging import Logger, _nameToLevel
 
-from kolaBitMEXBot.kola.utils.general import confirm_path_existence_for
-from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.settings import LOGLEVELS, LOGFMT, LOGNAME, MAINLOGLEVEL
+from kolaBot.kola.utils.general import confirm_path_existence_for
+from kolaBot.kola.utils.datefunc import now
+from kolaBot.kola.settings import LOGLEVELS, LOGFMT, LOGNAME, MAINLOGLEVEL
 import time
 
 

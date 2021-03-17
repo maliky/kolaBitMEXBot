@@ -3,11 +3,11 @@ import argparse
 import numpy as np
 import re
 
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.settings import LOGNAME
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
-from kolaBitMEXBot.kola.utils.pricefunc import get_prices, get_prix_decl
-from kolaBitMEXBot.kola.utils.orderfunc import (
+from kolaBot.kola.utils.logfunc import get_logger
+from kolaBot.kola.settings import LOGNAME
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.utils.pricefunc import get_prices, get_prix_decl
+from kolaBot.kola.utils.orderfunc import (
     set_order_type,
     set_exec_instructions,
     set_price_type,

@@ -7,9 +7,9 @@ from pandas import DataFrame
 from time import sleep
 from collections import OrderedDict
 
-from kolaBitMEXBot.multi_kola import MarketAuditeur
+from kolaBot.multi_kola import MarketAuditeur
 
-from kolaBitMEXBot.kola.orders.orders import (
+from kolaBot.kola.orders.orders import (
     place,
     place_at_market,
     place_stop,
@@ -17,14 +17,14 @@ from kolaBitMEXBot.kola.orders.orders import (
     place_MIT,
     place_LIT,
 )
-from kolaBitMEXBot.kola.kolatypes import sideT, symbT, priceTT
-from kolaBitMEXBot.kola.utils.general import trim_dic
-from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
-from kolaBitMEXBot.kola.utils.orderfunc import toggle_order, split_ids
-from kolaBitMEXBot.kola.utils.constantes import EXECOLS
-from kolaBitMEXBot.kola.bargain import Bargain
-from kolaBitMEXBot.kola.custom_bitmex import BitMEX
-from kolaBitMEXBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
+from kolaBot.kola.kolatypes import sideT, symbT, priceTT
+from kolaBot.kola.utils.general import trim_dic
+from kolaBot.kola.utils.pricefunc import setdef_stopPrice
+from kolaBot.kola.utils.orderfunc import toggle_order, split_ids
+from kolaBot.kola.utils.constantes import EXECOLS
+from kolaBot.kola.bargain import Bargain
+from kolaBot.kola.custom_bitmex_api import BitMEX
+from kolaBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
 
 
 class Test:
@@ -42,7 +42,7 @@ class Test:
         """
         Regroupe quelques fonction pour faciliter les tests depuis ipython.
         
-        from kolaBitMEXBot.kola.test.utils_test import Test; T = Test()
+        from kolaBot.kola.test.utils_test import Test; T = Test()
         tma: test market Auditeur
         pricetype="lastPrice": reference price to place orders
         qty_: int = 40,  default quantity

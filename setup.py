@@ -12,22 +12,22 @@ with open("README.rst", "r") as f:
     long_description = f.read()
 
 setup(
-    name="kolaBitMEXBot",
+    name="kolaBot",
     version="1.1.9",
     description="Trading bot with trail stop and chained orders for pour Bitmex and maybe more...",
     long_description=long_description,
     long_description_content_type="text/x-rst",
     author="Malik Koné",
     author_email="malikykone@gmail.com",
-    url="https://github.com/maliky/kolaBitMEXBot",
+    url="https://github.com/maliky/kolaBot",
     packages=find_packages(exclude="secrets.py"),
     zip_safe=False,
     python_requires=">=3.8",
     entry_points={
         "console_scripts": [
-            "run_multi_kola=kolaBitMEXBot.run_multi_kola:main_prg",
-            "multi_kola=kolaBitMEXBot.multi_kola:main_prg",
-            "test_kola=kolaBitMEXBot.tests.test_kola:main_prg",
+            "run_multi_kola=kolaBot.run_multi_kola:main_prg",
+            "multi_kola=kolaBot.multi_kola:main_prg",
+            "test_kola=kolaBot.tests.test_kola:main_prg",
         ]
     },
     install_requires=["pandas", "numpy", "websocket_client", "requests",],

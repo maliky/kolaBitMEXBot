@@ -4,7 +4,7 @@
 import sys
 from Tests.utils import Test
 import logging
-from kolaBitMEXBot.multi_kola import MarketAuditeur
+from kolaBot.multi_kola import MarketAuditeur
 
 
 def main_prg():

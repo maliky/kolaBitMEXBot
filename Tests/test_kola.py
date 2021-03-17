@@ -5,11 +5,11 @@ import sys
 import argparse
 import logging
 
-from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
-from kolaBitMEXBot.kola.settings import LOGFMT
-from kolaBitMEXBot.tests.utils import Test
-from kolaBitMEXBot.multi_kola import MarketAuditeur
+from kolaBot.kola.utils.logfunc import get_logger, setup_logging
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.settings import LOGFMT
+from kolaBot.tests.utils import Test
+from kolaBot.multi_kola import MarketAuditeur
 
 
 def run(logger_, func_, live_: bool = False, symbol_=None):

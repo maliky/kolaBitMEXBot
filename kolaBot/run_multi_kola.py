@@ -3,11 +3,11 @@
 import argparse
 import sys
 
-from kolaBitMEXBot.kola.utils.logfunc import get_logger, setup_logging
-from kolaBitMEXBot.kola.dummy_bitmex import DummyBitMEX
-import kolaBitMEXBot.kola.utils.exceptions as ke
-from kolaBitMEXBot.kola.settings import LOGFMT, LOGNAME
-from kolaBitMEXBot.multi_kola import MarketAuditeur, go_multi
+from kolaBot.kola.utils.logfunc import get_logger, setup_logging
+from kolaBot.kola.dummy_bitmex import DummyBitMEX
+import kolaBot.kola.utils.exceptions as ke
+from kolaBot.kola.settings import LOGFMT, LOGNAME
+from kolaBot.multi_kola import MarketAuditeur, go_multi
 
 
 rlogger = setup_logging()

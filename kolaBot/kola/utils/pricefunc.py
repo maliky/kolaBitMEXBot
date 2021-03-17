@@ -2,8 +2,8 @@
 from typing import Union, Literal, Tuple
 import logging
 
-from kolaBitMEXBot.kola.utils.general import round_sprice
-from kolaBitMEXBot.kola.kolatypes import priceT, sideT, bipriceT, ordTypeT
+from kolaBot.kola.utils.general import round_sprice
+from kolaBot.kola.kolatypes import priceT, sideT, bipriceT, ordTypeT
 
 
 def set_new_price(base: priceT, per: float, symbol="XBTUSD") -> priceT:

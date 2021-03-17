@@ -3,16 +3,16 @@
 from time import sleep
 import logging
 
-from kolaBitMEXBot.kola.settings import API_ERROR_INTERVAL
-from kolaBitMEXBot.kola.utils.general import round_sprice, trim_dic
-from kolaBitMEXBot.kola.utils.pricefunc import setdef_stopPrice
-from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.exceptions import InvalidOrdStatus
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.settings import API_ERROR_INTERVAL
+from kolaBot.kola.utils.general import round_sprice, trim_dic
+from kolaBot.kola.utils.pricefunc import setdef_stopPrice
+from kolaBot.kola.utils.datefunc import now
+from kolaBot.kola.utils.exceptions import InvalidOrdStatus
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
 
-# from kolaBitMEXBot.kola.utils.logfunc import get_logger
-from kolaBitMEXBot.kola.settings import LOGNAME
-from kolaBitMEXBot.kola.bargain import Bargain
+# from kolaBot.kola.utils.logfunc import get_logger
+from kolaBot.kola.settings import LOGNAME
+from kolaBot.kola.bargain import Bargain
 
 mlogger = logging.getLogger("")
 mlogger.name = f"{LOGNAME}.{__name__}"

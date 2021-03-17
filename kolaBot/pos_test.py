@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Get the position."""
 from time import sleep
-from kolaBitMEXBot.kola.bargain import Bargain
-from kolaBitMEXBot.kola.utils.orderfunc import get_logger
+from kolaBot.kola.bargain import Bargain
+from kolaBot.kola.utils.orderfunc import get_logger
 import argparse
 
 # import logging

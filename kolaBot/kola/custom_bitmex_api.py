@@ -9,19 +9,19 @@ import datetime as dt
 import requests as rq
 import pandas as pd
 
-from kolaBitMEXBot.kola.connexion.auth import APIKeyAuthWithExpires
-from kolaBitMEXBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
-from kolaBitMEXBot.kola.utils.general import round_sprice, trim_output
-from kolaBitMEXBot.kola.settings import (
+from kolaBot.kola.connexion.auth import APIKeyAuthWithExpires
+from kolaBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
+from kolaBot.kola.utils.general import round_sprice, trim_output
+from kolaBot.kola.settings import (
     HTTP_SIMPLE_RATE_LIMITE,
     HTTP_BULK_RATE_LIMITE,
     ORDERID_PREFIX,
 )
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
-from kolaBitMEXBot.kola.utils.orderfunc import newClID, split_ids, get_abbv_from_ID
-from kolaBitMEXBot.kola.utils.datefunc import now, multiply_time_unit, TC
-from kolaBitMEXBot.kola.utils.logfunc import get_logger
-import kolaBitMEXBot.kola.utils.exceptions as ke
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.utils.orderfunc import newClID, split_ids, get_abbv_from_ID
+from kolaBot.kola.utils.datefunc import now, multiply_time_unit, TC
+from kolaBot.kola.utils.logfunc import get_logger
+import kolaBot.kola.utils.exceptions as ke
 
 # https://www.bitmex.com/api/explorer/
 

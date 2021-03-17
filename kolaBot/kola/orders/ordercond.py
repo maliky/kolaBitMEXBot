@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-from kolaBitMEXBot.kola.utils.logfunc import get_logger, throttled_log, get_logfunc
-from kolaBitMEXBot.kola.utils.orderfunc import (
+from kolaBot.kola.utils.logfunc import get_logger, throttled_log, get_logfunc
+from kolaBot.kola.utils.orderfunc import (
     newClID,
     toggle_order,
     get_order_from,
     remove_execInst,
 )
-from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.general import trim_dic, compteur
-from kolaBitMEXBot.kola.utils.datefunc import setdef_timedelta
-from kolaBitMEXBot.kola.orders.condition import Condition
+from kolaBot.kola.utils.datefunc import now
+from kolaBot.kola.utils.general import trim_dic, compteur
+from kolaBot.kola.utils.datefunc import setdef_timedelta
+from kolaBot.kola.orders.condition import Condition
 
 from time import sleep
 from threading import Thread

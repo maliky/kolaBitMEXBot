@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """Get the position."""
 from time import sleep
-from kolaBitMEXBot.kola.utils.orderfunc import get_logger
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
-from kolaBitMEXBot.kola.settings import LOGFMT
-from kolaBitMEXBot.tests.utils import T
-from kolaBitMEXBot.multi_kola import MarketAuditeur
+from kolaBot.kola.utils.orderfunc import get_logger
+from kolaBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBot.kola.settings import LOGFMT
+from kolaBot.tests.utils import T
+from kolaBot.multi_kola import MarketAuditeur
 
 import argparse
 

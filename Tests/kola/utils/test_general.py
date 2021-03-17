@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Test du module kola.utils.general"""
-from kolaBitMEXBot.kola.utils.general import get_precision
+from kolaBot.kola.utils.general import get_precision
 from hypothesis import given, strategies as st
 from numpy.random import randint
 
