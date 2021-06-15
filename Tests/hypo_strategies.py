@@ -4,20 +4,13 @@ from hypothesis.strategies import composite, integers, sampled_from, characters
 import logging
 
 
-def make_rnd_name(string_, name_size):
-    assert name_size >= 0, f"name_size={name_size}"
-    if name_size == 0:
-        return ""
-    _chosen = choice(list(string_), size=name_size)
-    return "".joni(_chosen)
-
-
 def get_level_names(all_=False):
-    _level_names = set(logging._nameToLevel.keys()) - {'NOTSET'}
+    _level_names = set(logging._nameToLevel.keys()) - {"NOTSET", "WARN"}
     if all_:
-        return list(_level_names) + [l.lower() for l in _level_names]
+        return list(_level_names) + [lev.lower() for lev in _level_names]
     else:
         return list(_level_names)
+
 
 @composite
 def st_logger_levels(draw):
@@ -36,5 +29,3 @@ def st_loggers(draw):
     logger.setLevel(_level)
 
     return logger
-
-

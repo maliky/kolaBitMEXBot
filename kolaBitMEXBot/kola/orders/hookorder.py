@@ -6,7 +6,6 @@ from pandas import DataFrame
 
 from kolaBitMEXBot.kola.utils.general import trim_dic
 from kolaBitMEXBot.kola.orders.ordercond import OrderConditionned
-from kolaBitMEXBot.kola.orders.condition import Condition
 from kolaBitMEXBot.kola.utils.datefunc import now
 
 
@@ -51,14 +50,13 @@ class HookOrder(OrderConditionned):
             cond=cond,
             valid_queue=valid_queue,
             logName_=__name__,
-            logLevel=self.logLevel,
+            logLevel_=logLevel_,
             nameT=nameT,
             timeout=timeout,
             symbol=symbol,
         )
 
-        _cond: Condition = self.condition
-        self.init_cond_frame: DataFrame = _cond.cond_frame.copy()
+        self.init_cond_frame: DataFrame = self.condition.cond_frame.copy()
 
         # self.logger = get_logger(logger, sLL="INFO", name=__name__)
 

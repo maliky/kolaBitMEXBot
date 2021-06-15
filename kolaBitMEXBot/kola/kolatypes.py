@@ -3,9 +3,9 @@
 from typing import Literal, Union, Tuple
 
 sideT = Literal["buy", "sell"]
-symbT = Literal["ADAM20", "XBTUSD"]
+symbT = Literal["ADAU20", "XBTUSD"]
 # majuscules importantes
-priceTT = Literal["LastPrice", "IndexPrice", "MarkPrice"]
+priceTT = Literal["lastPrice", "fairPrice", "markPrice"]
 priceT = float
 bipriceT = Tuple[priceT, priceT]  # couple de price
 

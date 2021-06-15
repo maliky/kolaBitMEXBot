@@ -16,10 +16,10 @@ SLS0	0 5440	1			sell	SL		S	1e-7	qAtDpD	1.4e3	1e-6	-2e-6 -1e-6
 LTS0	0 5440	1			buy	LT		S	1e-7	qAtDpD	1.5e3	1e-6	-2e-6 -1e-6
 
 # # stop refprice OK mais carrefull with market. set stop depending on index if big diff with market can trigger
-# Si	0 5440	1			sell	Si		S		qAtDpD	1.6e3	1e-7	-2e-7 -1e-7
+# Sf	0 5440	1			sell	Sf		S		qAtDpD	1.6e3	1e-7	-2e-7 -1e-7
 # Sl	0 5440	1			sell	Sl		S		qAtDpD	1.7e3	1e-7	-2e-7 -1e-7
 # Sm	0 5440	1			sell	Sm		S		qAtDpD	1.8e3	1e-7	-2e-7 -1e-7
-# SLi	0 5440	1			sell	SLi		S	1e-7	qAtDpD	1.9e3	1e-7	-2e-7 -1e-7
+# SLf	0 5440	1			sell	SLf		S	1e-7	qAtDpD	1.9e3	1e-7	-2e-7 -1e-7
 # SLl	0 5440	1			sell	SLl		S	1e-7	qAtDpD	2e3	1e-7	-2e-7 -1e-7
 # SLm	0 5440	1			sell	SLm		S	1e-7	qAtDpD	2.1e3	1e-7	-2e-7 -1e-7
 # LTi	0 5440	1			buy	LTi		S	1e-7	qAtDpD	2.2e3	1e-7	-2e-7 -1e-7
@@ -64,7 +64,7 @@ LTS0	0 5440	1			buy	LT		S	1e-7	qAtDpD	1.5e3	1e-6	-2e-6 -1e-6
 # tType = tail Price Type
 # Differents values des Types
 
-# i, l, m (index, Last et Mark trigger Prices)  # par défaut last price which seem to be ask and bid prices
+# f, l, m (fair, Last et Mark trigger Prices)  # par défaut last price which seem to be ask and bid prices
 
 # M, L, S, MT, SL, LT: Market, Limit, Stop, MarketIfTouched, StopLimit, LimitIfTouched orders
 # L toucher par rapport à LastPrice ?

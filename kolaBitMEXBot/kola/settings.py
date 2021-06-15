@@ -33,7 +33,7 @@ LOGLEVELS = {
     "NOTSET": 0,
     None: 0,
 }
-MAINLOGLEVEL = "DEBUG"
+MAINLOGLEVEL = "INFO"
 
 # fmt = '%(asctime)s-%(levelname)s-%(filename)s@%(lineno)s(%(threadName)s): %(message)s'
 # LOGFMT = '%(threadName)s~%(levelno)s /%(filename)s@%(lineno)s@%(funcName)s/ %(message)s'

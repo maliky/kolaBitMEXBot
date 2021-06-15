@@ -8,10 +8,9 @@ import os
 import threading
 import time
 from typing import Optional, Union, Set
-
 import numpy as np
 import pandas as pd
-
+from pprint import pprint
 
 from kolaBitMEXBot.kola.bargain import Bargain
 from kolaBitMEXBot.kola.chronos import Chronos
@@ -69,8 +68,7 @@ class MarketAuditeur:
 
         # on garde un suivi de la balance ici pour further analysis
         self.resultats = pd.DataFrame(
-            index=pd.DatetimeIndex(data=[], name="start_time"),
-            columns=["balance", "benef"],
+            index=pd.DatetimeIndex(data=[], name="start_time")
         )
         daynum = pd.Timestamp.now().strftime("%j")
         prefix = "tma" + daynum if live else "fma" + daynum
@@ -80,9 +78,7 @@ class MarketAuditeur:
         if logger:
             self.logger = logger
         else:
-            self.logger, self.logLevel_dft = get_logger(
-                logger, name=__name__, sLL="INFO"
-            )
+            self.logger = get_logger(logger, name=__name__, sLL="INFO")
 
         # to cache the hooks
         self.hookedIDs: Set[str] = set()
@@ -156,7 +152,7 @@ class MarketAuditeur:
 
         - atype define if price and quantity are set in %.
         use the string %p%q to set price and/or q in %
-        sinon le prix est définie en différentiel par rapport au IndexPrice price
+        sinon le prix est définie en différentiel par rapport au fairPrice price
         q is in % of available margin in [0,100]
         - tp peut être en % (defaut), absolue ou différentielle
         ajouter tA ou tD and les atypes
@@ -191,7 +187,9 @@ class MarketAuditeur:
             "timeout": f"{timeout}m",
             "balance": self.balance(),
         }
-        self.logger.info(f"#### Go with args :\n{pd.Series(_info)}")
+        self.logger.debug(
+            f"#### Go with args :\n{_info}"
+        )
 
         # Init. des paramètres temps pour la condition de validité de l'ocp
         self.tpsDeb = now() + pd.Timedelta(tps_run[0], unit="m")
@@ -269,7 +267,7 @@ class MarketAuditeur:
                 "timeOut": timeOut,
             }
             self.logger.info(
-                f"### Essais {i+1}/{essais}, ({nameT}):\n{pd.Series(_info)}"
+                f"### Essais {i+1}/{essais}, ({nameT}):\n{_info}"
             )
 
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst
@@ -282,9 +280,7 @@ class MarketAuditeur:
             kwargs = {
                 "send_queue": self.fileDattente,
                 "order": order,
-                "cond": cVraieTpsDeA(
-                    self.brg, self.tpsDeb, self.tpsFin
-                ),
+                "cond": cVraieTpsDeA(self.brg, self.tpsDeb, self.tpsFin),
                 "valid_queue": self.fileDeConfirmation,
                 "nameT": f"{nameT}-PO",
                 "timeout": timeOut,
@@ -315,11 +311,9 @@ class MarketAuditeur:
             self.logger.debug(f"~~~~ Order = {order}")
 
             # On ajoute la condition de prix
-            # ou ["LastPrice", 'IndexPrice', 'MarkPrice']
+            # ou ["lastPrice", 'fairPrice', 'markPrice']
             self.ocp.add_condition(
-                cVraiePrixDeA(
-                    self.brg, opType, oPrices[0], oPrices[1]
-                )
+                cVraiePrixDeA(self.brg, opType, oPrices[0], oPrices[1])
             )
 
             msg = f"### OrdrePrincipal défini ### {self.ocp.__repr__(short=False)}"
@@ -331,7 +325,7 @@ class MarketAuditeur:
                 self.brg,
                 pegOffset_perc=_tp,
                 updatepause=updatepause,
-                logLevel_='INFO',
+                logLevel_="INFO",
                 logpause=logpause,
                 nameT=f"{nameT}-SO",
                 refPrice=tpType,
@@ -417,7 +411,7 @@ class MarketAuditeur:
         # revoir le calcul de la balance
         self.resultats.loc[now(), "balance"] = self.balance()
         res_delta = self.resultats.iloc[-1] - self.resultats.iloc[-2]
-        self.resultats.iloc[-1].loc["benef"] = res_delta.loc["balance"]
+        self.resultats.loc[self.resultats.index[-1], "benef"] = res_delta.loc["balance"]
 
         # info sur la durée de l'essai
         self.logger.info(

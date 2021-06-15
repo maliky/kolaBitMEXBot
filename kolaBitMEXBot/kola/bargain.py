@@ -3,6 +3,7 @@
 from pandas import Timedelta, DataFrame
 from numpy.random import randint
 from typing import Optional, Set, Dict, List
+from copy import deepcopy
 
 from kolaBitMEXBot.kola.kolatypes import ordStatusT
 from kolaBitMEXBot.kola.custom_bitmex import BitMEX
@@ -100,30 +101,30 @@ class Bargain:
         """Calculate currency delta for portfolio."""
         # à creuser
         portfolio = self.get_portfolio()
-        IndexPrice_delta = 0
+        fairPrice_delta = 0
         mark_delta = 0
         for self.symbol in portfolio:
             item = portfolio[self.symbol]
             if item["futureType"] == "Quanto":
-                IndexPrice_delta += (
-                    item["currentQty"] * item["multiplier"] * item["IndexPrice"]
+                fairPrice_delta += (
+                    item["currentQty"] * item["multiplier"] * item["fairPrice"]
                 )
                 mark_delta += (
-                    item["currentQty"] * item["multiplier"] * item["MarkPrice"]
+                    item["currentQty"] * item["multiplier"] * item["markPrice"]
                 )
             elif item["futureType"] == "Inverse":
-                IndexPrice_delta += (item["multiplier"] / item["IndexPrice"]) * item[
+                fairPrice_delta += (item["multiplier"] / item["fairPrice"]) * item[
                     "currentQty"
                 ]
-                mark_delta += (item["multiplier"] / item["MarkPrice"]) * item[
+                mark_delta += (item["multiplier"] / item["markPrice"]) * item[
                     "currentQty"
                 ]
             elif item["futureType"] == "Linear":
-                IndexPrice_delta += item["multiplier"] * item["currentQty"]
+                fairPrice_delta += item["multiplier"] * item["currentQty"]
                 mark_delta += item["multiplier"] * item["currentQty"]
-        basis_delta = mark_delta - IndexPrice_delta
+        basis_delta = mark_delta - fairPrice_delta
         delta = {
-            "IndexPrice": IndexPrice_delta,
+            "fairPrice": fairPrice_delta,
             "mark_price": mark_delta,
             "basis": basis_delta,
         }
@@ -180,7 +181,7 @@ class Bargain:
 
     def get_leverage(self):
         """Get leverage for symbol."""
-        return self.bto.position(self.symbol)["leverage"]
+        return self.bto.position(self.symbol).get("leverage", 1)
 
     def get_open_orders(self, summary=True):
         """Get the open orders."""
@@ -222,7 +223,7 @@ class Bargain:
                 "currentTimestamp",
                 "timestamp",
                 "avgEntryPrice",
-                "LastPrice",
+                "lastPrice",
                 "currentCost",
                 "currentQty",
                 "liquidationPrice",
@@ -265,8 +266,8 @@ class Bargain:
                 "currentQty": float(position["currentQty"]),
                 "futureType": future_type,
                 "multiplier": multiplier,
-                "MarkPrice": float(instrument["MarkPrice"]),
-                "IndexPrice": float(instrument["indicativeSettlePrice"]),
+                "markPrice": float(instrument["markPrice"]),
+                "fairPrice": float(instrument["indicativeSettlePrice"]),
             }
 
         return portfolio
@@ -299,25 +300,48 @@ class Bargain:
         transactTime ascendant.
         """
         try:
-            df = DataFrame(self.bto.ws.data["execution"])
+            if self.dbo is None:
+                # doi y avoir quelque chose avec un état mutalbe, une mise à au moment de
+                # de la création de la df.  (deep copy.)
+
+                _execution = deepcopy(self.bto.ws.data["execution"])
+                df = DataFrame(_execution)
+            else:
+                df = DataFrame(index=range(10), columns=EXECOLS, data="dummy")
         except ValueError as ve:
-            # pb avec la table execution qui ne renvois pas des object tous de la même taille
-            # va filtrer / trier
-            execution = self.bto.ws.data["execution"]
-            EXEC: Dict[int, List] = {}
-            for elt in execution:
-                EXEC.get(len(elt), []).append(elt)
+            # pb: la table execution qui ne renvois pas des objects tous de même taille
+            # sol: filtrer / trier
+            # should be a list of dictionnaries, some of different length
+            _execution = self.bto.ws.data["execution"]
 
             self.logger.exception(
-                f"Exception {ve}: We have {len(EXEC)} diff execution shape returning the longuest of {list(map(len, EXEC.values()))}"
+                f"Exception '{ve}': We Probably have different execution shape. "
+                "Execution type, nb keys and value length: "
+                f"{type(_execution), len(_execution), set([len(e) for e in _execution])}"
+                f"\n{_execution}\n"
             )
-            df = DataFrame(EXEC.get(max(EXEC.keys()), []))
-            self.logger.warning(f"Returning only {df}")
+
+            # we regroupe the dictionnary by the number of their keys
+            EXEC: Dict[int, List] = {}
+            try:
+                for exec_dic in _execution:
+                    EXEC[len(exec_dic)] = EXEC.get(len(exec_dic), []) + [exec_dic]
+            except Exception as e:
+                self.logger.exception(f'"{e}" for exec_dic={exec_dic, len(exec_dic)}')
+
+            # keys are length of exec_dics
+            _biggest_key = max(EXEC.keys())
+            df = DataFrame(EXEC.get(_biggest_key, []))
+            # we return only one the execution, the one with the most colums
+            _other_dics = {k: v for (k, v) in EXEC.items() if k != _biggest_key}
+
+            self.logger.warning(f"Returning {df}.\n Ignoring {_other_dics}")
 
         if len(df):
             df = df.sort_values("transactTime")
 
         if clOrdID_ is not None:
+            assert "clOrdID" in df, f"'clOrdID' should be in {df.columns}."
             mask = df.loc[:, "clOrdID"] == clOrdID_
             return df.loc[mask, :]
 
@@ -433,7 +457,7 @@ class Bargain:
             "reverse": "true",
         }
         # self.logger.debug(f'Got new price from curl {self.cached_refPrices}')
-        # not sure here about the markPrice for the IndexPrice
+        # not sure here about the markPrice for the fairPrice
         rep = self.bto._curl_bitmex(path, query)[0]
         self.logger.debug(f"asking: {path}, {query}. *Réponse: {rep}*")
 
@@ -445,7 +469,7 @@ class Bargain:
         """
         Show summary of current prices.
 
-        typeprice can be 'delta', 'IndexPrice', 'market', 'askPrice',
+        typeprice can be 'delta', 'fairPrice', 'market', 'askPrice',
 
         'midPrice', 'ref_delta','market_maker', 'lastMidPrice' or None
         (for all instrument prices)
@@ -458,10 +482,10 @@ class Bargain:
             k: v for (k, v) in self.bto.instrument(_symbol).items() if "rice" in k
         }
         # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice',
-        # 'LastPrice', 'LastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',
-        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'MarkPrice',
-        # 'MarkPrice', 'indicativeSettlePrice', 'lowPrice',
-        # execInst, MarkPrice, LastPrice, IndexPrice
+        # 'lastPrice', 'lastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',
+        # 'impactBidPrice', 'impactMidPrice', 'impactAskPrice', 'markPrice',
+        # 'markPrice', 'indicativeSettlePrice', 'lowPrice',
+        # execInst, markPrice, lastPrice, fairPrice
 
         ret = None
         typeprice = "" if typeprice is None else typeprice

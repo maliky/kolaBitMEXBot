@@ -58,7 +58,7 @@ def place_stop(brg, side, orderqty, stoppx, **opts):
         pDelta = PRICE_PRECISION[brg.symbol] * 2
         override_price = refPrice + pDelta if side == "buy" else refPrice - pDelta
 
-        # gère les cas de changement brusque avec LastPrice généralement.
+        # gère les cas de changement brusque avec lastPrice généralement.
         msg = (
             f"{now()}: Stop invalid. {side}Stop@{stoppx} when refPrice={refPrice}."
             f" eval_price={eval_price}, opts {opts}. new stop -> {override_price}."
@@ -389,7 +389,7 @@ def is_valid_order(
     """
     Check that the side price is correct for a stop.
 
-    - if price is None, get current market price (LastPrice),
+    - if price is None, get current market price (lastPrice),
     - ordertype is stop or touched
     """
     assert side in ["buy", "sell"], f"side={side} n'est pas pris en compte"
@@ -418,7 +418,7 @@ def is_newPrice_valide(brg, side, newPrice):
 
 
 def get_execPrice(
-    brg, side, typeprice=None, deftypeprice="LastPrice", symbol=None, _forceLive=False
+    brg, side, typeprice=None, deftypeprice="lastPrice", symbol=None, _forceLive=False
 ):
     """
     Return the current market price defined by the typeprice (def. lastMidPrice).
@@ -428,7 +428,7 @@ def get_execPrice(
     - symbol: the symbol to get the price for
     """
     if typeprice is None:
-        # 'lastMidPrice'  # == MarkPrice ?
+        # 'lastMidPrice'  # == markPrice ?
         assert deftypeprice is not None
         typePrice = deftypeprice
     elif isinstance(typeprice, dict):

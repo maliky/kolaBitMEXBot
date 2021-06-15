@@ -4,8 +4,8 @@ name	tps_run	essais	tOut	pause	side	oType	oDelta	tType	tDelta	atype	q	tp	prix	ho
 XTop	0 5440	1			sell	S		S-		qAt%pA	2000	2.6	7995 8009
 
 ####
-XBlH1	0 5440	100	6	1	sell	Si		S-		qAtDpD	5050	10	- -5	XBlx1-S_F
-XBlx1	0 5440	200	6	.5	buy	Si		S-		qAtDpD	5000	20	74 +
+XBlH1	0 5440	100	6	1	sell	Sf		S-		qAtDpD	5050	10	- -5	XBlx1-S_F
+XBlx1	0 5440	200	6	.5	buy	Sf		S-		qAtDpD	5000	20	74 +
 ####
 
 #XSell3	0 5440	1400	8	10	sell	LT		SL	2	qAtDpD	303	.5	6.5 +
@@ -31,7 +31,7 @@ XStop	0 5440	1			sell	S		S-		qAtDpA	2000	230	7995 8009
 # tType = tail Price Type
 # Differents values des Types
 
-# i, l, m (index, Last et Mark trigger Prices)  # par défaut last price which seem to be ask and bid prices
+# f, l, m (fair, Last et Mark trigger Prices)  # par défaut last price which seem to be ask and bid prices
 
 # M, L, S, MT, SL, LT: Market, Limit, Stop, MarketIfTouched, StopLimit, LimitIfTouched orders
 # L toucher par rapport à LastPrice ?

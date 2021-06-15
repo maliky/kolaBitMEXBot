@@ -8,8 +8,20 @@ from pandas import Series, Index, DataFrame, to_datetime, concat, Timedelta, isn
 from kolaBitMEXBot.kola.utils.general import round_sprice, contains
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
 from kolaBitMEXBot.kola.utils.datefunc import now
-from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION
+from kolaBitMEXBot.kola.utils.constantes import PRICE_PRECISION, MAX_PRICE_VARIATION
 from kolaBitMEXBot.kola.kolatypes import symbT, sideT, priceT
+
+
+PRICE_COLUMNS = [
+    "date",
+    "price",
+    "refPrice",
+    "stopTail",
+    "refTail",
+    "flexTail",
+    "sOfsD",
+    "fScale",
+]
 
 
 class PriceObj:
@@ -26,7 +38,6 @@ class PriceObj:
         updatepause: float = 6,
         timeBin: int = 60,
         logger=None,
-        max_var: float = 2.6,
         min_flex: float = 0.2,
         symbol: symbT = "XBTUSD",
     ):
@@ -48,16 +59,12 @@ class PriceObj:
         doit être calcule en fonction de la taille de la bin voulue
         et de la fréquence des mis à jour
         - updatepause c'est le nombre moyen de secondes entre deux mise à jour
-        - timeBin c'est la taille de la fenêtre utilisé pour calculer
+        - timeBin (in seconds) c'est la taille de la fenêtre utilisé pour calculer
         la variation de prix.
         avec la updatepause permet d'estimer la main_window_size
-        - max_var en quoi? et min_flex determine la flexibilité des queue.
-        max_var est une statistique décrivant la variation nécessaire
-        pour que la queue se réduise à min_flex.  Elle est issue d'obeservation
-        du marché voir getting_data.ipyng.  la var à un très long mais fine queue.
-        90% < .22
         - symbol: keep track of price symbol to format and round price correctly
         """
+
         self.logger = get_logger(logger, sLL="INFO", name=__name__)
 
         self.head = head
@@ -75,59 +82,32 @@ class PriceObj:
         # on défini une fonction pour mettre à jour la flexTail
         # le maxiumn de variation jamais observé pour la bin en pourcentage de variation
         # TODO: mieux définir cette fonction...
-        self.max_var = max_var
         N = 100
-        self.neg_exps = self.__neg_exps(self.max_var, N)
+        self.neg_exps = neg_exps_values(max_var=MAX_PRICE_VARIATION[symbol], N=100)
         self.var_dist_hist = Series(index=range(N), data=self.neg_exps)
         self.min_flex = min_flex
 
         # on initialise les prix et la df qui les contiendra
         # define self.data
-        self.data = DataFrame()
-        self.data = self.__init_price_df(price, refPrice)
+
+        self.data: DataFrame = DataFrame(
+            index=Index(create_index(self.main_window_size), name="PriceObj.data"),
+        )
+        self.data.loc[:, PRICE_COLUMNS] = None
+        
+        self.data.loc[:, :] = DataFrame(
+            self.get_current_prices(price, refPrice)
+        ).T.values
+
+        # On s'assure que la colonne date est au bon format
+        self.data.date = to_datetime(self.data.date)
+
+        self.logger.debug(f"Init df prices Object:\n{self.data.describe()}")
 
         # on définie l'épaisseur du stop
         self.tail_base_width = round_sprice(
             abs(self.data.refPrice.init - self.data.refTail.init), symbol
         )
-
-    def __init_price_df(self, price, refPrice) -> DataFrame:
-        """Initialise la df qui contiendra l'historique des prix"""
-
-        def create_index():
-            """
-            Créer une df de taille n (n ligne).
-
-            avec la dernière appelée init et les deux premières current et previous.
-            """
-            ind = (
-                ["current", "previous"]
-                + ["{i}" for i in range(2, self.main_window_size - 1)]
-                + ["init"]
-            )
-            # ind[0], ind[1], ind[-1] =
-            return ind
-
-        index = Index(create_index(), name="PriceObj.data")
-        columns = [
-            "date",
-            "price",
-            "refPrice",
-            "stopTail",
-            "refTail",
-            "flexTail",
-            "sOfsD",
-            "fScale",
-        ]
-        # self.data = DataFrame(index=index, columns=columns)
-
-        current_prices = self.get_current_prices(price, refPrice)
-        data = DataFrame(index=index, columns=columns)
-        data.loc[:, :] = current_prices.values
-        # On s'assure que la colonne date est au bon format
-        data.date = to_datetime(data.date)
-        self.logger.debug(f"Init df prices Object:\n{data.describe()}")
-        return data
 
     def get_current_prices(
         self,
@@ -140,7 +120,7 @@ class PriceObj:
         sOfsP=None,
         fOfsD=None,
         fScale=None,
-    ):
+    ) -> Series:
         """Renvois les prix actuels pour remplir ou mettre à jour la df"""
         if refPrice is None:
             refPrice = self.get_refPrice()
@@ -178,19 +158,10 @@ class PriceObj:
 
         return Series(current_prices)
 
-    def __neg_exps(self, max_var, N):
-        """Plotter pour voir mais il s'agit de valeurs pour x => -np.exp(x)"""
-        def neg_exp(x):
-            return lambda x: -np.exp(x)
-        data = list(
-            map(neg_exp, np.linspace(start=1, stop=max_var, num=N))
-        )
-        return data
-
     def __repr__(self, short=3):
         """representation for the price obj. pass a number != 0 to trim the df output.
         default 3.  return only rows with price change"""
-        if self.data is not None:
+        if getattr(self, "data", None) is not None:
             fCols = set(
                 [c for c in self.data.columns if contains(["price", "tail"], c.lower())]
             ) & set(self.data.columns)
@@ -230,18 +201,14 @@ class PriceObj:
 
     def flexTail_offset_delta(self, refPrice=None):
         """Calcul l'offset flexible qui est fonction des variation des prix."""
-        refPrice = self.get_refPrice(refPrice)
-        refTail = self.get_refTail(refPrice)
-        base_ofs = refTail - refPrice
-        current_var, currP, prevP = self.get_current_variation()
-        scale = self.get_scale(current_var)
-        flexOfs = round_sprice(scale * base_ofs, self.symbol)
-        # logmsg = (f'Offset_delta: prevP={round(prevP, 2)}, currP={round(currP, 2)},'
-        #           f' var={round(current_var,2)}, scale={scale}, base_ofs={base_ofs},'
-        #           f' flexOfs={flexOfs}, refPrice={refPrice}')
+        _refPrice = self.get_refPrice(refPrice)
+        _base_ofs = self.get_refTail(_refPrice) - _refPrice
 
-        # self.logger.debug(logmsg)
-        return round_sprice(flexOfs, self.symbol), round(scale * 100, 4)
+        _scale = self.get_scale(self.get_current_variation()[0])
+
+        flexOfs = round_sprice(_scale * _base_ofs, self.symbol)
+
+        return round_sprice(flexOfs, self.symbol), round(_scale * 100, 4)
 
     def get_refTail(self, refPrice=None):
         """
@@ -301,7 +268,7 @@ class PriceObj:
 
     def get_current_variation(self):
         """Renvoie var % des derniers et avant derniers prix moyens."""
-        if self.data is None:
+        if getattr(self, "data", None) is None:
             return 0, 0, 0
         # on suppose que le data à les données nécessaire pour les calculs suivants
         # définit les mask avec les unité de temps Unit Time (UT)
@@ -408,7 +375,7 @@ class PriceObj:
         """Renvoie la date range timedelta (en seconds) converte par le price data"""
         min_date, max_date, date_range = None, None, None
 
-        if self.data is None:
+        if getattr(self, "data", None) is None:
             return 0
 
         try:
@@ -432,7 +399,7 @@ class PriceObj:
         Renvoie un element du data si il existe.
         Si refPrice ou date demandés, envoie des valeurs par défaut
         """
-        if self.data is not None:
+        if getattr(self, "data", None) is not None:
             elt = self.data.loc[temps].loc[nomElt]
             if not isna(elt):
                 return elt
@@ -464,3 +431,26 @@ def not_array(arr):
         return not x
 
     return map(not_func, arr)
+
+
+def create_index(core_size_: int):
+    """
+    Créer a str index of size core_size. with specific first and last names
+
+    avec la dernière appelée init et les deux premières current et previous.
+    """
+    assert core_size_ > 1, f"core_size={core_size_}"
+    idx = (
+        ["current", "previous"] + [f"{i}" for i in range(2, core_size_ - 1)] + ["init"]
+    )
+    return idx
+
+
+def neg_exps_values(max_var, N):
+    """Plotter pour voir mais il s'agit de valeurs pour x => -np.exp(x)"""
+
+    def neg_exp(x):
+        return -np.exp(x)
+
+    data = list(map(neg_exp, np.linspace(start=1, stop=max_var, num=N)))
+    return data

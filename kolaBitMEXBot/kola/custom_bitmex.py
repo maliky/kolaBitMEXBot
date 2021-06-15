@@ -573,8 +573,8 @@ class BitMEX(object):
         """Get your open position."""
         try:
             return self.ws.position(symbol)
-        except Exception:
-            self.logger.exception("position")
+        except Exception as e:
+            self.logger.exception("{e}: position error")
 
     def recent_trades(self):
         try:

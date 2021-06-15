@@ -27,19 +27,26 @@ def get_prices(refPrice: priceT, prix: bipriceT, atype, symbol=None) -> bipriceT
 
     if "p%" in atype:
         # prix inf et prix sup
-        newPrix = set_new_price(refPrice, prix[0], symbol), set_new_price(refPrice, prix[1], symbol)
+        newPrix = (
+            set_new_price(refPrice, prix[0], symbol),
+            set_new_price(refPrice, prix[1], symbol),
+        )
     elif "pA" in atype:
         # prix en absolue
         newPrix = prix[0], prix[1]
     elif "pD" in atype:
         # prix en différentiel par rapport au prix de référence
         newPrix = _round(refPrice + prix[0]), _round(refPrice + prix[1])
-        logging.info(f"refPrice={refPrice}, prix={prix}, newPrix={newPrix}, symbol={symbol}")
+        logging.debug(
+            f"refPrice={refPrice}, prix={prix}, newPrix={newPrix}, symbol={symbol}"
+        )
 
     return newPrix
 
 
-def setdef_stopPrice(entryPrice: priceT, side: sideT, ordtype: ordTypeT, absdelta: float = .5) -> priceT:
+def setdef_stopPrice(
+    entryPrice: priceT, side: sideT, ordtype: ordTypeT, absdelta: float = 0.5
+) -> priceT:
     """
     set de default trigger price for a given entry_price
 
@@ -56,24 +63,25 @@ def setdef_stopPrice(entryPrice: priceT, side: sideT, ordtype: ordTypeT, absdelt
     # logging.info(f'>>>> entryPrice={entryPrice}, ordtype={ordtype}, absdelta={absdelta}')
     T = {"buy": 1, "sell": -1}
     return entryPrice + T[side] * absdelta
-    
 
 
-def get_prix_decl(prices: Tuple[priceT, priceT], side: sideT, ordtype:ordTypeT) -> priceT:
+def get_prix_decl(
+    prices: Tuple[priceT, priceT], side: sideT, ordtype: ordTypeT
+) -> priceT:
     """
     Return the price to be reach first if markets mooves towards the prices
-    
+
     For limit and touche limit, buy should be the biggest price
     For stop and stop limit buy should be the smallest price
     We suppose that prices are both on the same side of market price.
     Other ways we would get immediat entry.
     """
     assert prices[0] < prices[1], f"prices={prices} should be an ordered paire."
-    assert side in ['buy', 'sell'], f"side={side}"
-    
-    if ordtype in ['Limit', 'MarketIfTouched', 'LimitIfTouched']:
+    assert side in ["buy", "sell"], f"side={side}"
+
+    if ordtype in ["Market", "Limit", "MarketIfTouched", "LimitIfTouched"]:
         return prices[1] if side == "buy" else prices[0]
-    if ordtype in ['Stop', 'StopLimit']:
+    if ordtype in ["Stop", "StopLimit"]:
         return prices[1] if side == "sell" else prices[0]
 
-    raise Exception(f'ordtype={ordtype} not recognized.')
+    raise Exception(f"ordtype={ordtype} not recognized.")

@@ -8,6 +8,7 @@ import sys
 import threading
 import websocket
 from websocket import create_connection
+from pandas import DataFrame
 
 from kolaBitMEXBot.kola.connexion.auth import generate_nonce, generate_signature
 from kolaBitMEXBot.kola.utils.logfunc import get_logger
@@ -46,7 +47,7 @@ class BitMEXWebsocket:
 
     def __del__(self):
         self.exit()
-        
+
     def single_connection(self, endpoint=TEST_URL, symbol=SYMBOL, shouldAuth=True):
         """Erreur pas de __subscribe"""
         self.subscriptions = self.__subscribe(symbol, shouldAuth)
@@ -100,6 +101,25 @@ class BitMEXWebsocket:
         )
         return instrument
 
+    def get_instrument2(self, symbol=SYMBOL) -> DataFrame:
+        """
+        Return an instrument. see docs for keys.
+        - symbol is different from root symbol
+        """
+        ins = DataFrame(self.data["instrument"])
+        ins_open = (ins.state == "Open").values
+        ins_symbol = (ins.symbol == symbol).values
+        instrument = ins.loc[ins_open & ins_symbol]
+        assert (
+            len(instrument) > 0
+        ), "Check {symbol} in {ins.loc[ins.state == 'Open'].symbol}"
+        # converting the DataFrame to the Serie
+        instrument = instrument.iloc[0]
+        instrument["tickLog"] = (
+            decimal.Decimal(str(instrument["tickSize"])).as_tuple().exponent * -1
+        )
+        return instrument
+
     def get_ticker(self, symbol=SYMBOL):
         """Return a ticker object. Generated from instrument."""
 
@@ -110,13 +130,13 @@ class BitMEXWebsocket:
             ticker = {}
             ticker["mid"] = ticker["buy"] = ticker["sell"] = ticker[
                 "last"
-            ] = instrument["MarkPrice"]
+            ] = instrument["markPrice"]
         # Normal instrument
         else:
-            bid = instrument["bidPrice"] or instrument["LastPrice"]
-            ask = instrument["askPrice"] or instrument["LastPrice"]
+            bid = instrument["bidPrice"] or instrument["lastPrice"]
+            ask = instrument["askPrice"] or instrument["lastPrice"]
             ticker = {
-                "last": instrument["LastPrice"],
+                "last": instrument["lastPrice"],
                 "buy": bid,
                 "sell": ask,
                 "mid": (bid + ask) / 2,
@@ -158,7 +178,7 @@ class BitMEXWebsocket:
         # Filter to only open orders (leavesQty > 0) and those that we actually placed
         return [o for o in orders if str(o["clOrdID"]).startswith(clOrdIDPrefix)]
 
-    def position(self, symbol_=None):
+    def position(self, symbol_=None, full=False):
         """Get the position for symbol."""
         _symbol = self.symbol if symbol_ is None else symbol_
         positions = self.data["position"]
@@ -172,6 +192,24 @@ class BitMEXWebsocket:
                 "symbol": _symbol,
             }
         return pos[0]
+
+    def position2(self, symbol_=None, full=False):
+        """Get the position for symbol."""
+        _symbol = self.symbol if symbol_ is None else symbol_
+        positions = DataFrame(self.data["position"])
+        if len(positions):
+            pos = positions.loc[positions.symbol == _symbol]
+
+            assert len(pos) > 1, "More than one positions? {positions}"
+            return dict(pos)
+        else:
+            # No position found; stub it
+            return {
+                "avgCostPrice": 0,
+                "avgEntryPrice": 0,
+                "currentQty": 0,
+                "symbol": _symbol,
+            }
 
     def recent_trades(self):
         return self.data["trade"]

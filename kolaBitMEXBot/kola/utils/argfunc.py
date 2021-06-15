@@ -49,7 +49,7 @@ def get_args():
     symbol_def = "XBTUSD"  # define the market to listent too
 
     name_help = "Nom de l'ordre dans logs internes"
-    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAM20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
+    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAU20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
     oDelta_help = (
         "Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."
         "  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={oDelta_def})"
@@ -63,7 +63,7 @@ def get_args():
     quantity_help = f"quantité de l'ordre.  Doit toujours être positive ici.  Mais peut être exprimier en %% de la balance dispo ou en valeur Absolue (default={quantity_def})"
     tailPrice_help = f"C'est l'epaisseur de la queue (tail) qui suit le pri;  en %%, valeur absolu ou prix de départ (default={tailPrice_def})"
     aType_help = f"définie comment interpréter les arguments --prix (p), --quantity (q), --tailPrice (t). Suivant les lettres ajouter A, D ou %% pour en valeur Absolue, Differentiel ou pourcentage.  Exemple:  p%%qAt%% pour prix en pourcentage, quantité Absolue et t%% en pourcentage (default={aType_def})"
-    oType_help = f"Declenchement price type. One of one of IndexPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop IndexPrice,  markePrice (markPrice) et lastPrice (default ={oType_def})"
+    oType_help = f"Declenchement price type. One of one of fairPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop fairPrice,  markePrice (markPrice) et lastPrice (default ={oType_def})"
     logLevel_help = f"le niveau pour le log (default={logLevel_def})"
     logFile_help = f"Le fichier de sorti log. (default {logFile_def})"
     liveRun_help = "Si présent effectue un live run sinon sur tests"
@@ -71,7 +71,7 @@ def get_args():
     updatePause_help = f"Le temps  (moyen) nentre deux update de la tail (en s), (default={updatePause_def})"
     logPause_help = f"Le temps (moyen) entre deux logs de l'évolution des prix. (default={logPause_def})"
     argFile_help = f"Indique le nom d'un fichier contenant multiples orders to run in one go. (default {argFile_def})"
-    tType_help = f"one of IndexPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop IndexPrice,  markePrice (markPrice) et lastPrice.  Du moins au plus volatille. Default (default {tType_def})"
+    tType_help = f"one of fairPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop fairPrice,  markePrice (markPrice) et lastPrice.  Du moins au plus volatille. Default (default {tType_def})"
     dr_pause_help = f"Indique une durée de pause lorsqu'un ordre fini. C'est approximatif.  attend au moins 10 secondes puis rnd.exp (default={dr_pause_def}) min"
     hook_help = f"define the name of the order to hook to and the status to wait for. F for filled, N for new, C for cancel and P for partial... formed as name_F (default={hook_def})"
 
@@ -156,7 +156,7 @@ def set_order_args(
     Se base sur atype (argtype) et prix type (tRefPrice tail).
     Si recompute is False, ne recalcule pas les pourcentages
     -tptype: tail price type
-    - symbol: XBTUSD ou ADAM20 for exemple. used to set rounding
+    - symbol: XBTUSD ou ADAU20 for exemple. used to set rounding
     """
     # renvois le prix de référence pour la queue selon le tptype et side
     optype, ordtype, execinst = otype
@@ -232,9 +232,9 @@ def price_type_trad(exType_, side=None):
     """
     Transforme an order shorthand (exType_) in orders options.
 
-    MarkPrice, LastPrice, IndexPrice: Used by stop and if-touched orders
+    markPrice, lastPrice, fairPrice: Used by stop and if-touched orders
     to determine the triggering price.
-    Use only one. By default, 'MarkPrice' is used.
+    Use only one. By default, 'markPrice' is used.
     Also used for Pegged orders to define the value of 'LastPeg'.
     It is bitMex fair price.
 

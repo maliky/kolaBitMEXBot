@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """Test suite for kola.utils.logfunc.py."""
-from logging import _nameToLevel
-from Tests.hypo_strategies import st_loggers, st_logger_levels, get_level_names
+from Tests.hypo_strategies import st_loggers, st_logger_levels
 from kolaBitMEXBot.kola.utils.logfunc import get_logfunc, throttled_log
 from hypothesis import given
-from hypothesis.strategies import integers, text, sampled_from, just
+from hypothesis.strategies import integers, text
 
 @given(
     logger_=st_loggers(), level_=st_logger_levels()
