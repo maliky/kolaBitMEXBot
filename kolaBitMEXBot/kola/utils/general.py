@@ -2,7 +2,7 @@
 from decimal import Decimal, getcontext, ROUND_HALF_UP  # pour l'arrondi
 import os  # for the path check
 from itertools import count
-import sleep
+from time import sleep
 from queue import Queue
 import threading
 import logging
@@ -202,10 +202,6 @@ def get_precision(x_):
 #     return Series(s_[:a_]), Series(s_[b_:])
 
 
-<<<<<<< HEAD:kolaBitMEXBot/kola/utils/general.py
-=======
-    
->>>>>>> 07130670b2c54bac5991f01485de7fe73b98e0d3:kolaBitMEXBot/kolaBitMEXBot/kola/utils/general.py
 def round_price(price: float, precision_=0.5) -> float:
     """Set defaut to round an XBT price. see round_half_up"""
     assert precision_ is not None
