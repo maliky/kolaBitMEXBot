@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Constantes"""
+"""Constantes for bitmex"""
 
 # some default cols
 EXECOLS = [

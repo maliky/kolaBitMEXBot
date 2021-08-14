@@ -4,7 +4,7 @@ import argparse
 import sys
 
 from kolaBot.kola.utils.logfunc import get_logger, setup_logging
-from kolaBot.kola.dummy_bitmex import DummyBitMEX
+from kolaBot.kola.bitmex_api.dummy import DummyBitMEX
 import kolaBot.kola.utils.exceptions as ke
 from kolaBot.kola.settings import LOGFMT, LOGNAME
 from kolaBot.multi_kola import MarketAuditeur, go_multi
@@ -25,7 +25,7 @@ class argsO:
         dummy=False,
         **kwargs,
     ):
-        """Simulate the args from command line """
+        """Simulate the args from command line"""
         self.argFile = argfile
         self.logLevel = loglevel
         self.logFile = logfile
@@ -82,32 +82,41 @@ def main_prg():
 
 def get_cmd_args():
     """Parse the function's arguments."""
-    description = """Lance les ordres du fichier morders."""
-
     # default
-    logLevel_def = "INFO"
-    logLevel_help = "Le log level"
-    dummy_help = "Si présent utilise un dummy bitmex"
-    liveRun_help = "Si présent utilise live bitmex !"
-    symbol_def = "XBTUSD"  # define the market to listent too
-    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAU20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
-
-    morders_def = f"./Orders/{symbol_def.lower()[:3]}_test.tsv"
-    morders_help = f"Path to the 'tsv' file containing the market orders. usually one per symbol ({morders_def})."
-
-    parser = argparse.ArgumentParser(description=description)
-    parser.add_argument(
-        "--morders", "-m", type=str, default=morders_def, help=morders_help
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
-        "--symbol", "-S", type=str, default=symbol_def, help=symbol_help
+        "--morders",
+        "-m",
+        type=str,
+        default=f"./Orders/xbt_test.tsv",
+        help=(
+            f"Path to the 'tsv' file containing the market orders. usually one per symbol."
+        ),
+    )
+    parser.add_argument(
+        "--symbol",
+        "-S",
+        type=str,
+        default="XBTUSD",
+        help=(
+            f"Market to listen too. could be XBTM20 XBTU20 ADAU20 BCHM20 ETHUSD LTCM20"
+        ),
     )
 
     parser.add_argument(
-        "--logLevel", "-l", type=str, default=logLevel_def, help=logLevel_help
+        "--logLevel", "-l", type=str, default="INFO", help=("Le log level")
     )
-    parser.add_argument("--liveRun", action="store_true", help=liveRun_help)
-    parser.add_argument("--dummy", "-D", action="store_true", help=dummy_help)
+    parser.add_argument(
+        "--liveRun", action="store_true", help=("Si présent utilise live bitmex !")
+    )
+    parser.add_argument(
+        "--dummy",
+        "-D",
+        action="store_true",
+        help=("Si présent utilise un dummy bitmex"),
+    )
 
     return parser.parse_args()
 

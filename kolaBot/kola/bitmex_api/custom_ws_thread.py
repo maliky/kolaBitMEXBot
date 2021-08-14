@@ -10,7 +10,7 @@ import websocket
 from websocket import create_connection
 from pandas import DataFrame
 
-from kolaBot.kola.connexion.auth import generate_nonce, generate_signature
+from kolaBot.kola.bitmex_api.auth import generate_nonce, generate_signature
 from kolaBot.kola.utils.logfunc import get_logger
 from kolaBot.kola.utils.general import round_half_up, trim_dic
 from kolaBot.kola.settings import SYMBOL, ORDERID_PREFIX, TEST_URL
@@ -169,7 +169,7 @@ class BitMEXWebsocket:
     def exec_orders(self, clOrdIDPrefix=ORDERID_PREFIX):
         """
         Renvois tous mes ordres qui sont dans la table.
-        
+
         Renvois True si l'ordre a été exécuté.
         see https://www.onixs.biz/fix-dictionary/5.0.SP2/msgType_D_68.html
         for order explanation
@@ -466,8 +466,8 @@ class BitMEXWebsocket:
 
 def findItemByKeys(keys, table, matchData):
     """parcours les items de la table.
-Pour chaque item vérifie que tous les éléments clefs sont les même que ceux de match Data.
-Sinon, si l'un des éléments clefs est !=, ne renvois pas l'item"""
+    Pour chaque item vérifie que tous les éléments clefs sont les même que ceux de match Data.
+    Sinon, si l'un des éléments clefs est !=, ne renvois pas l'item"""
     for item in table:
         matched = True
         for key in keys:

@@ -14,7 +14,7 @@ from pprint import pprint
 
 from kolaBot.kola.bargain import Bargain
 from kolaBot.kola.chronos import Chronos
-from kolaBot.kola.dummy_bitmex import DummyBitMEX
+from kolaBot.kola.bitmex_api.dummy import DummyBitMEX
 from kolaBot.kola.orders.hookorder import HookOrder
 from kolaBot.kola.orders.ordercond import OrderConditionned
 from kolaBot.kola.orders.trailstop import TrailStop
@@ -49,7 +49,7 @@ class MarketAuditeur:
     def __init__(self, live: bool = False, dbo=None, logger=None, symbol=SYMBOL):
         """
         Une classe  pour placer un ordre conditionné et sa trace sur bitmex.
-        Place an order pair on symbol market. 
+        Place an order pair on symbol market.
 
         Un auditeur de marché, c'est une connexion qui écoute les prix du marché
         - serveur chronos:  envoie les ordres au marché
@@ -187,9 +187,7 @@ class MarketAuditeur:
             "timeout": f"{timeout}m",
             "balance": self.balance(),
         }
-        self.logger.debug(
-            f"#### Go with args :\n{_info}"
-        )
+        self.logger.debug(f"#### Go with args :\n{_info}")
 
         # Init. des paramètres temps pour la condition de validité de l'ocp
         self.tpsDeb = now() + pd.Timedelta(tps_run[0], unit="m")
@@ -266,15 +264,11 @@ class MarketAuditeur:
                 "tpType": (tpType, tOrdType, tExecInst),
                 "timeOut": timeOut,
             }
-            self.logger.info(
-                f"### Essais {i+1}/{essais}, ({nameT}):\n{_info}"
-            )
+            self.logger.info(f"### Essais {i+1}/{essais}, ({nameT}):\n{_info}")
 
             # L'order Price type (déclencheur pour Touched & stop) est déjà dans execInst
             # penser à faire un objet order pour faciliter la mise à jour et l'init
-            order = create_order(
-                side, _q, opType, ordType, execInst, oPrices, oDelta
-            )
+            order = create_order(side, _q, opType, ordType, execInst, oPrices, oDelta)
 
             # On initialise les arguments condition pour les ordres principaux
             kwargs = {
@@ -525,7 +519,10 @@ def read_order_file(arg_file):
     """Read the order file, parsing arguments to correct types."""
     # read the morder_file
     df = pd.read_csv(
-        filepath_or_buffer=arg_file, sep="\t", comment="#", skip_blank_lines=True,
+        filepath_or_buffer=arg_file,
+        sep="\t",
+        comment="#",
+        skip_blank_lines=True,
     )
     df = df.set_index([df.index, df.name]).drop(columns="name")
     df = df.apply(coerce_types, axis=1)
@@ -542,8 +539,8 @@ def coerce_types(s):
     - timeout: "int",
     - side: str
     - prix: s.prix,
-    - q: "int", 
-    - tp: "float", 
+    - q: "int",
+    - tp: "float",
     - atype: str
     - oType: str
     - oDelta: "float",
@@ -635,9 +632,7 @@ def main_prg():
         name=LOGNAME, sLL=args.logLevel, logFile=args.logFile, fmt_=LOGFMT
     )
     dbo = DummyBitMEX(up=0, logger=rlogger) if args.dummy else None
-    tma = MarketAuditeur(
-        live=args.liveRun, dbo=dbo, logger=rlogger, symbol=args.symbol
-    )
+    tma = MarketAuditeur(live=args.liveRun, dbo=dbo, logger=rlogger, symbol=args.symbol)
     tma.start_server()
 
     try:

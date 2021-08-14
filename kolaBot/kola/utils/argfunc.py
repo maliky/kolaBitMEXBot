@@ -26,108 +26,211 @@ def get_args():
     """
 
     # default
-    name_def = "NaDef"
-    aType_def = "p%%q%%t%%"
-    argFile_def = None
-    dr_pause_def = None
-    logFile_def = "./log.org"
-    logLevel_def = "INFO"
-    logPause_def = 60
-    nbEssai_def = 3
-    oType_def = "M"
-    prix_def = [-1, 1]
-    quantity_def = 75
-    side_def = "buy"
-    tOut_def = None
-    tType_def = "Si-"
-    tailPrice_def = 2
-    tps_run_def = [-1, 800]
-    updatePause_def = 10
-    oDelta_def = PRICE_PRECISION["XBTUSD"]
-    tDelta_def = PRICE_PRECISION["XBTUSD"]
-    hook_def = ""
-    symbol_def = "XBTUSD"  # define the market to listent too
 
-    name_help = "Nom de l'ordre dans logs internes"
-    symbol_help = f"Market to listen too. could be XBTM20 XBTU20 ADAU20 BCHM20 ETHUSD LTCM20 (default={symbol_def})"
-    oDelta_help = (
-        "Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."
-        "  Utilisé pour les ordres de StopLimit et LimitIfTouched (default={oDelta_def})"
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    tDelta_help = f"Difference between trigger price and price for tail orders (default={tDelta_def})"
-    tps_run_help = f"le temps en minute à partir du moment du lancement, doit être un tuple, indique la plage horaire pour laquelle l'ordre est valide. (default={tps_run_def})"
-    tOut_help = "Temps d'attente de vérification in minutes de la validation de l'order.  Pour les limites order peut être très long. (default le temps du run) (default temps d'attente théorique d'un ordre ie, durée du run / nb orders)"
-    prix_help = f"Une fourchette de prix dans laquelle executer le ou les essais.  Si le prix sort de la fourchette rien faire.  La fourchette de prix peut être exprimer en %% du prix actuellent, en différentiel ou en valeur absolu. (default={prix_def})"
-    nbEssai_help = f"nombre d'essaies à effectuer (default={nbEssai_def})"
-    side_help = f"côte de l'ordre (default={side_def})"
-    quantity_help = f"quantité de l'ordre.  Doit toujours être positive ici.  Mais peut être exprimier en %% de la balance dispo ou en valeur Absolue (default={quantity_def})"
-    tailPrice_help = f"C'est l'epaisseur de la queue (tail) qui suit le pri;  en %%, valeur absolu ou prix de départ (default={tailPrice_def})"
-    aType_help = f"définie comment interpréter les arguments --prix (p), --quantity (q), --tailPrice (t). Suivant les lettres ajouter A, D ou %% pour en valeur Absolue, Differentiel ou pourcentage.  Exemple:  p%%qAt%% pour prix en pourcentage, quantité Absolue et t%% en pourcentage (default={aType_def})"
-    oType_help = f"Declenchement price type. One of one of fairPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop fairPrice,  markePrice (markPrice) et lastPrice (default ={oType_def})"
-    logLevel_help = f"le niveau pour le log (default={logLevel_def})"
-    logFile_help = f"Le fichier de sorti log. (default {logFile_def})"
-    liveRun_help = "Si présent effectue un live run sinon sur tests"
-    dummy_help = "Si présent utilise un dummy bitmex"
-    updatePause_help = f"Le temps  (moyen) nentre deux update de la tail (en s), (default={updatePause_def})"
-    logPause_help = f"Le temps (moyen) entre deux logs de l'évolution des prix. (default={logPause_def})"
-    argFile_help = f"Indique le nom d'un fichier contenant multiples orders to run in one go. (default {argFile_def})"
-    tType_help = f"one of fairPrice, markPrice, lastPrice, respectivement pour le déclenchement des stop fairPrice,  markePrice (markPrice) et lastPrice.  Du moins au plus volatille. Default (default {tType_def})"
-    dr_pause_help = f"Indique une durée de pause lorsqu'un ordre fini. C'est approximatif.  attend au moins 10 secondes puis rnd.exp (default={dr_pause_def}) min"
-    hook_help = f"define the name of the order to hook to and the status to wait for. F for filled, N for new, C for cancel and P for partial... formed as name_F (default={hook_def})"
-
-    parser = argparse.ArgumentParser(description=description)
 
     parser.add_argument(
-        "--tps_run", "-t", type=int, nargs=2, default=tps_run_def, help=tps_run_help
-    )
-    parser.add_argument("--name", "-m", default=name_def, help=name_help)
-    parser.add_argument("--tOut", "-O", type=int, default=tOut_def, help=tOut_help)
-    parser.add_argument(
-        "--drPause", "-p", type=int, default=dr_pause_def, help=dr_pause_help
-    )
-    parser.add_argument(
-        "--prix", "-x", type=float, default=prix_def, nargs=2, help=prix_help
-    )
-    parser.add_argument(
-        "--quantity", "-q", type=int, default=quantity_def, help=quantity_help
+        "--tps_run",
+        "-t",
+        type=int,
+        nargs=2,
+        default=[-1, 800],
+        help=(
+            f"le temps en minute à partir du moment du lancement, doit être un tuple, "
+            "indique la plage horaire pour laquelle l'ordre est valide."
+        ),
     )
     parser.add_argument(
-        "--tailPrice", "-T", type=float, default=tailPrice_def, help=tailPrice_help
+        "--name", "-m", default="NaDef", help=("Nom de l'ordre dans logs internes")
     )
     parser.add_argument(
-        "--logLevel", "-l", type=str, default=logLevel_def, help=logLevel_help
+        "--tOut",
+        "-O",
+        type=int,
+        default=None,
+        help=(
+            "Temps d'attente de vérification in minutes de la validation de l'order.  "
+            "Pour les limites order peut être très long. (default le temps du run) "
+            "(default temps d'attente théorique d'un ordre ie, durée du run / nb orders)"
+        ),
     )
     parser.add_argument(
-        "--symbol", "-S", type=str, default=symbol_def, help=symbol_help
+        "--drPause",
+        "-p",
+        type=int,
+        default=None,
+        help=(
+            f"Indique une durée de pause lorsqu'un ordre fini. C'est approximatif.  "
+            "Attend au moins 10 secondes puis rnd.exp min"
+        ),
     )
     parser.add_argument(
-        "--updatePause", "-U", type=int, default=updatePause_def, help=updatePause_help
+        "--prix",
+        "-x",
+        type=float,
+        default=[-1, 1],
+        nargs=2,
+        help=(
+            f"Une fourchette de prix dans laquelle executer le ou les essais.  "
+            "Si le prix sort de la fourchette rien faire.  La fourchette de prix peut être "
+            "exprimer en %% du prix actuellent, en différentiel ou en valeur absolu."
+        ),
     )
     parser.add_argument(
-        "--logPause", "-F", type=int, default=logPause_def, help=logPause_help
+        "--quantity",
+        "-q",
+        type=int,
+        default=75,
+        help=(
+            f"Quantité de l'ordre.  Doit toujours être positive ici.  Mais peut être exprimé "
+            "en %% de la balance dispo ou en valeur Absolue"
+        ),
     )
     parser.add_argument(
-        "--argFile", "-A", type=str, default=argFile_def, help=argFile_help
+        "--tailPrice",
+        "-T",
+        type=float,
+        default=2,
+        help=(
+            f"C'est l'epaisseur de la queue (tail) qui suit le prix;  en %%, valeur absolue ou "
+            "prix de départ."
+        ),
     )
     parser.add_argument(
-        "--oDelta", "-d", type=int, default=oDelta_def, help=oDelta_help
+        "--logLevel",
+        "-l",
+        type=str,
+        default="INFO",
+        help=(f"le niveau pour le log."),
     )
     parser.add_argument(
-        "--tDelta", "-s", type=int, default=tDelta_def, help=tDelta_help
+        "--symbol",
+        "-S",
+        type=str,
+        default="XBTUSD",  # define the market to listent too, help=( f"Market to listen too. could be XBTM20 XBTU20 ADAU20 BCHM20 ETHUSD LTCM20 (default={symbol_def})")
     )
     parser.add_argument(
-        "--nbEssais", "-n", type=int, default=nbEssai_def, help=nbEssai_help
+        "--updatePause",
+        "-U",
+        type=int,
+        default=10,
+        help=(
+            f"Le temps  (moyen) nentre deux update de la tail (en s)."
+        ),
     )
-    parser.add_argument("--oType", "-o", type=str, default=oType_def, help=oType_help)
-    parser.add_argument("--tType", "-y", type=str, default=tType_def, help=tType_help)
-    parser.add_argument("--side", "-c", type=str, default=side_def, help=side_help)
-    parser.add_argument("--aType", "-a", type=str, default=aType_def, help=aType_help)
     parser.add_argument(
-        "--logFile", "-f", type=str, default=logFile_def, help=logFile_help
+        "--logPause",
+        "-F",
+        type=int,
+        default=60,
+        help=(
+            f"Le temps (moyen) entre deux logs de l'évolution des prix."
+        ),
     )
-    parser.add_argument("--liveRun", "-L", action="store_true", help=liveRun_help)
-    parser.add_argument("--dummy", "-D", action="store_true", help=dummy_help)
-    parser.add_argument("--Hook", "-H", type=str, help=hook_help)
+    parser.add_argument(
+        "--argFile",
+        "-A",
+        type=str,
+        default=None,
+        help=(
+            f"Indique le nom d'un fichier contenant multiples orders to run in one go."
+        ),
+    )
+    parser.add_argument(
+        "--oDelta",
+        "-d",
+        type=int,
+        default=PRICE_PRECISION["XBTUSD"],
+        help=("Différence entre le prix de l'ordre et le prix déclencheur de l'ordre."),
+    )
+    parser.add_argument(
+        "--tDelta",
+        "-s",
+        type=int,
+        default=PRICE_PRECISION["XBTUSD"],
+        help=(
+            f"Difference between trigger price and price for tail orders."
+        ),
+    )
+    parser.add_argument(
+        "--nbEssais",
+        "-n",
+        type=int,
+        default=3,
+        help=(f"nombre d'essaies à effectuer."),
+    )
+    parser.add_argument(
+        "--oType",
+        "-o",
+        type=str,
+        default="M",
+        help=(
+            f"Declenchement price type. One of one of fairPrice, markPrice, lastPrice, "
+            "respectivement pour le déclenchement des stop fairPrice,  markePrice (markPrice) et"
+            " lastPrice."
+        ),
+    )
+    parser.add_argument(
+        "--tType",
+        "-y",
+        type=str,
+        default="Si-",
+        help=(
+            f"One of fairPrice, markPrice, lastPrice, respectivement pour le déclenchement "
+            "des stop fairPrice,  markePrice (markPrice) et lastPrice.  "
+            "Du moins au plus volatille."
+        ),
+    )
+    parser.add_argument(
+        "--side",
+        "-c",
+        type=str,
+        default="buy",
+        help=(f"Côte de l'ordre."),
+    )
+    parser.add_argument(
+        "--aType",
+        "-a",
+        type=str,
+        default="p%%q%%t%%",
+        help=(
+            f"Défini comment interpréter les arguments --prix (p), --quantity (q), --tailPrice (t). "
+            "Suivant les lettres ajouter A, D ou %% pour en valeur Absolue, Differentiel ou "
+            "pourcentage.  Exemple:  p%%qAt%% pour prix en pourcentage, quantité Absolue et "
+            "t%% en pourcentage."
+        ),
+    )
+    parser.add_argument(
+        "--logFile",
+        "-f",
+        type=str,
+        default="./log.org",
+        help=(f"Le fichier de sorti log."),
+    )
+    parser.add_argument(
+        "--liveRun",
+        "-L",
+        action="store_true",
+        help=("Si présent effectue un live run sinon sur tests"),
+    )
+    parser.add_argument(
+        "--dummy",
+        "-D",
+        action="store_true",
+        help=("Si présent utilise un dummy bitmex"),
+    )
+    parser.add_argument(
+        "--Hook",
+        "-H",
+        type=str,
+        help=(
+            "Define the name of the order to hook to and the status to wait for. "
+            "F for filled, N for new, C for cancel and P for partial... formed as name_F."
+        ),
+    )
 
     return parser.parse_args()
 

@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+"""
+Math Rounding function. file function,  General utilities function, thread functions for (from) kolabot
+"""
 from decimal import Decimal, getcontext, ROUND_HALF_UP  # pour l'arrondi
 import os  # for the path check
 from itertools import count
@@ -26,6 +29,7 @@ def log_exception(logopt_=None, level_="ERROR"):
 
     Return decorator
     """
+
     def set_logger(logopt_, level_="INFO"):
         """Set get a logger and a level."""
         if isinstance(logopt_, logging.RootLogger):
@@ -123,6 +127,18 @@ def confirm_path_existence_for(filename):
 
 
 # #### Math functions
+def round_sprice(x, symbol_=None):
+    """
+    Renvois une fonction qui arrondie à l'unité de la précision passée.
+
+    Par exemple: x=234.7 -> arrondira au dixème
+    x=.00005 -> au millionnième
+    """
+    # assert x != 0, f"symbol_={symbol_}, x={x}"
+    sprecision = PRICE_PRECISION.get(symbol_, 10 ** -get_precision(x))
+    return round_price(x, sprecision)
+
+
 def in_interval(x, a, b, bornes="="):
     """
     Interval check.  x in [a,b]
@@ -202,24 +218,11 @@ def get_precision(x_):
 #     return Series(s_[:a_]), Series(s_[b_:])
 
 
-
 def round_price(price: float, precision_=0.5) -> float:
     """Set defaut to round an XBT price. see round_half_up"""
     assert precision_ is not None
     # assert price != 0, f"price={price}, precision_={precision_}"
     return round_half_up(price, precision_)
-
-
-def round_sprice(x, symbol_=None):
-    """
-    Renvois une fonction qui arrondie à l'unité de la précision passée.
-
-    Par exemple: x=234.7 -> arrondira au dixème
-    x=.00005 -> au millionnième
-    """
-    # assert x != 0, f"symbol_={symbol_}, x={x}"
-    sprecision = PRICE_PRECISION.get(symbol_, 10 ** -get_precision(x))
-    return round_price(x, sprecision)
 
 
 def round_half_up(x: float, precision_: float) -> float:
@@ -241,6 +244,8 @@ def round_half_up(x: float, precision_: float) -> float:
     # si precision_ = .5 -> 1 si 1e-7 -> 7
     round_precision = get_precision(precision_)
     x_ = float(round(arrondi, round_precision))
+
+    # à comparer avec round_to in orderfunc.py
     return x_
 
 
@@ -294,7 +299,7 @@ def threaded(f, daemon=False):
 
         Elle démare le thread et retour l'objet du thread avec la queue
         """
-        q : Queue = Queue()
+        q: Queue = Queue()
 
         t = threading.Thread(target=wrapped_f, args=(q,) + args, kwargs=kwargs)
         t.daemon = daemon
@@ -318,8 +323,7 @@ def fullDict(D):
 
 
 def value_filter(D, vfilter=[], dans=True):
-    """Renvois les élts de D dont les valeurs sont (in True) ou (in False) et dans vfilter
-    """
+    """Renvois les élts de D dont les valeurs sont (in True) ou (in False) et dans vfilter"""
     if dans:
         return {k: v for (k, v) in D.items() if v in vfilter}
     else:

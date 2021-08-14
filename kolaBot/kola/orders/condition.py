@@ -304,9 +304,10 @@ class Condition:
 
     def get_low_high(self, _genre):
         """get low high value for _genre condition."""
-        _conds = {"temps": self.get_conds("temps"), "price": self.get_conds("price"),}[
-            _genre
-        ]
+        _conds = {
+            "temps": self.get_conds("temps"),
+            "price": self.get_conds("price"),
+        }[_genre]
 
         assert len(_conds) == 2, f"conds={_conds}, cond_frame={self.cond_frame}"
         try:
@@ -381,7 +382,7 @@ class Condition:
             return _genre.iloc[0]
 
     def update_cond(self, genre_, op_, value_):
-        """"
+        """ "
         Met à jour une condition.
         - genre_ le genre de la condition 'temps, hook, fairPrice, lastPrice...
         - op: l'opérateur de la condition

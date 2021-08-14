@@ -6,7 +6,7 @@ from typing import Optional, Set, Dict, List
 from copy import deepcopy
 
 from kolaBot.kola.kolatypes import ordStatusT
-from kolaBot.kola.custom_bitmex_api import BitMEX
+from kolaBot.kola.bitmex_api.custom_api import BitMEX
 from kolaBot.kola.secrets import LIVE_KEY, LIVE_SECRET, TEST_KEY, TEST_SECRET
 from kolaBot.kola.settings import (
     LIVE_URL,
@@ -27,6 +27,7 @@ from kolaBot.kola.utils.constantes import (
     PRICE_PRECISION,
     INSTRUMENT_PRICES,
 )
+from kolaBot.kola.binance_api.client import Client as Binance
 
 
 # MULTIPLIER À CORRIGER
@@ -51,8 +52,12 @@ class Bargain:
         timeout=TIMEOUT,
         logger=None,
         dbo=None,
+        trading_plateform="bitmex",
     ):
-        """Initialisation dbo is a dummy bitMEX object used for testing."""
+        """Initialisation.:
+        - dbo is a dummy bitMEX object used for testing.
+        - trading_plateform: supported bitmex and binance
+        """
         self.logger = get_logger(logger, name=__name__, sLL="INFO")
 
         self.symbol = symbol
@@ -69,29 +74,32 @@ class Bargain:
             baseUrl, apiKey, apiSecret = TEST_URL, TEST_KEY, TEST_SECRET
 
         if dbo:
-            self.bto = dbo
+            self.crypto_api = dbo
             self.dbo = dbo
         else:
             # si on ne passe pas l'argument dummy BitMEX object
             # On en crée un réel
-            self.bto = BitMEX(
-                base_url=baseUrl,
-                symbol=self.symbol,
-                apiKey=apiKey,
-                apiSecret=apiSecret,
-                orderIDPrefix=orderIDPrefix,
-                postOnly=postOnly,
-                timeout=timeout,
-                logger=self.logger,
-            )
+            if trading_plateform == "bitmex":
+                self.crypto_api = BitMEX(
+                    base_url=baseUrl,
+                    symbol=self.symbol,
+                    apiKey=apiKey,
+                    apiSecret=apiSecret,
+                    orderIDPrefix=orderIDPrefix,
+                    postOnly=postOnly,
+                    timeout=timeout,
+                    logger=self.logger,
+                )
+            elif trading_plateform == "binance":
+                self.crypto_api = Binance()
             self.dbo = None
 
         self.logger.info(f"Fini init {self}")
 
     def __repr__(self, short=True):
         """Représente the Bargain object."""
-        bto = self.dbo if self.dbo else self.bto
-        rep = f"----BRG-live({self.live}) using {bto}"
+        crypto_api = self.dbo if self.dbo else self.crypto_api
+        rep = f"----BRG-live({self.live}) using {crypto_api}"
         if not short:
             rep += f"logger={self.logger}\n"
 
@@ -137,7 +145,9 @@ class Bargain:
         Si atPrice is None, use market buy sell or mid price
         Voir aussi abonnement "wallet"
         """
-        satoshi_balance = self.bto.margin()["availableMargin"] * self.get_leverage()
+        satoshi_balance = (
+            self.crypto_api.margin()["availableMargin"] * self.get_leverage()
+        )
         xbt_balance = satoshi_balance * XBTSATOSHI
 
         if isinstance(atPrice, str):
@@ -167,7 +177,7 @@ class Bargain:
     def get_multiplier(self):
         """Get multiplier."""
         # check market_maker
-        instrument = self.bto.instrument(self.symbol)
+        instrument = self.crypto_api.instrument(self.symbol)
 
         if instrument["underlyingToSettleMultiplier"] is None:
             multiplier = float(instrument["multiplier"]) / float(
@@ -181,11 +191,11 @@ class Bargain:
 
     def get_leverage(self):
         """Get leverage for symbol."""
-        return self.bto.position(self.symbol).get("leverage", 1)
+        return self.crypto_api.position(self.symbol).get("leverage", 1)
 
     def get_open_orders(self, summary=True):
         """Get the open orders."""
-        orders = self.bto.http_open_orders()
+        orders = self.crypto_api.http_open_orders()
 
         if summary:
             open_order = []
@@ -204,7 +214,7 @@ class Bargain:
 
         - summary(True), if False show all
         """
-        position = self.bto.position(self.symbol)
+        position = self.crypto_api.position(self.symbol)
         if summary:
             keys = [
                 "account",
@@ -238,8 +248,8 @@ class Bargain:
         contracts = CONTRACTS
         portfolio = {}
         for self.symbol in contracts:
-            position = self.bto.position(symbol=self.symbol)
-            instrument = self.bto.instrument(symbol=self.symbol)
+            position = self.crypto_api.position(symbol=self.symbol)
+            instrument = self.crypto_api.instrument(symbol=self.symbol)
 
             if instrument["isQuanto"]:
                 future_type = "Quanto"
@@ -278,7 +288,7 @@ class Bargain:
 
     def order_open_is(self, ordID, t_value=True):
         """Check if order with ordID is open."""
-        orders = self.bto.open_orders()
+        orders = self.crypto_api.open_orders()
         if t_value:
             ret = any([order["orderID"] == ordID for order in orders])
         else:
@@ -288,7 +298,7 @@ class Bargain:
 
     def exec_orders(self):
         """Get the exectuted orders."""
-        oexec = self.bto.exec_orders()
+        oexec = self.crypto_api.exec_orders()
         return oexec  # filtrer oexec
 
     def execution(self, clOrdID_: Optional[str] = None) -> DataFrame:
@@ -304,7 +314,7 @@ class Bargain:
                 # doi y avoir quelque chose avec un état mutalbe, une mise à au moment de
                 # de la création de la df.  (deep copy.)
 
-                _execution = deepcopy(self.bto.ws.data["execution"])
+                _execution = deepcopy(self.crypto_api.ws.data["execution"])
                 df = DataFrame(_execution)
             else:
                 df = DataFrame(index=range(10), columns=EXECOLS, data="dummy")
@@ -312,7 +322,7 @@ class Bargain:
             # pb: la table execution qui ne renvois pas des objects tous de même taille
             # sol: filtrer / trier
             # should be a list of dictionnaries, some of different length
-            _execution = self.bto.ws.data["execution"]
+            _execution = self.crypto_api.ws.data["execution"]
 
             self.logger.exception(
                 f"Exception '{ve}': We Probably have different execution shape. "
@@ -445,7 +455,7 @@ class Bargain:
 
     def recent_trades(self):
         """Les trades récents?."""
-        return self.bto.recent_trades()
+        return self.crypto_api.recent_trades()
 
     def get_most_recent_settlement_price(self):
         """Query the market for the last settlement price of symbol."""
@@ -458,7 +468,7 @@ class Bargain:
         }
         # self.logger.debug(f'Got new price from curl {self.cached_refPrices}')
         # not sure here about the markPrice for the fairPrice
-        rep = self.bto._curl_bitmex(path, query)[0]
+        rep = self.crypto_api._curl_bitmex(path, query)[0]
         self.logger.debug(f"asking: {path}, {query}. *Réponse: {rep}*")
 
         return rep["price"]
@@ -479,7 +489,9 @@ class Bargain:
         _symbol = self.symbol if symbol_ is None else symbol_
 
         prices = {
-            k: v for (k, v) in self.bto.instrument(_symbol).items() if "rice" in k
+            k: v
+            for (k, v) in self.crypto_api.instrument(_symbol).items()
+            if "rice" in k
         }
         # prices.keys = 'maxPrice', 'prevClosePrice', 'prevPrice24h', 'highPrice',
         # 'lastPrice', 'lastPriceProtected', 'bidPrice', 'midPrice', 'askPrice',
@@ -510,7 +522,7 @@ class Bargain:
                 if (
                     self.cached_refPrices is None
                     or timeLaps > Timedelta(randint(2, 8), unit="s")
-                    or self.bto.dummy
+                    or self.crypto_api.dummy
                     or force_live
                 ):
                     cached_refPrices = self.get_most_recent_settlement_price()
@@ -575,7 +587,7 @@ class Bargain:
         return f"{first}{_split[-1].capitalize()}" if len(_split) > 1 else _name
 
     def set_leverage(self, leverage):
-        return self.bto.isolate_margin(self.symbol, leverage)
+        return self.crypto_api.isolate_margin(self.symbol, leverage)
 
     def cancel_and_close(self, quantity=None):
         """
@@ -602,7 +614,7 @@ class Bargain:
         qty = -qty
 
         if qty != 0:
-            return self.bto.place(qty, execInst="Close")
+            return self.crypto_api.place(qty, execInst="Close")
         else:
             self.logger.warning("Probably no position to close.")
 
@@ -612,6 +624,6 @@ class Bargain:
         oes = self.get_open_orders()
         ids = [oe["orderID"] for oe in oes]
         if ids != []:
-            self.bto.cancel(ids)
+            self.crypto_api.cancel(ids)
             return True
         return False

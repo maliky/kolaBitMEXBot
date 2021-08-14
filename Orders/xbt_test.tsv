@@ -1,0 +1,40 @@
+name	tps_run	essais	tOut	pause	side	oType	oDelta	tType	tDelta	atype	q	tp	prix	hook
+# buy  
+# #### vvvv
+
+# ####  vv
+#XBlH1	0 5440	1000	4	1	sell	LTm		Sm		qAtDpD	50000	9	- -11	XBlx1-S_F
+XBlx1	0 5440	1000	4	1	buy	SLm		Sm		qAtDpD	5000	2	5 +
+# ####  ^^
+
+# ################ ################  market price  ####################  ################
+
+# #### vv
+XBrx1	0 5440	1000	4	1	sell	SLm		Sm		qAtDpD	5050	3	- -6
+#XBrH1	0 5440	1000	4	1	buy	LTm		Sm		qAtDpD	5050	10	10 +	XBrx1-S_F
+# #### ^^
+
+
+# #### ^^^^
+
+
+# #### Notes ####
+# oType = order price Type
+# tType = tail Price Type
+# Differents values des Types
+
+# f, l, m (fair, Last et Mark trigger Prices)  # par défaut last price which seem to be ask and bid prices
+
+# M, L, S, MT, SL, LT: Market, Limit, Stop, MarketIfTouched, StopLimit, LimitIfTouched orders
+# L toucher par rapport à LastPrice ?
+# 
+# !, - ParticipateDoNotInitiate et ReduceOnly, incompatible avec Market orders
+# utiliser les SL et LT avec des limites juste à côte du trigger par défaut et dans le même sens
+# tOut et pause sont en minutes
+
+# sDelta (en diff nominal pour l'ordre principal seulement)  par défaut = 1  pour le stop
+
+# sell SL, trigger when mark price < price given et le limit sera sell aussi
+
+# temps: 24h 1440m, 48h 2880m,  4j 5760m, 7j ~10000m.
+

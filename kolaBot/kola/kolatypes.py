@@ -9,7 +9,7 @@ priceTT = Literal["lastPrice", "fairPrice", "markPrice"]
 priceT = float
 bipriceT = Tuple[priceT, priceT]  # couple de price
 
-# see exec_ordesr in custom_bitmex_api
+# see exec_ordesr in bitmex_api.custom_api
 execTypeT = Literal["Trade", "New", "Replaced", "Canceled"]
 
 ordStatusT = Literal["New", "Canceled", "Filled", "PartiallyFilled"]

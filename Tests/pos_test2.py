@@ -11,8 +11,8 @@ import argparse
 def run(live_: bool = False, **kwargs):
     """Run."""
     brg = Bargain(live=live_)
-    bto = brg.bto
-    ws = bto.ws
+    crypto_api = brg.crypto_api
+    ws = crypto_api.ws
     print(brg)
     sleep(2)
     print(f"ws={ws}")

@@ -13,7 +13,7 @@ with open("README.rst", "r") as f:
 
 setup(
     name="kolaBot",
-    version="1.1.9",
+    version="1.1.11",
     description="Trading bot with trail stop and chained orders for pour Bitmex and maybe more...",
     long_description=long_description,
     long_description_content_type="text/x-rst",
@@ -25,12 +25,12 @@ setup(
     python_requires=">=3.8",
     entry_points={
         "console_scripts": [
-            "run_multi_kola=kolaBot.run_multi_kola:main_prg",
-            "multi_kola=kolaBot.multi_kola:main_prg",
-            "test_kola=kolaBot.tests.test_kola:main_prg",
+            "kolabot_run_multi=kolaBot.run_multi_kola:main_prg",
+            "kolabot_multi=kolaBot.multi_kola:main_prg",
+            "kolabot_test=Tests.test_kola:main_prg",
         ]
     },
-    install_requires=["pandas", "numpy", "websocket_client", "requests",],
+    install_requires=["pandas", "numpy", "websocket_client", "requests", "dateparser"],
     extras_require={
         "dev": ["mypy", "flake8", "black"],
         "packaging": ["twine"],

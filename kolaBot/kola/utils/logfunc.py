@@ -29,7 +29,7 @@ def remove_unset_handlers(logger):
 
 
 def handlers_of_type(logger, typehandler, trim=2):
-    """ return the list of handers of same time for a logger. raise exception if more that trim """
+    """return the list of handers of same time for a logger. raise exception if more that trim"""
     assert isinstance(trim, int)
     assert trim >= 0
 
@@ -44,7 +44,7 @@ def handlers_of_type(logger, typehandler, trim=2):
 def add_uniq_type_handler(
     logger, handler, typehandler, level=None, fmt=None, prio="lower"
 ):
-    """ logger, the looger to modify
+    """logger, the looger to modify
     handler, the handler to add
     typehandler, the typeof the handler that should be added
     the level=None, the level of the handler
@@ -156,16 +156,16 @@ def get_logger2(
     prio="lower",
 ):
     """
-    Keyword Arguments:
-    name    -- (default None), logger name, the logger with that name, else use __name__
-ignore the rest
-    sLL     -- (default 'INFO'), stream log level
-    fLL     -- (default None), file log level
-    logFile -- (default f'default'), if default log to log{now}.org
-    fmt_    -- (default None), log format
-priotype -- unique, lower, upper
+        Keyword Arguments:
+        name    -- (default None), logger name, the logger with that name, else use __name__
+    ignore the rest
+        sLL     -- (default 'INFO'), stream log level
+        fLL     -- (default None), file log level
+        logFile -- (default f'default'), if default log to log{now}.org
+        fmt_    -- (default None), log format
+    priotype -- unique, lower, upper
 
-    Returns: The logger
+        Returns: The logger
     """
     if name:
         if logger:
@@ -202,7 +202,7 @@ priotype -- unique, lower, upper
 
 
 def removeHandlers(logger):
-    """ remove all handlers of a logger """
+    """remove all handlers of a logger"""
     handlers = logger.handlers
     for h in handlers:
         logger.removeHandler(h)

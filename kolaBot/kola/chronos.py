@@ -146,7 +146,7 @@ class Chronos(threading.Thread):
                         )
                     )
                 elif ordType == "cancel":
-                    
+
                     timeOut = pd.Timedelta(1, unit="m")  # pourquoi ?
                     clOrdID = rcvOrder.pop("clOrdID")
                     self.reply_queue.put(cancel_order(self.brg, {"clOrdID": clOrdID}))
@@ -157,12 +157,16 @@ class Chronos(threading.Thread):
                 # gestion des conditions de validation de l'ordre
                 valconditions = [{"exectype": "Trade", "orderstatus": "Filled"}]
 
-                if ordType in [
-                    "Stop",
-                    "MarketIfTouched",
-                    "StopLimit",
-                    "LimitIfTouched",
-                ] and isinstance(sender, TrailStop):
+                if (
+                    ordType
+                    in [
+                        "Stop",
+                        "MarketIfTouched",
+                        "StopLimit",
+                        "LimitIfTouched",
+                    ]
+                    and isinstance(sender, TrailStop)
+                ):
                     valconditions = [{"exectype": "New", "orderstatus": "New"}]
 
                 elif ordType.startswith("amend"):
@@ -316,8 +320,8 @@ class Chronos(threading.Thread):
         timeOut = setdef_timedelta(timeout, default=pd.Timedelta(60, unit="m"))
 
         clOrdID = (
-            self.brg.bto.dummyID
-            if self.brg.bto.dummy
+            self.brg.crypto_api.dummyID
+            if self.brg.crypto_api.dummy
             else self.get_ID_from(rcvload, "clOrdID")
         )
 
@@ -336,7 +340,7 @@ class Chronos(threading.Thread):
             return _timeleft if _timeleft > 0 else 0
 
         timeLeft = update_timeleft()
-        
+
         while timeLeft > 0 and not self.is_changed_(
             clOrdID, valconditions, validateCancel=False
         ):
@@ -411,7 +415,7 @@ class Chronos(threading.Thread):
             f"_Attendu {timeOut - pd.Timedelta(timeLeft, unit='s')}_  "
             f"Validation for {replyID} is {bool(validation)}."
         )
-        #self.logger.debug(f"Détail validation {validation} et reply")
+        # self.logger.debug(f"Détail validation {validation} et reply")
 
         self.valid_queue.put(
             {"brokerReply": reply, "exgLoad": rcvload, "execValidation": validation}
@@ -456,7 +460,7 @@ class Chronos(threading.Thread):
         # self.logger.debug(f'ID={ID}, status={status}, statustype={statustype}')
         # on récupère les orders de type voulu
         execOrders = [
-            o for o in self.brg.bto.exec_orders() if o["execType"] == exectype
+            o for o in self.brg.crypto_api.exec_orders() if o["execType"] == exectype
         ]
         ordWstatus = [
             o
@@ -468,13 +472,13 @@ class Chronos(threading.Thread):
         # self.logger.debug(f'logOrders={logOrders}')
 
         # on gère le cas test avec dummy brg
-        ID = self.brg.bto.dummyID if self.brg.bto.dummy else ID
+        ID = self.brg.crypto_api.dummyID if self.brg.crypto_api.dummy else ID
 
         # On filtre les orders par ID
         oidWstatus = [o for o in ordWstatus if ID in [o["orderID"], o["clOrdID"]]]
 
         def latest(ordList):
-            """ given a list of orders return the one with latest transtime"""
+            """given a list of orders return the one with latest transtime"""
             assert isinstance(ordList, list), f"{ordList} should be a list of orders"
             return sort_dic_list(ordList, "transactTime")
 
@@ -496,7 +500,7 @@ class Chronos(threading.Thread):
         """
         Get price from rcvOrder.
 
-        else get the market price using execInst and side.  
+        else get the market price using execInst and side.
         By default get lastMidprice
         """
         return rcvOrder.pop(

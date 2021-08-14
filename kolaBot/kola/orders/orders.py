@@ -25,7 +25,7 @@ def place_at_market(brg, orderQty, side, **opts):
     """Place a (market) order."""
     opts.update({"ordType": "Market"})
     mlogger.info(f"{brg}, orderQty:{orderQty}, side={side}, opts={opts}")
-    return brg.bto.place(orderQty, side=side, asBulk=True, **opts)
+    return brg.crypto_api.place(orderQty, side=side, asBulk=True, **opts)
 
 
 def place(brg, side, orderQty, price, **opts):
@@ -42,7 +42,9 @@ def place(brg, side, orderQty, price, **opts):
     mlogger.debug(
         f"brg={brg}, orderQty:{orderQty}, side={side}, opts={opts}, price={price}"
     )
-    return brg.bto.place(orderQty=orderQty, side=side, price=price, asBulk=True, **opts)
+    return brg.crypto_api.place(
+        orderQty=orderQty, side=side, price=price, asBulk=True, **opts
+    )
 
 
 def place_stop(brg, side, orderqty, stoppx, **opts):
@@ -68,7 +70,7 @@ def place_stop(brg, side, orderqty, stoppx, **opts):
         opts["stopPx"] = override_price
 
     mlogger.debug(f'Placing {orderqty} "{side}" Stop@stopPx {stoppx}, opts={opts}')
-    return brg.bto.place(orderqty, side=side, asBulk=True, **opts)
+    return brg.crypto_api.place(orderqty, side=side, asBulk=True, **opts)
 
 
 def place_SL(brg, side, orderqty, stoppx, price, **opts):
@@ -83,7 +85,7 @@ def place_SL(brg, side, orderqty, stoppx, price, **opts):
     mlogger.debug(
         f"Placing {orderqty} {side} Stop Limit ({price}) @ stopPx={stoppx}, opts={opts}"
     )
-    return brg.bto.place(orderqty, side=side, asBulk=True, **opts)
+    return brg.crypto_api.place(orderqty, side=side, asBulk=True, **opts)
 
 
 def place_MIT(brg, side, orderqty, stoppx, **opts):
@@ -97,7 +99,7 @@ def place_MIT(brg, side, orderqty, stoppx, **opts):
     mlogger.debug(
         f"Placing {orderqty} {side} Market if Touched @ stopPx={stoppx}, opts={opts}"
     )
-    return brg.bto.place(orderqty, side=side, asBulk=True, **opts)
+    return brg.crypto_api.place(orderqty, side=side, asBulk=True, **opts)
 
 
 def place_LIT(brg, side, orderqty, stoppx, price, **opts):
@@ -112,7 +114,7 @@ def place_LIT(brg, side, orderqty, stoppx, price, **opts):
         f" opts={opts}"
     )
 
-    return brg.bto.place(orderqty, side=side, asBulk=True, **opts)
+    return brg.crypto_api.place(orderqty, side=side, asBulk=True, **opts)
 
 
 # ### alias ####
@@ -125,26 +127,26 @@ def buy(brg, orderQty, price):
 
 def buy_at_market(brg, orderQty):
     """Place a buy (market) order.
-    Params:
-  - brg a Bargain,
-  - orderQty in contract"""
+      Params:
+    - brg a Bargain,
+    - orderQty in contract"""
     return place_at_market(brg, orderQty, "buy")
 
 
 def sell(brg, orderQty, price):
     """Place a sell (limit) order.
-    Params:
-  - brg a Bargain,
-  - orderQty in contract,
-  - price"""
+      Params:
+    - brg a Bargain,
+    - orderQty in contract,
+    - price"""
     return place(brg, "sell", orderQty, price=price)
 
 
 def sell_at_market(brg, orderQty):
     """Place a sell (market) order.
-    Params:
-  - brg a Bargain,
-  - orderQty in contract"""
+      Params:
+    - brg a Bargain,
+    - orderQty in contract"""
     return place_at_market(brg, "sell", orderQty)
 
 
@@ -169,7 +171,7 @@ def amend_orderQty(brg, order, newQty):
     - newQty <int>: orderQty in contracts.
     """
     mlogger.info("Amending orderQty: % s -> % s" % (order["orderQty"], newQty))
-    return brg.bto.amend(order, orderQty=newQty)
+    return brg.crypto_api.amend(order, orderQty=newQty)
 
 
 def amend_price(brg, orderID, newPrice):
@@ -184,7 +186,7 @@ def amend_price(brg, orderID, newPrice):
     newPrice = round_sprice(newPrice)
     try:
         order = {"orderID": orderID}  # format à vérifier pour harmonisation
-        return brg.bto.amend(order, price=newPrice)
+        return brg.crypto_api.amend(order, price=newPrice)
     except Exception as e:
         mlogger.exception(e)
         # le staop est probablement déjà déclenché.
@@ -228,7 +230,7 @@ def amend_prices(
     mlogger.info(f"Amending {newOrder} and {newPrices}")
 
     try:
-        amendedPx = brg.bto.amend(newOrder, **newPrice)
+        amendedPx = brg.crypto_api.amend(newOrder, **newPrice)
     except InvalidOrdStatus:
         # the stop is probably already fired. Reply with a cancel
         return None
@@ -237,7 +239,7 @@ def amend_prices(
     if newStopPx:
         try:
             text += f"{now(), newPrice, newStopPx}"
-            brg.bto.amend(newOrder, **newStopPx, text=text)
+            brg.crypto_api.amend(newOrder, **newStopPx, text=text)
         except Exception:
             mlogger.exception(
                 f"*Amending stopPrice failed* {orderid, newStopPx}"
@@ -249,15 +251,15 @@ def amend_prices(
 
 def amend_stop_price(brg, orderID, newStopPx):
     """Amend the stop price of an order.
-    Params:
-  - brg <Bargain Object>:
-- orderID <str>: one existing bitmex order,
-  -newStopPx <int>: new stop price."""
+        Params:
+      - brg <Bargain Object>:
+    - orderID <str>: one existing bitmex order,
+      -newStopPx <int>: new stop price."""
     #    mlogger.debug(f'orderID={orderID}, newStopPx={newStopPx}, opts={opts}')
     newStopPx = round_sprice(newStopPx)
     try:
         order = {"orderID": orderID}  # format à vérifier pour harmonisation
-        return brg.bto.amend(order, stopPx=newStopPx)
+        return brg.crypto_api.amend(order, stopPx=newStopPx)
     except Exception as e:
         raise (e)
 
@@ -274,7 +276,7 @@ def amend_trailstop(brg: Bargain, order: str, newPegOffsetValue: float):
     """
     mlogger.info(f"order={order}, newPegOffsetValue={newPegOffsetValue}")
     newPegOffsetValue = round_sprice(newPegOffsetValue)
-    return brg.bto.amend(
+    return brg.crypto_api.amend(
         order, pegOffsetValue=newPegOffsetValue, pegPriceType="TrailingStopPeg"
     )
 
@@ -293,7 +295,7 @@ def cancel_all_orders(brg):
     orders = brg.get_open_orders()
     ids = [order["orderID"] for order in orders]
     if ids != []:
-        brg.bto.cancel(ids)
+        brg.crypto_api.cancel(ids)
     return True
 
 
@@ -301,7 +303,7 @@ def cancel_order(brg: Bargain, order):
     """Cancel the Bargain order."""
     while True:
         try:
-            return brg.bto.cancel(get_anID(order))
+            return brg.crypto_api.cancel(get_anID(order))
         except ValueError:
             sleep(API_ERROR_INTERVAL)
         else:
@@ -325,7 +327,7 @@ def cancel_all_with_condition(brg, key, value):
         orders = brg.get_open_orders(False)
         ids = [order["orderID"] for order in orders if order[key] == value]
         if ids:
-            brg.bto.cancel(ids)
+            brg.crypto_api.cancel(ids)
         else:
             mlogger.warning("No orders to cancel.")
 
@@ -370,15 +372,15 @@ def ask(brg, q=30, margin=0):
     """sell_order at askprice q contracts"""
 
     askprice = brg.prices("askPrice")
-    sell_order_infos = brg.bto.sell_order(q, askprice + margin)
+    sell_order_infos = brg.crypto_api.sell_order(q, askprice + margin)
     return q, askprice, sell_order_infos["clOrdID"]
 
 
 def bid(brg, q=30, margin=0):
     """buy_order at bidprice q contracts"""
 
-    bidprice = brg.bto.instrument(brg.SYMBOL)["bidPrice"]
-    buy_order_infos = brg.bto.buy_order(q, bidprice - margin)
+    bidprice = brg.crypto_api.instrument(brg.SYMBOL)["bidPrice"]
+    buy_order_infos = brg.crypto_api.buy_order(q, bidprice - margin)
     return q, bidprice, buy_order_infos["clOrdID"]
 
 

@@ -9,8 +9,8 @@ import datetime as dt
 import requests as rq
 import pandas as pd
 
-from kolaBot.kola.connexion.auth import APIKeyAuthWithExpires
-from kolaBot.kola.connexion.custom_ws_thread import BitMEXWebsocket
+from kolaBot.kola.bitmex_api.auth import APIKeyAuthWithExpires
+from kolaBot.kola.bitmex_api.custom_ws_thread import BitMEXWebsocket
 from kolaBot.kola.utils.general import round_sprice, trim_output
 from kolaBot.kola.settings import (
     HTTP_SIMPLE_RATE_LIMITE,
@@ -122,7 +122,7 @@ class BitMEX(object):
         auth = APIKeyAuthWithExpires(self.apiKey, self.apiSecret)
 
         def exit_or_throw(e, reponse=None, load=None):
-            """ Gère la sortie en cas d'erreur socket ou de request"""
+            """Gère la sortie en cas d'erreur socket ou de request"""
             if rethrow_errors:
                 error = response.json().get("error", {}) if response is not None else {}
                 self.logger.error(f"msg={error}, load={load}")
@@ -291,7 +291,7 @@ class BitMEX(object):
         """
         Amend an order.
 
-        - bto <BitMex Object>:,
+        - crypto_api <BitMex Object>:,
         - orderID <str>: one existing bitmex orderID,
         - stopPx <int>: new stop price,
         - qty? <int>: new quantity

@@ -92,7 +92,7 @@ class DummyBitMEX:
             max_retries = 10
 
         def exit_or_throw(e, reponse=None, load=None, rethrow_errors=True):
-            """ gère la sortie en cas d'erreur socket ou de request"""
+            """gère la sortie en cas d'erreur socket ou de request"""
             if rethrow_errors:
                 error = response.json()["error"]
                 self.logger.error(f"{error}, {load}")
@@ -209,7 +209,7 @@ class DummyBitMEX:
         }
 
     def rnd_ordStatus(self, exectype):
-        """Renvois un status au hasard mais avec fote chance de filled        """
+        """Renvois un status au hasard mais avec fote chance de filled"""
         if exectype in ["Canceled", "New"]:
             return exectype
         elif exectype == "Trade":
@@ -220,14 +220,14 @@ class DummyBitMEX:
             raise Exception(f"Check exectype={exectype}")
 
     def rnd_execType(self):
-        """Renvois un status au hasard mais avec fote chance de filled        """
+        """Renvois un status au hasard mais avec fote chance de filled"""
         return rnd.choice(
             ["New", "Trade", "Canceled", "Replaced", "TriggeredOrActivatedBySystem"],
             p=[0.6, 0.2, 0.05, 0.1, 0.05],
         )
 
     def rnd_trigStatus(self, exectype):
-        """Renvois un status au hasard mais avec fote chance de filled        """
+        """Renvois un status au hasard mais avec fote chance de filled"""
         return (
             "StopOrderTriggered" if exectype == "TriggeredOrActivatedBySystem" else ""
         )
@@ -236,7 +236,7 @@ class DummyBitMEX:
 class PriceGen:
     """Classe to generate dummy price data.
     We use a dataframe so we can plot in advance the price
-    et on peut aussi prévoir en détail l'évolution des prix """
+    et on peut aussi prévoir en détail l'évolution des prix"""
 
     def __init__(self, startPrice=7900, up=0, N=20, data=None):
         extreme = [5] * 2 + [9]

@@ -94,7 +94,7 @@ class PriceObj:
             index=Index(create_index(self.main_window_size), name="PriceObj.data"),
         )
         self.data.loc[:, PRICE_COLUMNS] = None
-        
+
         self.data.loc[:, :] = DataFrame(
             self.get_current_prices(price, refPrice)
         ).T.values
@@ -417,7 +417,7 @@ class PriceObj:
             raise Exception(expmsg)
 
     def get_refPrice(self, refPrice=None):
-        """Renvoie le prix de référence en s'assurant qu'il est définit.  """
+        """Renvoie le prix de référence en s'assurant qu'il est définit."""
         if isna(refPrice):
             return self.get_data("refPrice")
         else:

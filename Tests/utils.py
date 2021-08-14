@@ -56,8 +56,8 @@ class Test:
         self.offsetStop = offsetStop_
         self.tma = tma
         self.brg: Bargain = tma.brg
-        self.bto: BitMEX = tma.brg.bto
-        self.ws: BitMEXWebsocket = tma.brg.bto.ws
+        self.crypto_api: BitMEX = tma.brg.crypto_api
+        self.ws: BitMEXWebsocket = tma.brg.crypto_api.ws
         self.Ods = OrderedDict()  # a dictionnary for oders passed
         self.logger = tma.logger  # logging.getLogger(__name__)
         self.symbol: symbT = tma.symbol
@@ -210,18 +210,18 @@ class Test:
     def get_execO(self, full=False):
         """Return exec orders."""
         if full:
-            data = [trim_dic(o) for o in self.bto.open_orders()]
+            data = [trim_dic(o) for o in self.crypto_api.open_orders()]
             self.execO = DataFrame(data)
         else:
-            self.execO = DataFrame([self.get_Os(o) for o in self.bto.exec_orders()])
+            self.execO = DataFrame([self.get_Os(o) for o in self.crypto_api.exec_orders()])
         return self.execO
 
     def get_openO(self, full=False):
         """Return open orders."""
         if full:
-            self.openO = DataFrame([trim_dic(o) for o in self.bto.open_orders()])
+            self.openO = DataFrame([trim_dic(o) for o in self.crypto_api.open_orders()])
         else:
-            self.openO = DataFrame([self.get_Os(o) for o in self.bto.open_orders()])
+            self.openO = DataFrame([self.get_Os(o) for o in self.crypto_api.open_orders()])
         return self.openO
 
     def get_Os(self, o):
@@ -261,10 +261,10 @@ class Test:
         clIDList = ids.get("clIDList")
         oIDList = ids.get("oIDList")
         if clIDList:
-            self.brg.bto.cancel(clIDList)
+            self.brg.crypto_api.cancel(clIDList)
             sleep(1)
         if oIDList:
-            self.brg.bto.cancel(oIDList)
+            self.brg.crypto_api.cancel(oIDList)
             sleep(1)
 
         return True
@@ -307,7 +307,7 @@ class Test:
         else:
             raise Exception('Amending {_o["ordType"]} to implement!')
 
-        self.Ods[f"amemded-{_oid}"] = self.brg.bto.amend(order, **newPrice)
+        self.Ods[f"amemded-{_oid}"] = self.brg.crypto_api.amend(order, **newPrice)
         return self.Ods[f"amemded-{_oid}"]
 
     def last_oid(self):
