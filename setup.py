@@ -30,7 +30,8 @@ setup(
             "kolabot_test=Tests.test_kola:main_prg",
         ]
     },
-    install_requires=["pandas", "numpy", "websocket_client", "requests", "dateparser"],
+    # la verions de websocket est importante
+    install_requires=["pandas", "numpy", 'websocket-client==0.53.0', "requests", "dateparser"],
     extras_require={
         "dev": ["mypy", "flake8", "black"],
         "packaging": ["twine"],
