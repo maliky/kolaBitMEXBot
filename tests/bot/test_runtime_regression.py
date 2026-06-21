@@ -988,12 +988,237 @@ def test_kraken_run_strategy_rejects_too_small_absolute_quantity(monkeypatch) ->
     )
     monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda _: FakeKrakenAdapter)
 
-    try:
+    with pytest.raises(ValueError, match="QTY_ABS_INVALID") as exc_info:
         service.run_strategy(strategy, dry_run=True)
-    except ValueError as exc:
-        assert "below the minimum quantity 30" in str(exc)
-    else:
-        raise AssertionError("Expected quantity validation to fail before dispatch")
+
+    assert "min=30" in str(exc_info.value)
+
+
+def test_kraken_run_strategy_accepts_decimal_absolute_quantity_on_step(monkeypatch) -> None:
+    class FakeKrakenAdapter:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        def instrument_rules(self, symbol: str):
+            return {
+                "symbol": symbol,
+                "minQuantity": "0.0001",
+                "quantityIncrement": "0.0001",
+            }
+
+    base_pair = _xbt_sell_tail_pair()
+    pair = replace(
+        base_pair,
+        symbol="PF_XBTUSD",
+        head_quantity=Decimal("0.0001"),
+        head_quantity_type="qA",
+    )
+    strategy = StrategySpec(name="absolute-decimal", pairs=(pair,))
+    service = BotService(
+        BotConfig(symbol="PF_XBTUSD", exchange="kraken", require_ready=False),
+        indicators=DummyIndicatorClient({"ma": 42}),
+    )
+    service.exchange_config = ExchangeConfig(
+        api_key="k",
+        api_secret="s",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PF_XBTUSD",
+        adapter_kwargs={},
+    )
+    monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda *args: FakeKrakenAdapter)
+
+    result = service.run_strategy(strategy, dry_run=True)
+
+    assert result.commands[0].request.orderQty == Decimal("0.0001")
+
+
+def test_kraken_run_strategy_uses_enriched_rules_after_symbol_validation(monkeypatch) -> None:
+    class FakeKrakenAdapter:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        def validate_symbol(self, symbol: str):
+            return {
+                "symbol": symbol,
+                "type": "futures_flexible",
+                "contractSize": 1,
+                "tickSize": 0.5,
+                "tradeable": True,
+            }
+
+        def instrument_rules(self, symbol: str):
+            return {
+                **self.validate_symbol(symbol),
+                "minQuantity": "0.0001",
+                "quantityIncrement": "0.0001",
+            }
+
+    base_pair = _xbt_sell_tail_pair()
+    pair = replace(
+        base_pair,
+        symbol="PF_XBTUSD",
+        head_quantity=Decimal("0.0001"),
+        head_quantity_type="qA",
+    )
+    strategy = StrategySpec(name="absolute-enriched-rules", pairs=(pair,))
+    service = BotService(
+        BotConfig(symbol="PF_XBTUSD", exchange="kraken", require_ready=False),
+        indicators=DummyIndicatorClient({"ma": 42}),
+    )
+    service.exchange_config = ExchangeConfig(
+        api_key="k",
+        api_secret="s",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PF_XBTUSD",
+        adapter_kwargs={},
+    )
+    monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda *args: FakeKrakenAdapter)
+
+    result = service.run_strategy(strategy, dry_run=True)
+
+    assert result.commands[0].request.orderQty == Decimal("0.0001")
+
+
+def test_kraken_run_strategy_rejects_decimal_absolute_quantity_off_step(monkeypatch) -> None:
+    class FakeKrakenAdapter:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        def instrument_rules(self, symbol: str):
+            return {
+                "symbol": symbol,
+                "minQuantity": "0.0001",
+                "quantityIncrement": "0.0001",
+            }
+
+    base_pair = _xbt_sell_tail_pair()
+    pair = replace(
+        base_pair,
+        symbol="PF_XBTUSD",
+        head_quantity=Decimal("0.00015"),
+        head_quantity_type="qA",
+    )
+    strategy = StrategySpec(name="absolute-off-step", pairs=(pair,))
+    service = BotService(
+        BotConfig(symbol="PF_XBTUSD", exchange="kraken", require_ready=False),
+        indicators=DummyIndicatorClient({"ma": 42}),
+    )
+    service.exchange_config = ExchangeConfig(
+        api_key="k",
+        api_secret="s",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PF_XBTUSD",
+        adapter_kwargs={},
+    )
+    monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda *args: FakeKrakenAdapter)
+
+    with pytest.raises(ValueError, match="QTY_ABS_INVALID"):
+        service.run_strategy(strategy, dry_run=True)
+
+
+def test_kraken_run_strategy_rejects_too_small_usd_quantity_at_startup(monkeypatch) -> None:
+    class FakeKrakenAdapter:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        def instrument_rules(self, symbol: str):
+            return {
+                "symbol": symbol,
+                "contractSize": 1,
+                "quantityIncrement": "0.0001",
+                "minimumQuantity": "0.0001",
+            }
+
+    class Market:
+        mark_price = 100000.0
+
+    class RuntimeState:
+        def fetch_market_state(self, symbol=None, exchange=None, market_type=None):
+            del symbol, exchange, market_type
+            return Market()
+
+    base_pair = _xbt_sell_tail_pair()
+    pair = replace(
+        base_pair,
+        symbol="PF_XBTUSD",
+        head_quantity=1.0,
+        head_quantity_type="qU",
+        amount_type="qUt%pD",
+    )
+    strategy = StrategySpec(name="usd-too-small", pairs=(pair,))
+    service = BotService(
+        BotConfig(symbol="PF_XBTUSD", exchange="kraken", require_ready=False),
+        indicators=DummyIndicatorClient({"ma": 42}),
+    )
+    service.exchange_config = ExchangeConfig(
+        api_key="k",
+        api_secret="s",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PF_XBTUSD",
+        adapter_kwargs={},
+    )
+    service.runtime_state = RuntimeState()
+    monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda *args: FakeKrakenAdapter)
+
+    with pytest.raises(ValueError, match="not placeable at startup"):
+        service.run_strategy(strategy, dry_run=True)
+
+
+def test_kraken_run_strategy_rejects_too_small_percent_quantity_at_startup(monkeypatch) -> None:
+    class FakeKrakenAdapter:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        def instrument_rules(self, symbol: str):
+            return {
+                "symbol": symbol,
+                "contractSize": 1,
+                "quantityIncrement": "0.0001",
+                "minimumQuantity": "0.0001",
+            }
+
+    class Market:
+        mark_price = 100000.0
+
+    class Balance:
+        ready = True
+        reason = None
+        available = 10.0
+
+    class RuntimeState:
+        def fetch_market_state(self, symbol=None, exchange=None, market_type=None):
+            del symbol, exchange, market_type
+            return Market()
+
+        def fetch_account_balance(self, asset="USD", exchange=None, market_type=None):
+            del asset, exchange, market_type
+            return Balance()
+
+    base_pair = _xbt_sell_tail_pair()
+    pair = replace(
+        base_pair,
+        symbol="PF_XBTUSD",
+        head_quantity=Decimal("0.5"),
+        head_quantity_type="q%",
+        amount_type="q%t%pD",
+    )
+    strategy = StrategySpec(name="pct-too-small", pairs=(pair,))
+    service = BotService(
+        BotConfig(symbol="PF_XBTUSD", exchange="kraken", require_ready=False),
+        indicators=DummyIndicatorClient({"ma": 42}),
+    )
+    service.exchange_config = ExchangeConfig(
+        api_key="k",
+        api_secret="s",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PF_XBTUSD",
+        adapter_kwargs={},
+    )
+    service.runtime_state = RuntimeState()
+    monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda *args: FakeKrakenAdapter)
+
+    with pytest.raises(ValueError, match="qty %0.5 is not placeable at startup"):
+        service.run_strategy(strategy, dry_run=True)
 
 
 @pytest.mark.parametrize(

@@ -182,7 +182,7 @@ class OrderPairSpec:
     head: HeadSpec
     head_price: NumberPair
     head_price_type: str
-    head_quantity: int | None
+    head_quantity: int | float | Decimal | None
     head_quantity_type: str
     tail: TailSpec
     tail_price_spec: float | None
@@ -197,6 +197,7 @@ class OrderPairSpec:
     tail_second_update_wait_seconds: float = 6.0
     head_order_price_spec: float | None = None
     head_order_price_spec_type: str = "hD"
+    cooldown_minutes: float | None = None
 
     @property
     def attempts(self) -> int | None:
@@ -312,6 +313,7 @@ class PairCycleState:
     head_trigger_reference_at: datetime | None = None
     head_order_price: Decimal | None = None
     head_order_stop_price: Decimal | None = None
+    head_order_quantity: Decimal | None = None
     dependency_token: ChainDependencyToken | None = None
     played_quantity: Decimal | None = None
     latest_commands: Mapping[str, tuple[str, ...]] | None = None

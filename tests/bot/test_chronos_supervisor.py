@@ -772,6 +772,186 @@ def test_chronos_delays_repeat_until_pause_has_elapsed() -> None:
     assert chronos.state.pairs["pair-r"].head_state == HeadState.LATENT
 
 
+def test_chronos_adds_cool_after_successful_tail_fill() -> None:
+    pair = replace(sample_pair("pair-r"), try_num=2, dr_pause=1.0, cooldown_minutes=2.0)
+    occurred_at = datetime(2026, 5, 21, 12, 6, tzinfo=timezone.utc)
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-cool-repeat",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                tail_mode=TailMode.FLYING,
+                played_quantity=Decimal("1"),
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    commands = chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            role=OrderRole.TAIL,
+            event_id="evt-repeat-cool",
+            is_private=True,
+        ),
+        now=occurred_at,
+    )
+
+    assert commands == ()
+    assert chronos.pending_repeats["pair-r"].ready_at == occurred_at + timedelta(minutes=3)
+
+
+def test_chronos_ignores_cool_after_failed_tail() -> None:
+    pair = replace(sample_pair("pair-r"), try_num=2, dr_pause=0.5, cooldown_minutes=2.0)
+    occurred_at = datetime(2026, 5, 21, 12, 6, tzinfo=timezone.utc)
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-failed-tail-repeat",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.LIVING,
+                tail_mode=TailMode.FLYING,
+                played_quantity=Decimal("1"),
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    commands = chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.NOT_PLAYED_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            role=OrderRole.TAIL,
+            event_id="evt-repeat-tail-failed",
+            is_private=True,
+        ),
+        now=occurred_at,
+    )
+
+    assert commands == ()
+    assert chronos.pending_repeats["pair-r"].ready_at == occurred_at + timedelta(seconds=30)
+
+
+def test_chronos_cool_only_waits_after_tail_fill() -> None:
+    pair = replace(sample_pair("pair-r"), try_num=2, dr_pause=0.0, cooldown_minutes=0.5)
+    occurred_at = datetime(2026, 5, 21, 12, 6, tzinfo=timezone.utc)
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-cool-only-repeat",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                tail_mode=TailMode.FLYING,
+                played_quantity=Decimal("1"),
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            role=OrderRole.TAIL,
+            event_id="evt-repeat-cool-only",
+            is_private=True,
+        ),
+        now=occurred_at,
+    )
+
+    assert chronos.pending_repeats["pair-r"].ready_at == occurred_at + timedelta(seconds=30)
+    assert chronos.state.pairs["pair-r"].attempt_index == 1
+
+
+def test_chronos_tail_cool_does_not_delay_dependent_hook() -> None:
+    origin = replace(sample_pair("main"), try_num=2, dr_pause=1.0, cooldown_minutes=2.0)
+    chained = replace(sample_pair("chain"), hook_name="main-tail-closed")
+    occurred_at = datetime(2026, 5, 21, 12, 6, tzinfo=timezone.utc)
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-cool-hook",
+        pairs={
+            "main": PairCycleState(
+                pair=origin,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                tail_mode=TailMode.FLYING,
+                played_quantity=Decimal("1"),
+            ),
+            "chain": PairCycleState(pair=chained),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    commands = chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="main",
+            role=OrderRole.TAIL,
+            event_id="evt-cool-hook",
+            is_private=True,
+        ),
+        now=occurred_at,
+    )
+
+    assert commands == ()
+    assert pair_dependency_satisfied(chronos.state, chronos.state.pairs["chain"]) is True
+    assert chronos.pending_repeats["main"].ready_at == occurred_at + timedelta(minutes=3)
+
+
+def test_chronos_cool_delay_must_still_fit_pair_window() -> None:
+    pair = replace(sample_pair("pair-r"), try_num=None, dr_pause=0.0, cooldown_minutes=2.0)
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-cool-window",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                tail_mode=TailMode.FLYING,
+                played_quantity=Decimal("1"),
+                attempt_index=5,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 9, tzinfo=timezone.utc)
+
+    commands = chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            role=OrderRole.TAIL,
+            event_id="evt-repeat-cool-window",
+            is_private=True,
+        ),
+        now=occurred_at,
+    )
+
+    assert commands == ()
+    assert chronos.pending_repeats == {}
+    assert chronos.state.pairs["pair-r"].attempt_index == 5
+
+
 def test_chronos_does_not_repeat_after_pair_window_ends() -> None:
     pair = replace(sample_pair("pair-r"), try_num=2, dr_pause=0.0)
     state = StrategyState(

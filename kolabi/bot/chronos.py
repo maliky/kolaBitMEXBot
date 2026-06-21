@@ -202,7 +202,7 @@ class Chronos:
         symbol: str,
         now: datetime | None = None,
     ) -> tuple[DragonSong, ...]:
-        """Reset pairs whose configured repeat pause has elapsed."""
+        """Reset pairs whose configured repeat wait has elapsed."""
         current_time = now or datetime.now(timezone.utc)
         ready = [
             pending
@@ -340,8 +340,8 @@ class Chronos:
             return ()
         if pair_name in self.pending_repeats:
             return ()
-        pause_minutes = pair_state.pair.pause_minutes or 0.0
-        ready_at = current_time + timedelta(minutes=max(pause_minutes, 0.0))
+        wait_minutes = _repeat_wait_minutes(pair_state, event)
+        ready_at = current_time + timedelta(minutes=wait_minutes)
         if not pair_window_is_open(
             pair_state.pair,
             launched_at=self.state.launched_at,
@@ -527,6 +527,25 @@ def _pair_terminal_for_repeat(pair_state) -> bool:
     if not played:
         return True
     return pair_state.tail_state in {TailState.CLOSED, TailState.FAILED}
+
+
+def _repeat_wait_minutes(pair_state: PairCycleState, event: EggMove) -> float:
+    pause_minutes = max(pair_state.pair.pause_minutes or 0.0, 0.0)
+    if not _tail_fill_closed_repeat_event(pair_state, event):
+        return pause_minutes
+    return pause_minutes + max(pair_state.pair.cooldown_minutes or 0.0, 0.0)
+
+
+def _tail_fill_closed_repeat_event(pair_state: PairCycleState, event: EggMove) -> bool:
+    if not event.is_private:
+        return False
+    if event.kind != EggMoveKind.PLAYED_AND_CANCELED:
+        return False
+    if event.role == OrderRole.HEAD:
+        return False
+    if pair_state.tail_state != TailState.CLOSED:
+        return False
+    return pair_state.played_quantity is not None and pair_state.played_quantity > 0
 
 
 def pair_dependency_satisfied(state: StrategyState, pair_state: PairCycleState) -> bool:

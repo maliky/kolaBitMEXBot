@@ -483,6 +483,45 @@ def test_duplicate_client_id_status_maps_to_new() -> None:
     assert status == "New"
 
 
+def test_rejected_sendorder_ack_preserves_exchange_reason(postgres_url_factory):
+    session = DummySession(
+        [
+            {
+                "result": "success",
+                "sendStatus": {
+                    "status": "insufficientAvailableFunds",
+                    "order_id": "OID-REJ",
+                    "cliOrdId": "CID-REJ",
+                    "orderEvents": [],
+                },
+            }
+        ]
+    )
+    adapter = KrakenFuturesAdapter(
+        api_key="k",
+        api_secret="c2VjcmV0",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PI_XBTUSD",
+        environment="demo",
+        account_db_url=postgres_url_factory("prv"),
+        audit_db_url=postgres_url_factory("audit"),
+        session=cast(Any, session),
+    )
+
+    ack = adapter.place_order(
+        "buy",
+        2,
+        type_="Limit",
+        price=80000,
+        clOrdID="CID-REJ",
+    )
+
+    assert ack.order_id == "OID-REJ"
+    assert ack.client_order_id == "CID-REJ"
+    assert ack.status == "Rejected"
+    assert ack.reason == "insufficientAvailableFunds"
+
+
 def test_sendorder_http_error_is_persisted_for_forensics(postgres_url_factory):
     session = DummySession(
         [
@@ -1541,6 +1580,117 @@ def test_validate_symbol_syncs_instrument_rules_to_public_db(postgres_url_factor
         assert row.symbol == "PI_XBTUSD"
         assert row.tick_size == 0.5
         assert row.min_quantity == 1.0
+
+
+def test_validate_symbol_preserves_fractional_futures_minimum_quantity(postgres_url_factory):
+    session = DummySession(
+        [
+            {
+                "result": "success",
+                "instruments": [
+                    {
+                        "symbol": "PF_XBTUSD",
+                        "type": "futures_flexible",
+                        "tradeable": True,
+                        "tickSize": 0.5,
+                        "contractSize": 1,
+                        "minimumQuantity": 0.0001,
+                    }
+                ],
+            }
+        ]
+    )
+    adapter = KrakenFuturesAdapter(
+        api_key="k",
+        api_secret="c2VjcmV0",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PF_XBTUSD",
+        environment="demo",
+        account_db_url=postgres_url_factory("prv"),
+        public_db_url=postgres_url_factory("pub"),
+        session=cast(Any, session),
+    )
+
+    adapter.validate_symbol("PF_XBTUSD")
+
+    with Session(adapter._public_engine) as db:
+        row = db.execute(select(ExchangeInstrument)).scalars().one()
+        assert row.symbol == "PF_XBTUSD"
+        assert row.min_quantity == 0.0001
+
+
+def test_validate_symbol_defaults_flexible_futures_minimum_quantity(postgres_url_factory):
+    session = DummySession(
+        [
+            {
+                "result": "success",
+                "instruments": [
+                    {
+                        "symbol": "PF_XBTUSD",
+                        "type": "futures_flexible",
+                        "tradeable": True,
+                        "tickSize": 0.5,
+                        "contractSize": 1,
+                    }
+                ],
+            }
+        ]
+    )
+    adapter = KrakenFuturesAdapter(
+        api_key="k",
+        api_secret="c2VjcmV0",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PF_XBTUSD",
+        environment="demo",
+        account_db_url=postgres_url_factory("prv"),
+        public_db_url=postgres_url_factory("pub"),
+        session=cast(Any, session),
+    )
+
+    adapter.validate_symbol("PF_XBTUSD")
+
+    with Session(adapter._public_engine) as db:
+        row = db.execute(select(ExchangeInstrument)).scalars().one()
+        assert row.symbol == "PF_XBTUSD"
+        assert row.min_quantity == 0.0001
+    assert adapter.instrument_rules("PF_XBTUSD")["minQuantity"] == 0.0001
+
+
+def test_validate_symbol_uses_quantity_increment_as_minimum_fallback(postgres_url_factory):
+    session = DummySession(
+        [
+            {
+                "result": "success",
+                "instruments": [
+                    {
+                        "symbol": "PF_XBTUSD",
+                        "type": "futures_flexible",
+                        "tradeable": True,
+                        "tickSize": 0.5,
+                        "contractSize": 1,
+                        "quantityIncrement": 0.001,
+                    }
+                ],
+            }
+        ]
+    )
+    adapter = KrakenFuturesAdapter(
+        api_key="k",
+        api_secret="c2VjcmV0",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PF_XBTUSD",
+        environment="demo",
+        account_db_url=postgres_url_factory("prv"),
+        public_db_url=postgres_url_factory("pub"),
+        session=cast(Any, session),
+    )
+
+    adapter.validate_symbol("PF_XBTUSD")
+
+    with Session(adapter._public_engine) as db:
+        row = db.execute(select(ExchangeInstrument)).scalars().one()
+        assert row.symbol == "PF_XBTUSD"
+        assert row.min_quantity == 0.001
 
 
 def test_kraken_spot_adapter_lists_and_validates_asset_pairs() -> None:

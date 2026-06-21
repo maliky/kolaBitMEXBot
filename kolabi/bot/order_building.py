@@ -17,6 +17,7 @@ from typing import cast
 
 from kolabi.bot.domain import OrderPairSpec, PairCycleState, opposite_side
 from kolabi.bot.order_codes import base_order_type, order_exec_inst, parse_order_code
+from kolabi.bot.quantity import pair_uses_materialized_quantity
 from kolabi.shared.core.runtime_types import (
     AmendHeadCommand,
     AmendOrderCommandRequest,
@@ -65,7 +66,7 @@ def head_order_dict(pair: OrderPairSpec, *, client_order_id: str | None = None) 
     exec_inst = _head_exec_inst(pair.head.order_type)
     if exec_inst is not None:
         order["execInst"] = exec_inst
-    if pair.head_quantity is not None:
+    if pair.head_quantity is not None and not pair_uses_materialized_quantity(pair):
         order["orderQty"] = cast(OrderQty, to_decimal(pair.head_quantity))
     if client_order_id is not None:
         order["clOrdID"] = client_order_id
@@ -78,7 +79,7 @@ def head_place_request(
     client_order_id: str | None = None,
 ) -> PlaceOrderCommandRequest:
     pair = state.pair
-    quantity = None if pair.head_quantity is None else cast(OrderQty, to_decimal(pair.head_quantity))
+    quantity = _head_order_quantity(state)
     return PlaceOrderCommandRequest(
         pair_name=pair.name,
         side=pair.head.side.value,
@@ -130,10 +131,22 @@ def _distance_offset(value: Decimal | float | int | str) -> PriceOffset:
     return cast(PriceOffset, abs(to_decimal(value)))
 
 
-def resolve_tail_quantity(state: PairCycleState) -> Decimal | int | None:
+def _head_order_quantity(state: PairCycleState) -> OrderQty | None:
+    if state.head_order_quantity is not None:
+        return cast(OrderQty, state.head_order_quantity)
+    if state.pair.head_quantity is None or pair_uses_materialized_quantity(state.pair):
+        return None
+    return cast(OrderQty, to_decimal(state.pair.head_quantity))
+
+
+def resolve_tail_quantity(state: PairCycleState) -> Decimal | int | float | None:
     """Resolve tail quantity from played runtime state first, then planned size."""
     if state.played_quantity is not None and state.played_quantity > 0:
         return state.played_quantity
+    if state.head_order_quantity is not None and state.head_order_quantity > 0:
+        return state.head_order_quantity
+    if pair_uses_materialized_quantity(state.pair):
+        return None
     return state.pair.head_quantity
 
 

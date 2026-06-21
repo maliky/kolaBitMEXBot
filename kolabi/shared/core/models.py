@@ -14,6 +14,7 @@ class OrderAck:
     executed_qty: Optional[OrderQty | float] = None
     side: Optional[str] = None
     client_order_id: Optional[str] = None
+    reason: Optional[str] = None
 
 @dataclass
 class Position:

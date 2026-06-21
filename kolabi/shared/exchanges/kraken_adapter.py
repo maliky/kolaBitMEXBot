@@ -627,11 +627,15 @@ class KrakenFuturesAdapter(ExchangeABC):
             status = "Canceled"
         if filled > 0 and quantity > 0:
             status = "Filled" if filled >= quantity else "PartiallyFilled"
+        reason = optional_str(order.get("reason"))
+        if reason is None and status == "Rejected":
+            reason = optional_str(order.get("status"))
         return {
             "orderID": str(order.get("order_id", order.get("orderId", ""))),
             "clOrdID": str(order.get("cli_ord_id", order.get("cliOrdId", ""))),
             "ordStatus": status,
             "execType": exec_type,
+            "reason": reason,
             "price": _optional_float(price),
             "orderQty": quantity,
             "cumQty": filled,
@@ -951,6 +955,8 @@ def _ack_from_legacy(payload: Dict[str, Any]) -> OrderAck:
         orig_qty=_optional_float(payload.get("orderQty")),
         executed_qty=_optional_float(payload.get("cumQty")),
         side=payload.get("side"),
+        client_order_id=optional_str(payload.get("clOrdID")),
+        reason=optional_str(payload.get("reason")),
     )
 
 
@@ -959,14 +965,43 @@ def _extract_min_quantity_from_instrument(instrument: Dict[str, Any]) -> float:
         "minimumQuantity",
         "minOrderSize",
         "minimumOrderSize",
-        "contractSize",
         "lotSize",
         "minQuantity",
     ):
         value = instrument.get(key)
         if value not in (None, ""):
-            return max(float(cast(float | str, value)), 1.0)
+            return float(cast(float | str, value))
+    for key in (
+        "quantityStep",
+        "quantity_step",
+        "quantityIncrement",
+        "qtyIncrement",
+        "orderQtyStep",
+        "stepSize",
+    ):
+        value = instrument.get(key)
+        if value not in (None, ""):
+            return float(cast(float | str, value))
+    if _is_flexible_futures_instrument(instrument):
+        return 0.0001
+    if _is_inverse_futures_instrument(instrument):
+        return 1.0
+    contract_size = instrument.get("contractSize")
+    if contract_size not in (None, ""):
+        return max(float(cast(float | str, contract_size)), 1.0)
     return 1.0
+
+
+def _is_flexible_futures_instrument(instrument: Dict[str, Any]) -> bool:
+    symbol = str(instrument.get("symbol") or instrument.get("product_id") or "").upper()
+    instrument_type = str(instrument.get("type") or instrument.get("tag") or "").lower()
+    return symbol.startswith("PF_") or "flex" in instrument_type
+
+
+def _is_inverse_futures_instrument(instrument: Dict[str, Any]) -> bool:
+    symbol = str(instrument.get("symbol") or instrument.get("product_id") or "").upper()
+    instrument_type = str(instrument.get("type") or instrument.get("tag") or "").lower()
+    return symbol.startswith("PI_") or "inverse" in instrument_type
 
 
 def _extract_order_like(payload: Dict[str, Any]) -> Dict[str, Any]:

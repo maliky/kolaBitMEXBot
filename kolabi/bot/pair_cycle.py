@@ -123,6 +123,7 @@ def step_pair(
             state,
             head_state=HeadState.SUBMITTED,
             head_identity=head_identity_from_move(state, move),
+            head_order_quantity=order_quantity_from_move(state, move),
         )
         return next_state, ()
 
@@ -176,6 +177,7 @@ def step_pair(
             state,
             head_state=HeadState.NEW,
             head_identity=head_identity_from_move(state, move),
+            head_order_quantity=order_quantity_from_move(state, move),
             played_quantity=played_quantity_from_move(state, move),
         )
         return next_state, ()
@@ -196,6 +198,7 @@ def step_pair(
             head_identity=head_identity_from_move(state, move),
             tail_state=TailState.LATENT,
             tail_mode=None,
+            head_order_quantity=order_quantity_from_move(state, move),
             played_quantity=played_quantity_from_move(state, move),
             completed_at=move.occurred_at,
         )
@@ -224,6 +227,7 @@ def step_pair(
             tail_state=TailState.LIVING,
             tail_mode=TailMode.FLAPPING,
             tail_trail=tail_trail_from_move(state, move),
+            head_order_quantity=order_quantity_from_move(state, move),
             played_quantity=played_quantity,
         )
         return next_state, (_tail_intent_for_state(next_state),)
@@ -253,6 +257,7 @@ def step_pair(
             tail_state=_next_closed_tail_state(state),
             tail_mode=TailMode.FLYING,
             tail_trail=tail_trail_from_move(state, move),
+            head_order_quantity=order_quantity_from_move(state, move),
             played_quantity=played_quantity,
         )
         return next_state, (_tail_intent_for_state(next_state),)
@@ -346,6 +351,17 @@ def played_quantity_from_move(state: PairCycleState, move: EggMove) -> Decimal |
             parsed = to_decimal(value)
             return parsed if parsed >= Decimal("0") else Decimal("0")
     return None
+
+
+def order_quantity_from_move(state: PairCycleState, move: EggMove) -> Decimal | None:
+    """Read the exchange order quantity from a move, preserving existing truth."""
+    reply = move.reply or {}
+    for key in ("orderQty", "quantity", "qty"):
+        value = reply.get(key)
+        if isinstance(value, (int, float, Decimal, str)):
+            parsed = to_decimal(value)
+            return parsed if parsed > 0 else state.head_order_quantity
+    return state.head_order_quantity
 
 
 def _is_zero_fill_post_only_head_reject(

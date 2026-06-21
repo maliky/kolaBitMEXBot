@@ -29,6 +29,7 @@ from kolabi.shared.core.runtime_types import (
     PublicIndicatorRecord,
 )
 from kolabi.shared.persistence import (
+    AccountBalance,
     AccountPosition,
     ExchangeFill,
     ExchangeInstrument,
@@ -79,6 +80,24 @@ class PrivateFeedState:
     age_seconds: float | None
     ready: bool
     last_error: str | None
+    reason: str | None
+
+    def as_dict(self) -> dict[str, Any]:
+        """Return a JSON-friendly mapping."""
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class AccountBalanceState:
+    """Latest normalised account balance for one settlement asset."""
+
+    asset: str
+    available: float | None
+    locked: float | None
+    total: float | None
+    recorded_at: str | None
+    source_timestamp: str | None
+    ready: bool
     reason: str | None
 
     def as_dict(self) -> dict[str, Any]:
@@ -169,6 +188,19 @@ def _missing_private_feed_state(stream_kind: str) -> PrivateFeedState:
         ready=rest_reconciler,
         last_error=None,
         reason=None if rest_reconciler else f"{stream_kind} DB schema missing",
+    )
+
+
+def _missing_account_balance_state(asset: str, reason: str) -> AccountBalanceState:
+    return AccountBalanceState(
+        asset=asset,
+        available=None,
+        locked=None,
+        total=None,
+        recorded_at=None,
+        source_timestamp=None,
+        ready=False,
+        reason=reason,
     )
 
 
@@ -372,6 +404,55 @@ class KrakenRuntimeStateClient:
             reasons=reasons,
             exchange=target_exchange,
             market_type=target_market_type,
+        )
+
+    def fetch_account_balance(
+        self,
+        asset: str = "USD",
+        exchange: str | None = None,
+        market_type: str | None = None,
+    ) -> AccountBalanceState:
+        """Load the latest normalised balance snapshot for one settlement asset."""
+        del market_type
+        target_exchange = exchange or self.exchange
+        target_asset = _normalise_balance_asset(asset)
+        try:
+            with self._account_sessionmaker() as session:
+                row = session.execute(
+                    select(AccountBalance)
+                    .where(
+                        AccountBalance.exchange == target_exchange,
+                        AccountBalance.environment == self.environment,
+                        AccountBalance.account_scope == self.account_scope,
+                        AccountBalance.asset == target_asset,
+                    )
+                    .order_by(
+                        AccountBalance.local_timestamp.desc(),
+                        AccountBalance.id.desc(),
+                    )
+                    .limit(1)
+                ).scalar_one_or_none()
+        except _MISSING_SCHEMA_EXCEPTIONS as exc:
+            if not _is_missing_schema_error(exc):
+                raise
+            return _missing_account_balance_state(
+                target_asset,
+                "account balance DB schema missing",
+            )
+        if row is None:
+            return _missing_account_balance_state(
+                target_asset,
+                "missing account balance snapshot",
+            )
+        return AccountBalanceState(
+            asset=target_asset,
+            available=row.available,
+            locked=row.locked,
+            total=row.total,
+            recorded_at=_datetime_iso(row.local_timestamp),
+            source_timestamp=_datetime_iso(row.source_timestamp),
+            ready=True,
+            reason=None,
         )
 
     def fetch_private_orders_since(
@@ -889,6 +970,14 @@ def _indicator_value(indicators: dict[str, Any], name: str) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
     return None
+
+
+def _datetime_iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def _normalise_balance_asset(asset: str) -> str:
+    return str(asset or "USD").strip().upper() or "USD"
 
 
 def _instrument_tick_size(

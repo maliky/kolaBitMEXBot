@@ -57,6 +57,15 @@ from kolabi.bot.pricing import (
     pair_window_is_open,
     tail_reference_price,
 )
+from kolabi.bot.quantity import (
+    QuantityResolutionError,
+    available_usd_for_percent_quantity,
+    mark_price_for_usd_quantity,
+    pair_uses_percent_balance_quantity,
+    pair_uses_usd_quantity,
+    resolve_pair_percent_balance_quantity,
+    resolve_pair_usd_quantity,
+)
 from kolabi.bot.runtime_policy import (
     CommandSlot as _CommandSlot,
     active_pair_count,
@@ -162,6 +171,17 @@ class PublicRuntimeStateReader(Protocol):
     ) -> PublicMarketStateReader: ...
 
 
+class AccountBalanceStateReader(Protocol):
+    """Reads strategy-facing account balance state from any backing store."""
+
+    def fetch_account_balance(
+        self,
+        asset: str = "USD",
+        exchange: str | None = None,
+        market_type: str | None = None,
+    ) -> object: ...
+
+
 class PrivateOrderStateReader(Protocol):
     """Reads strategy-facing private order records from any backing store."""
 
@@ -256,6 +276,7 @@ class _HeadFillDeadline:
     exchange_order_id: str | None
     started_at: datetime
     deadline_at: datetime
+    source: str = "ack"
     cancel_dispatched_at: datetime | None = None
 
 
@@ -811,6 +832,7 @@ class StrategyRuntime:
         public_source: RuntimeEventSource | None = None,
         private_source: RuntimeEventSource | None = None,
         public_state_reader: PublicRuntimeStateReader | None = None,
+        account_state_reader: AccountBalanceStateReader | None = None,
         tail_telemetry_writer: TailTelemetryWriter | None = None,
         tail_telemetry_interval_seconds: float = 30.0,
         exchange: str = "kraken",
@@ -820,6 +842,7 @@ class StrategyRuntime:
         tail_visibility_timeout_seconds: float = 30.0,
         max_active_pairs: int = 4,
         simulate: bool = False,
+        instrument_rules_by_route: Mapping[ExchangeRoute, Mapping[str, object]] | None = None,
     ) -> None:
         self.strategy = strategy
         self.symbol = symbol
@@ -827,6 +850,7 @@ class StrategyRuntime:
         self.public_source = public_source
         self.private_source = private_source
         self.public_state_reader = public_state_reader
+        self.account_state_reader = account_state_reader
         self.tail_telemetry_writer = tail_telemetry_writer
         self.tail_telemetry_interval_seconds = tail_telemetry_interval_seconds
         self.exchange = exchange
@@ -836,6 +860,7 @@ class StrategyRuntime:
         self.tail_visibility_timeout_seconds = max(0.1, float(tail_visibility_timeout_seconds))
         self.max_active_pairs = max(0, int(max_active_pairs))
         self.simulate = simulate
+        self.instrument_rules_by_route = dict(instrument_rules_by_route or {})
         launched_at = datetime.now(timezone.utc)
         self.state = StrategyState(
             launched_at=launched_at,
@@ -990,6 +1015,8 @@ class StrategyRuntime:
                     self.state = self.chronos.state
                     self._prune_latent_head_deadlines()
                     self._log_repeat_attempts(previous_state.pairs)
+                    self._check_latent_head_deadlines(current_time)
+                    self._log_gate_waits(current_time)
                 if repeat_commands:
                     self._log_repeat_start(repeat_commands)
                     self._dispatch_commands(repeat_commands)
@@ -1036,7 +1063,11 @@ class StrategyRuntime:
 
     def _dispatch_commands(self, commands: tuple[DragonSong, ...]) -> None:
         for command in commands:
-            prepared = self._prepare_command(command)
+            try:
+                prepared = self._prepare_command(command)
+            except QuantityResolutionError as exc:
+                self._fail_command_before_dispatch(command, exc)
+                continue
             self.commands.append(prepared)
             if self.executor is None:
                 continue
@@ -1590,6 +1621,8 @@ class StrategyRuntime:
             ("HEAD_SENT", ("HCID", "side", "type", "qty", "price", "stop")),
             ("HEAD_ACK", ("HCID", "HOID", "tOut_deadline")),
             ("HEAD_TIMEOUT", ("status", "waited", "HCID", "HOID")),
+            ("HEAD_VISIBILITY_TIMEOUT_ARMED", ("HCID", "HOID", "tOut_deadline")),
+            ("HEAD_VISIBILITY_TIMEOUT", ("status", "waited", "HCID", "HOID")),
             ("HEAD_CANCEL_SENT", ("CID", "reason")),
             ("CANCEL_SENT", ("CID", "reason")),
             ("HEAD_CANCELLED", ("PQ", "HCID", "HOID")),
@@ -2049,6 +2082,7 @@ class StrategyRuntime:
                             current,
                             visibility_warned_at=now,
                         )
+                    self._arm_head_fill_deadline_from_visibility(lease, pair_state, now)
                     continue
             if lease.role == "head" and lease.status == _LEASE_ACKED:
                 waited = (now - lease.created_at).total_seconds()
@@ -2135,6 +2169,52 @@ class StrategyRuntime:
             current,
             status=_LEASE_CANCEL_REQUESTED,
             cancel_sent_at=now,
+        )
+
+    def _arm_head_fill_deadline_from_visibility(
+        self,
+        lease: _OrderLease,
+        pair_state: PairCycleState,
+        now: datetime,
+    ) -> None:
+        if lease.role != "head":
+            return
+        slot = _CommandSlot(lease.pair_name, lease.attempt_index, "head")
+        if slot in self._head_fill_deadlines:
+            return
+        timeout_minutes = pair_state.pair.timeout_minutes
+        if timeout_minutes is None or timeout_minutes <= 0:
+            return
+        client_order_id = lease.client_order_id
+        exchange_order_id = lease.exchange_order_id
+        if not client_order_id and not exchange_order_id:
+            _LOGGER.warning(
+                "ORDER_SAFETY_BLOCKED (%s#%s): %s",
+                lease.pair_name,
+                lease.attempt_index,
+                _runtime_fields(lease.role, "missing_identity", "head_visibility_timeout"),
+            )
+            return
+        started_at = _as_utc_aware(lease.created_at)
+        deadline = _HeadFillDeadline(
+            pair_name=lease.pair_name,
+            attempt_index=lease.attempt_index,
+            client_order_id=client_order_id,
+            exchange_order_id=exchange_order_id,
+            started_at=started_at,
+            deadline_at=started_at + timedelta(minutes=float(timeout_minutes)),
+            source="visibility",
+        )
+        self._head_fill_deadlines[slot] = deadline
+        _LOGGER.warning(
+            "HEAD_VISIBILITY_TIMEOUT_ARMED (%s#%s): %s",
+            lease.pair_name,
+            lease.attempt_index,
+            _runtime_fields(
+                client_order_id or "-",
+                exchange_order_id or "-",
+                deadline.deadline_at.isoformat(),
+            ),
         )
 
     def _prune_order_leases(self) -> None:
@@ -2301,6 +2381,8 @@ class StrategyRuntime:
 
     def _prepare_command(self, command: DragonSong) -> DragonSong:
         command = self._with_command_route(command)
+        if isinstance(command, PlaceHeadCommand):
+            command = self._with_materialized_head_quantity(command)
         if isinstance(command, PlaceHeadCommand) and command.request.clOrdID is None:
             pair_state = self.state.pairs[command.request.pair_name]
             pair = pair_state.pair
@@ -2334,6 +2416,128 @@ class StrategyRuntime:
             )
         return command
 
+    def _with_materialized_head_quantity(self, command: PlaceHeadCommand) -> PlaceHeadCommand:
+        pair_state = self.state.pairs[command.request.pair_name]
+        pair = pair_state.pair
+        if not pair_uses_usd_quantity(pair) and not pair_uses_percent_balance_quantity(
+            pair
+        ):
+            return command
+        route = _pair_route(pair_state, self)
+        rules = self.instrument_rules_by_route.get(route)
+        if rules is None:
+            code = (
+                "QTY_PCT_TOO_SMALL"
+                if pair_uses_percent_balance_quantity(pair)
+                else "QTY_USD_TOO_SMALL"
+            )
+            raise QuantityResolutionError(
+                f"{code} pair={pair.name} route={route.label} missing instrument rules"
+            )
+        if self.public_state_reader is None:
+            code = (
+                "QTY_PCT_TOO_SMALL"
+                if pair_uses_percent_balance_quantity(pair)
+                else "QTY_USD_TOO_SMALL"
+            )
+            raise QuantityResolutionError(
+                f"{code} pair={pair.name} route={route.label} missing market reader"
+            )
+        market = _fetch_market_state_for_route(self.public_state_reader, route)
+        if pair_uses_percent_balance_quantity(pair):
+            if self.account_state_reader is None:
+                raise QuantityResolutionError(
+                    f"QTY_PCT_TOO_SMALL pair={pair.name} route={route.label} missing account balance reader"
+                )
+            balance = _fetch_account_balance_for_route(self.account_state_reader, route)
+            resolution = resolve_pair_percent_balance_quantity(
+                pair,
+                available_usd=available_usd_for_percent_quantity(pair, balance),
+                mark_price=mark_price_for_usd_quantity(
+                    pair,
+                    market,
+                    error_code="QTY_PCT_TOO_SMALL",
+                ),
+                rules=rules,
+            )
+            quantity = cast(OrderQty, resolution.quantity)
+            request = replace(command.request, orderQty=quantity)
+            legacy_order = dict(command.legacy_order or {})
+            legacy_order["orderQty"] = quantity
+            _LOGGER.info(
+                "QTY_PCT_RESOLVED (%s#%s): %s",
+                command.pair_name,
+                pair_state.attempt_index,
+                _runtime_fields(
+                    route.label,
+                    f"%{resolution.percent}",
+                    f"available={resolution.available_usd}",
+                    f"nominal_usd={resolution.nominal_usd}",
+                    f"mark={resolution.mark_price}",
+                    f"contract={resolution.contract_size}",
+                    f"step={resolution.quantity_step}",
+                    f"min={resolution.min_quantity}",
+                    f"qty={resolution.quantity}",
+                    f"usd={resolution.approx_usd}",
+                ),
+            )
+            return replace(
+                command,
+                request=request,
+                legacy_order=cast(OrderDict, legacy_order),
+            )
+        resolution = resolve_pair_usd_quantity(
+            pair,
+            mark_price=mark_price_for_usd_quantity(pair, market),
+            rules=rules,
+        )
+        quantity = cast(OrderQty, resolution.quantity)
+        request = replace(command.request, orderQty=quantity)
+        legacy_order = dict(command.legacy_order or {})
+        legacy_order["orderQty"] = quantity
+        _LOGGER.info(
+            "QTY_USD_RESOLVED (%s#%s): %s",
+            command.pair_name,
+            pair_state.attempt_index,
+            _runtime_fields(
+                route.label,
+                f"U{resolution.nominal_usd}",
+                f"mark={resolution.mark_price}",
+                f"contract={resolution.contract_size}",
+                f"step={resolution.quantity_step}",
+                f"min={resolution.min_quantity}",
+                f"qty={resolution.quantity}",
+                f"usd={resolution.approx_usd}",
+            ),
+        )
+        return replace(command, request=request, legacy_order=cast(OrderDict, legacy_order))
+
+    def _fail_command_before_dispatch(
+        self,
+        command: DragonSong,
+        error: QuantityResolutionError,
+    ) -> None:
+        failure = _command_failure_event(
+            command,
+            symbol=str(command.symbol),
+            occurred_at=datetime.now(timezone.utc),
+            error=error,
+        )
+        if failure is None:
+            raise error
+        slot = self._command_slot(command)
+        _LOGGER.warning(
+            "COMMAND_FAILED (%s#%s): %s",
+            command.pair_name,
+            slot.attempt_index,
+            _runtime_fields(_quantity_error_code(error), _compact_error(error)),
+        )
+        followups = self.chronos.process_event(failure)
+        self.state = self.chronos.state
+        self._prune_order_leases()
+        if followups:
+            self._dispatch_commands(followups)
+
     def _with_command_route(self, command: DragonSong) -> DragonSong:
         pair_state = self.state.pairs.get(command.pair_name)
         if pair_state is None:
@@ -2364,6 +2568,20 @@ class StrategyRuntime:
             market_type=identity.market_type,
         )
         self._live_command_identities[_identity_key(merged)] = merged
+        if isinstance(command, (PlaceHeadCommand, PlaceTailCommand)) and _ack_is_rejected(ack):
+            self._close_rejected_place_lease(command)
+            _LOGGER.warning(
+                "COMMAND_FAILED (%s#%s): %s",
+                command.pair_name,
+                self._command_slot(command).attempt_index,
+                _runtime_fields(
+                    "rejected",
+                    _ack_rejection_reason(ack) or ack.status,
+                    merged.client_order_id or "-",
+                    merged.exchange_order_id or "-",
+                ),
+            )
+            return
         if isinstance(command, CancelCommand):
             return
         if isinstance(command, AmendTailCommand) and _ack_is_rejected(ack):
@@ -2403,6 +2621,19 @@ class StrategyRuntime:
             started_at=now,
             deadline_at=now + timedelta(seconds=self.tail_visibility_timeout_seconds),
         )
+
+    def _close_rejected_place_lease(self, command: PlaceHeadCommand | PlaceTailCommand) -> None:
+        pair_state = self.state.pairs.get(command.pair_name)
+        attempt_index = 1 if pair_state is None else pair_state.attempt_index
+        role = "head" if isinstance(command, PlaceHeadCommand) else "tail"
+        slot = _CommandSlot(command.pair_name, attempt_index, role)
+        lease = self._order_leases.get(slot)
+        if lease is None:
+            return
+        self._order_leases[slot] = replace(lease, status=_LEASE_CLOSED)
+        self._head_fill_deadlines.pop(slot, None)
+        if role == "tail":
+            self._pending_tail_visibility.pop(slot, None)
 
     def _check_latent_head_deadlines(self, now: datetime) -> None:
         now = _as_utc_aware(now)
@@ -2630,17 +2861,31 @@ class StrategyRuntime:
             ):
                 continue
             if deadline.cancel_dispatched_at is None:
-                _LOGGER.warning(
-                    "HEAD_TIMEOUT (%s#%s): %s",
-                    deadline.pair_name,
-                    deadline.attempt_index,
-                    _runtime_fields(
-                        "expired",
-                        f"{(_as_utc_aware(now) - deadline.started_at).total_seconds():.1f}s",
-                        deadline.client_order_id or "-",
-                        deadline.exchange_order_id or "-",
-                    ),
-                )
+                waited = f"{(_as_utc_aware(now) - deadline.started_at).total_seconds():.1f}s"
+                if deadline.source == "visibility":
+                    _LOGGER.warning(
+                        "HEAD_VISIBILITY_TIMEOUT (%s#%s): %s",
+                        deadline.pair_name,
+                        deadline.attempt_index,
+                        _runtime_fields(
+                            "expired",
+                            waited,
+                            deadline.client_order_id or "-",
+                            deadline.exchange_order_id or "-",
+                        ),
+                    )
+                else:
+                    _LOGGER.warning(
+                        "HEAD_TIMEOUT (%s#%s): %s",
+                        deadline.pair_name,
+                        deadline.attempt_index,
+                        _runtime_fields(
+                            "expired",
+                            waited,
+                            deadline.client_order_id or "-",
+                            deadline.exchange_order_id or "-",
+                        ),
+                    )
             command = _head_timeout_cancel_command(
                 pair_state,
                 _pair_symbol(pair_state, self.symbol),
@@ -2906,6 +3151,18 @@ class StrategyRuntime:
                     kind=EggMoveKind.TAIL_AMEND_REJECTED,
                 ),
             )
+        if (
+            not self.simulate
+            and isinstance(command, (PlaceHeadCommand, PlaceTailCommand))
+            and _ack_is_rejected(ack)
+        ):
+            return (
+                _place_rejected_event_from_ack(
+                    command,
+                    ack,
+                    symbol=str(command.symbol),
+                ),
+            )
         if not self.simulate and isinstance(command, CancelCommand):
             # Live/demo lifecycle is DB-grounded; cancel ACKs are intent
             # correlation only. A private DB row must close the order.
@@ -3073,6 +3330,23 @@ def _fetch_market_state_for_route(
         return reader.fetch_market_state(route.symbol)
 
 
+def _fetch_account_balance_for_route(
+    reader: AccountBalanceStateReader,
+    route: ExchangeRoute,
+) -> object:
+    try:
+        return reader.fetch_account_balance(
+            asset="USD",
+            exchange=route.exchange,
+            market_type=route.market_type,
+        )
+    except TypeError as exc:
+        message = str(exc)
+        if "exchange" not in message and "market_type" not in message:
+            raise
+        return reader.fetch_account_balance("USD")
+
+
 def _pair_runtime_complete(
     pair_state: PairCycleState,
     *,
@@ -3233,6 +3507,54 @@ def _command_failure_event(
     return None
 
 
+def _place_rejected_event_from_ack(
+    command: PlaceHeadCommand | PlaceTailCommand,
+    ack: OrderAck,
+    *,
+    symbol: str,
+) -> EggMove:
+    reply: dict[str, object] = {
+        "ordStatus": ack.status or HeadState.FAILED.value,
+        "execType": "Rejected",
+        "cumQty": 0.0,
+    }
+    reason = _ack_rejection_reason(ack)
+    if reason is not None:
+        reply["error"] = reason
+    client_order_id = ack.client_order_id or command.request.clOrdID
+    if client_order_id is not None:
+        reply["clOrdID"] = client_order_id
+    if ack.order_id:
+        reply["orderID"] = str(ack.order_id)
+    price = ack.price
+    if price is None:
+        price = command.request.price
+    if price is None:
+        price = command.request.stopPx
+    if price is not None:
+        parsed_price = float(to_decimal(price))
+        reply["price"] = parsed_price
+        reply["stopPx"] = parsed_price
+    quantity = ack.orig_qty
+    if quantity is None:
+        quantity = _command_request_quantity(command)
+    if quantity is not None:
+        reply["orderQty"] = float(to_decimal(quantity))
+    side = ack.side or command.request.side
+    if side is not None:
+        reply["side"] = side
+    role = OrderRole.HEAD if isinstance(command, PlaceHeadCommand) else OrderRole.TAIL
+    return EggMove(
+        kind=EggMoveKind.NOT_PLAYED_CANCELED,
+        occurred_at=datetime.now(timezone.utc),
+        symbol=symbol,
+        pair_name=command.pair_name,
+        role=role,
+        reply=reply,
+        is_private=False,
+    )
+
+
 def _tail_amend_event_from_ack(
     command: AmendTailCommand,
     ack: OrderAck,
@@ -3376,6 +3698,16 @@ def _ack_is_rejected(ack: OrderAck) -> bool:
         "failed",
         "invalidprice",
     }
+
+
+def _ack_rejection_reason(ack: OrderAck) -> str | None:
+    reason = str(ack.reason or "").strip()
+    if reason:
+        return reason
+    status = str(ack.status or "").strip()
+    if status and _ack_is_rejected(ack):
+        return status
+    return None
 
 
 def _ack_is_zero_fill_cancel(ack: OrderAck) -> bool:
@@ -3768,6 +4100,14 @@ def _event_atom(value: object) -> str:
 
 def _compact_error(exc: BaseException) -> str:
     return " ".join(str(exc).split())
+
+
+def _quantity_error_code(exc: BaseException) -> str:
+    text = _compact_error(exc)
+    if not text:
+        return "QTY_INVALID"
+    token = text.split()[0]
+    return token if token.startswith("QTY_") else "QTY_INVALID"
 
 
 def _prices_close(

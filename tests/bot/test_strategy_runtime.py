@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any, cast
 
 from kolabi.bot.chronos import PendingRepeat
+from kolabi.bot.exchange_routes import ExchangeRoute
 from kolabi.bot.domain import (
     ChainDependencyToken,
     EggMove,
@@ -339,6 +340,21 @@ class _HeadOpenOnlySource:
             await asyncio.sleep(0.01)
 
 
+class _PersistentHeadHookSource:
+    async def pump(self, runtime) -> None:
+        await runtime.enqueue(
+            EggMove(
+                kind=EggMoveKind.HEAD_HOOKED,
+                occurred_at=datetime.now(timezone.utc),
+                symbol=runtime.symbol,
+                pair_name="pair-a",
+                event_id="test:pair-a:head-hooked",
+            )
+        )
+        while runtime.running:
+            await asyncio.sleep(0.01)
+
+
 class _HeadOpenThenCancelSource(_HeadOpenOnlySource):
     async def pump(self, runtime) -> None:
         await runtime.enqueue(
@@ -449,6 +465,22 @@ async def _run_runtime_for(runtime: StrategyRuntime, *, seconds: float = 0.05):
     return await task
 
 
+def _record_ack_and_apply_followups(
+    runtime: StrategyRuntime,
+    command: DragonSong,
+    ack: OrderAck,
+) -> _CommandSlot:
+    slot = runtime._command_slot(command)
+    identity = runtime._command_identity_from_command(command)
+    runtime._on_command_dispatched(slot, command, identity)
+    runtime._record_live_ack(command, ack)
+    for event in runtime._followup_events(command, ack, slot=slot):
+        runtime.chronos.process_event(event)
+    runtime.state = runtime.chronos.state
+    runtime._prune_order_leases()
+    return slot
+
+
 def sample_strategy() -> tuple[OrderPairSpec, ...]:
     return (
         OrderPairSpec(
@@ -507,11 +539,167 @@ def test_strategy_runtime_simulation_advances_to_tail_state() -> None:
     result = asyncio.run(_run_runtime_for(runtime))
 
     assert result.commands
-    assert result.state.pairs["pair-a"].tail_state in {
-        TailState.HOOKED,
-        TailState.LIVING,
-        TailState.SUBMITTED,
-    }
+
+
+def test_runtime_materializes_usd_quantity_before_head_dispatch() -> None:
+    class Market:
+        best_bid = 99999.0
+        best_ask = 100001.0
+        mid_price = 100000.0
+        last_price = None
+        mark_price = 100000.0
+        index_price = None
+        tick_size = 0.5
+        spread = 2.0
+        recorded_at = "usd-valid"
+
+    class Reader:
+        def fetch_market_state(self, symbol=None, exchange=None, market_type=None):
+            del symbol, exchange, market_type
+            return Market()
+
+    pair = replace(
+        sample_strategy()[0],
+        symbol="PF_XBTUSD",
+        exchange="kraken",
+        head_quantity=15.0,
+        head_quantity_type="qU",
+        amount_type="qUtApA",
+    )
+    executor = _RecordingLiveExecutor()
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="usd-valid", pairs=(pair,)),
+        symbol="PF_XBTUSD",
+        executor=executor,
+        public_source=_PersistentHeadHookSource(),
+        public_state_reader=Reader(),
+        instrument_rules_by_route={
+            ExchangeRoute("kraken", "futures", "PF_XBTUSD"): {
+                "contractSize": 1,
+                "quantityIncrement": "0.0001",
+                "minimumQuantity": "0.0001",
+            }
+        },
+        simulate=False,
+    )
+
+    result = asyncio.run(_run_runtime_for(runtime, seconds=0.1))
+
+    assert result.commands
+    assert executor.commands
+    assert executor.commands[0].request.orderQty == Decimal("0.0001")
+
+
+def test_runtime_materializes_percent_quantity_before_head_dispatch(caplog) -> None:
+    class Market:
+        best_bid = 99999.0
+        best_ask = 100001.0
+        mid_price = 100000.0
+        last_price = None
+        mark_price = 100000.0
+        index_price = None
+        tick_size = 0.5
+        spread = 2.0
+        recorded_at = "pct-valid"
+
+    class Balance:
+        ready = True
+        reason = None
+        available = 1000.0
+
+    class Reader:
+        def fetch_market_state(self, symbol=None, exchange=None, market_type=None):
+            del symbol, exchange, market_type
+            return Market()
+
+        def fetch_account_balance(self, asset="USD", exchange=None, market_type=None):
+            del asset, exchange, market_type
+            return Balance()
+
+    pair = replace(
+        sample_strategy()[0],
+        symbol="PF_XBTUSD",
+        exchange="kraken",
+        head_quantity=Decimal("2.5"),
+        head_quantity_type="q%",
+        amount_type="q%tApA",
+    )
+    executor = _RecordingLiveExecutor()
+    reader = Reader()
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="pct-valid", pairs=(pair,)),
+        symbol="PF_XBTUSD",
+        executor=executor,
+        public_source=_PersistentHeadHookSource(),
+        public_state_reader=reader,
+        account_state_reader=reader,
+        instrument_rules_by_route={
+            ExchangeRoute("kraken", "futures", "PF_XBTUSD"): {
+                "contractSize": 1,
+                "quantityIncrement": "0.0001",
+                "minimumQuantity": "0.0001",
+            }
+        },
+        simulate=False,
+    )
+
+    with caplog.at_level("INFO", logger="kola"):
+        result = asyncio.run(_run_runtime_for(runtime, seconds=0.1))
+
+    assert result.commands
+    assert executor.commands
+    assert executor.commands[0].request.orderQty == Decimal("0.0002")
+    assert "QTY_PCT_RESOLVED (pair-a#1)" in caplog.text
+
+
+def test_runtime_fails_only_pair_when_usd_quantity_later_resolves_to_zero(caplog) -> None:
+    class Market:
+        best_bid = 99999.0
+        best_ask = 100001.0
+        mid_price = 100000.0
+        last_price = None
+        mark_price = 100000.0
+        index_price = None
+        tick_size = 0.5
+        spread = 2.0
+        recorded_at = "usd-too-small"
+
+    class Reader:
+        def fetch_market_state(self, symbol=None, exchange=None, market_type=None):
+            del symbol, exchange, market_type
+            return Market()
+
+    pair = replace(
+        sample_strategy()[0],
+        symbol="PF_XBTUSD",
+        exchange="kraken",
+        head_quantity=1.0,
+        head_quantity_type="qU",
+        amount_type="qUtApA",
+    )
+    executor = _RecordingLiveExecutor()
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="usd-too-small", pairs=(pair,)),
+        symbol="PF_XBTUSD",
+        executor=executor,
+        public_source=_PersistentHeadHookSource(),
+        public_state_reader=Reader(),
+        instrument_rules_by_route={
+            ExchangeRoute("kraken", "futures", "PF_XBTUSD"): {
+                "contractSize": 1,
+                "quantityIncrement": "0.0001",
+                "minimumQuantity": "0.0001",
+            }
+        },
+        simulate=False,
+    )
+
+    with caplog.at_level("WARNING", logger="kola"):
+        result = asyncio.run(_run_runtime_for(runtime, seconds=0.1))
+
+    assert result.state.pairs["pair-a"].head_state == HeadState.FAILED
+    assert not executor.commands
+    assert "COMMAND_FAILED (pair-a#1): QTY_USD_TOO_SMALL" in caplog.text
 
 
 def test_db_backed_runtime_completes_one_lifecycle_with_amend_and_tail_fill(
@@ -699,6 +887,163 @@ def test_unacked_head_visibility_timeout_warns_without_cancel(caplog) -> None:
     assert not any(isinstance(command, CancelCommand) for command in runtime.commands)
     assert "HEAD_VISIBILITY_PENDING (pair-a#1):" in caplog.text
     assert "head_visibility_timeout" not in caplog.text
+
+
+def test_rejected_live_head_ack_fails_without_cancel(caplog) -> None:
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="rejected-head", pairs=sample_strategy()),
+        symbol="PI_XBTUSD",
+        simulate=False,
+    )
+    command = PlaceHeadCommand(
+        kind=RuntimeCommandKind.PLACE,
+        symbol=Symbol("PI_XBTUSD"),
+        pair_name="pair-a",
+        request=PlaceOrderCommandRequest(
+            pair_name="pair-a",
+            side="buy",
+            ordType="Limit",
+            orderQty=Decimal("1"),
+            price=Decimal("100"),
+            clOrdID="CID-H",
+        ),
+    )
+
+    with caplog.at_level("WARNING", logger="kola"):
+        slot = _record_ack_and_apply_followups(
+            runtime,
+            command,
+            OrderAck(
+                order_id="OID-H",
+                status="Rejected",
+                orig_qty=1.0,
+                executed_qty=0.0,
+                side="buy",
+                client_order_id="CID-H",
+                reason="insufficientAvailableFunds",
+            ),
+        )
+
+    pair_state = runtime.state.pairs["pair-a"]
+    assert pair_state.head_state == HeadState.FAILED
+    assert pair_state.tail_state == TailState.LATENT
+    assert runtime.active_order_leases() == ()
+    assert slot not in runtime._head_fill_deadlines
+    assert not any(isinstance(command, CancelCommand) for command in runtime.commands)
+    assert "COMMAND_FAILED (pair-a#1): rejected insufficientAvailableFunds CID-H OID-H" in caplog.text
+
+
+def test_rejected_live_tail_ack_fails_without_visibility_tracking(caplog) -> None:
+    pair = sample_strategy()[0]
+    trail = initial_tail_trail(pair, Decimal("100"), datetime.now(timezone.utc))
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="rejected-tail", pairs=(pair,)),
+        symbol="PI_XBTUSD",
+        simulate=False,
+    )
+    runtime.state = replace(
+        runtime.state,
+        pairs={
+            "pair-a": replace(
+                runtime.state.pairs["pair-a"],
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.HOOKED,
+                tail_trail=trail,
+                played_quantity=Decimal("1"),
+            )
+        },
+    )
+    runtime.chronos.state = runtime.state
+    command = PlaceTailCommand(
+        kind=RuntimeCommandKind.PLACE,
+        symbol=Symbol("PI_XBTUSD"),
+        pair_name="pair-a",
+        request=PlaceOrderCommandRequest(
+            pair_name="pair-a",
+            side="sell",
+            ordType="Stop",
+            orderQty=Decimal("1"),
+            stopPx=Decimal("99"),
+            clOrdID="CID-T",
+        ),
+    )
+
+    with caplog.at_level("WARNING", logger="kola"):
+        slot = _record_ack_and_apply_followups(
+            runtime,
+            command,
+            OrderAck(
+                order_id="OID-T",
+                status="Rejected",
+                orig_qty=1.0,
+                executed_qty=0.0,
+                side="sell",
+                client_order_id="CID-T",
+                reason="insufficientAvailableFunds",
+            ),
+        )
+
+    pair_state = runtime.state.pairs["pair-a"]
+    assert pair_state.head_state == HeadState.CLOSED
+    assert pair_state.tail_state == TailState.FAILED
+    assert runtime.active_order_leases() == ()
+    assert slot not in runtime._pending_tail_visibility
+    assert not any(isinstance(command, CancelCommand) for command in runtime.commands)
+    assert "COMMAND_FAILED (pair-a#1): rejected insufficientAvailableFunds CID-T OID-T" in caplog.text
+
+
+def test_unacked_head_visibility_timeout_arms_cancel_path(caplog) -> None:
+    pair = replace(sample_strategy()[0], timeout=0.001)
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="visibility", pairs=(pair,)),
+        symbol="PI_XBTUSD",
+        simulate=False,
+        tail_visibility_timeout_seconds=0.1,
+    )
+    runtime.state = replace(
+        runtime.state,
+        pairs={
+            "pair-a": replace(
+                runtime.state.pairs["pair-a"],
+                head_state=HeadState.HOOKED,
+            )
+        },
+    )
+    command = PlaceHeadCommand(
+        kind=RuntimeCommandKind.PLACE,
+        symbol=Symbol("PI_XBTUSD"),
+        pair_name="pair-a",
+        request=PlaceOrderCommandRequest(
+            pair_name="pair-a",
+            side="buy",
+            ordType="Limit",
+            orderQty=Decimal("1"),
+            price=Decimal("100"),
+            clOrdID="CID-H",
+        ),
+    )
+    slot = _CommandSlot("pair-a", 1, "head")
+    identity = runtime._command_identity_from_command(command)
+
+    with caplog.at_level("WARNING", logger="kola"):
+        runtime._on_command_dispatched(slot, command, identity)
+        lease = runtime._order_leases[slot]
+        runtime._check_order_lease_deadlines(
+            lease.created_at + timedelta(seconds=0.2)
+        )
+        runtime._check_head_fill_deadlines(
+            lease.created_at + timedelta(seconds=0.21)
+        )
+
+    cancel_commands = [
+        command for command in runtime.commands if isinstance(command, CancelCommand)
+    ]
+    assert len(cancel_commands) == 1
+    assert cancel_commands[0].request.clOrdID == "CID-H"
+    assert cancel_commands[0].reason == "head_timeout"
+    assert runtime._head_fill_deadlines[slot].source == "visibility"
+    assert "HEAD_VISIBILITY_TIMEOUT_ARMED (pair-a#1):" in caplog.text
+    assert "HEAD_VISIBILITY_TIMEOUT (pair-a#1):" in caplog.text
 
 
 def test_rest_acked_head_visibility_timeout_warns_without_cancel(caplog) -> None:
@@ -1147,6 +1492,64 @@ def test_gate_wait_logs_unchanged_status_every_five_minutes(caplog) -> None:
     assert len(gate_waits) == 2
     assert "status=" not in gate_waits[0]
     assert "src=" not in gate_waits[0]
+
+
+def test_ready_repeat_logs_deadline_and_gate_before_dispatch(caplog) -> None:
+    class Market:
+        best_bid = Decimal("99.5")
+        best_ask = Decimal("100.0")
+        mid_price = Decimal("99.75")
+        last_price = None
+        mark_price = None
+        index_price = None
+        tick_size = Decimal("0.5")
+        recorded_at = "repeat-ready"
+
+    class Reader:
+        def fetch_market_state(self, symbol=None):
+            return Market()
+
+    pair = sample_strategy()[0]
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="repeat-observer", pairs=(pair,)),
+        symbol="PI_XBTUSD",
+        public_state_reader=Reader(),
+        simulate=False,
+    )
+    now = runtime.state.launched_at + timedelta(seconds=1)
+    runtime.chronos.pending_repeats["pair-a"] = PendingRepeat(
+        pair_name="pair-a",
+        ready_at=now,
+        next_attempt=2,
+    )
+
+    with caplog.at_level("INFO", logger="kola"):
+        repeat_commands = runtime.chronos.activate_ready_repeats(
+            symbol=runtime.symbol,
+            now=now,
+        )
+        previous_state = runtime.state
+        runtime.state = runtime.chronos.state
+        runtime._prune_latent_head_deadlines()
+        runtime._log_repeat_attempts(previous_state.pairs)
+        runtime._check_latent_head_deadlines(now)
+        runtime._log_gate_waits(now)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert repeat_commands == ()
+    repeat_index = next(
+        index for index, message in enumerate(messages)
+        if message.startswith("REPEAT_READY (pair-a#2):")
+    )
+    deadline_index = next(
+        index for index, message in enumerate(messages)
+        if message.startswith("LATENT_TIMEOUT_ARMED (pair-a#2):")
+    )
+    gate_index = next(
+        index for index, message in enumerate(messages)
+        if message.startswith("GATE_WAIT-2 (pair-a#2): ready")
+    )
+    assert repeat_index < deadline_index < gate_index
 
 
 def test_runtime_legend_logs_once_with_compact_columns(caplog) -> None:

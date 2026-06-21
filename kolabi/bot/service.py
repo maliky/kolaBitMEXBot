@@ -33,6 +33,16 @@ from kolabi.bot.persistence import (
     PersistenceConfig,
     TailTelemetryRecorder,
 )
+from kolabi.bot.quantity import (
+    QuantityResolutionError,
+    available_usd_for_percent_quantity,
+    mark_price_for_usd_quantity,
+    pair_uses_percent_balance_quantity,
+    pair_uses_usd_quantity,
+    resolve_pair_percent_balance_quantity,
+    resolve_pair_usd_quantity,
+    validate_pair_absolute_quantity,
+)
 from kolabi.bot.strategy_runtime import (
     KrakenPrivateOrderPollingSource,
     KrakenPublicTriggerSource,
@@ -327,13 +337,56 @@ def _validate_route_symbol(
 
     validator = getattr(adapter, "validate_symbol", None)
     if callable(validator):
-        rules = cast(SymbolValidationExchange, adapter).validate_symbol(route.symbol)
+        validation = cast(SymbolValidationExchange, adapter).validate_symbol(route.symbol)
+        rules = {
+            **dict(validation),
+            **adapter.instrument_rules(route.symbol),
+        }
     else:
         rules = adapter.instrument_rules(route.symbol)
     tradeable = rules.get("tradeable")
     if tradeable is False:
         raise ValueError(f"Route {route.label} symbol is not tradeable")
     return rules
+
+
+def _fetch_service_market_state(
+    reader: PublicRuntimeStateReader,
+    route: ExchangeRoute,
+) -> object:
+    try:
+        return reader.fetch_market_state(
+            symbol=route.symbol,
+            exchange=route.exchange,
+            market_type=route.market_type,
+        )
+    except TypeError as exc:
+        message = str(exc)
+        if "exchange" not in message and "market_type" not in message:
+            raise
+        return reader.fetch_market_state(route.symbol)
+
+
+def _fetch_service_account_balance(
+    reader: object,
+    route: ExchangeRoute,
+) -> object:
+    fetch_balance = getattr(reader, "fetch_account_balance", None)
+    if not callable(fetch_balance):
+        raise QuantityResolutionError(
+            f"QTY_PCT_TOO_SMALL pair=- route={route.label} missing account balance reader"
+        )
+    try:
+        return fetch_balance(
+            asset="USD",
+            exchange=route.exchange,
+            market_type=route.market_type,
+        )
+    except TypeError as exc:
+        message = str(exc)
+        if "exchange" not in message and "market_type" not in message:
+            raise
+        return fetch_balance("USD")
 
 
 class ExchangeAdapterLike(Protocol):
@@ -546,6 +599,7 @@ class BotService:
                 config.symbol,
             ),
         )
+        self._instrument_rules_by_route: dict[ExchangeRoute, dict[str, object]] = {}
         self.runtime_state: KrakenRuntimeStateClient | None = None
         if (
             self.default_exchange in {"kraken", "binance", "bitmex"}
@@ -968,10 +1022,20 @@ class BotService:
         if not dry_run and not simulate:
             self._validate_multi_route_market_db(strategy)
         pair_list = list(strategy.pairs)
+        defer_usd_validation = (
+            not dry_run
+            and not simulate
+            and self.config.require_ready
+        )
         if not dry_run or self.exchange_config is not None:
-            self._validate_pairs(pair_list)
+            self._validate_pairs(
+                pair_list,
+                validate_usd_notional=not defer_usd_validation,
+            )
         if not dry_run and not simulate:
             self.start()
+            if defer_usd_validation:
+                self._validate_pairs(pair_list, validate_usd_notional=True)
         for pair in pair_list:
             run_id: Optional[int] = None
             if self.recorder:
@@ -993,6 +1057,7 @@ class BotService:
                 if simulate
                 else cast(PublicRuntimeStateReader | None, self.runtime_state)
             ),
+            account_state_reader=None if simulate else self.runtime_state,
             tail_telemetry_writer=(
                 None
                 if dry_run or simulate or self._telemetry_db_url is None
@@ -1018,6 +1083,7 @@ class BotService:
             tail_visibility_timeout_seconds=self.config.tail_visibility_timeout_seconds,
             max_active_pairs=self.config.max_active_pairs,
             simulate=simulate,
+            instrument_rules_by_route=self._instrument_rules_by_route,
         )
         if dry_run:
             return plan_strategy_once(strategy=strategy, symbol=self.config.symbol)
@@ -1084,10 +1150,16 @@ class BotService:
             simulate=simulate,
         )
 
-    def _validate_pairs(self, pairs: Iterable[OrderPairSpec]) -> None:
+    def _validate_pairs(
+        self,
+        pairs: Iterable[OrderPairSpec],
+        *,
+        validate_usd_notional: bool = True,
+    ) -> None:
         """Validate exchange-specific instrument and grammar constraints."""
+        self._instrument_rules_by_route = {}
         adapters: dict[tuple[str, str], InstrumentRulesExchange] = {}
-        min_qty_by_route: dict[ExchangeRoute, float] = {}
+        rules_by_route: dict[ExchangeRoute, dict[str, object]] = {}
         for pair in pairs:
             route = _pair_route(
                 pair,
@@ -1125,24 +1197,128 @@ class BotService:
                     ),
                 )
                 adapters[adapter_key] = adapter
-            if route not in min_qty_by_route:
+            if route not in rules_by_route:
                 rules = _validate_route_symbol(adapter, route)
-                raw_min_qty = rules.get("minQuantity")
-                min_qty_by_route[route] = (
-                    float(raw_min_qty)
-                    if isinstance(raw_min_qty, (int, float, str)) and raw_min_qty
-                    else 1.0
-                )
-            min_qty = min_qty_by_route[route]
-            if (
+                rules_by_route[route] = rules
+                self._instrument_rules_by_route[route] = rules
+            rules = rules_by_route[route]
+            if pair_uses_usd_quantity(pair) and validate_usd_notional:
+                self._validate_startup_usd_quantity(pair, route, rules)
+            elif pair_uses_percent_balance_quantity(pair) and validate_usd_notional:
+                self._validate_startup_percent_quantity(pair, route, rules)
+            elif (
                 pair.head_quantity_type == "qA"
                 and pair.head_quantity is not None
-                and float(pair.head_quantity) < min_qty
             ):
-                raise ValueError(
-                    f"Strategy '{pair.name}' quantity {pair.head_quantity} is below "
-                    f"the minimum quantity {min_qty:g} for {route.exchange}:{route.symbol}."
-                )
+                self._validate_startup_absolute_quantity(pair, route, rules)
+
+    def _validate_startup_absolute_quantity(
+        self,
+        pair: OrderPairSpec,
+        route: ExchangeRoute,
+        rules: dict[str, object],
+    ) -> None:
+        try:
+            validation = validate_pair_absolute_quantity(pair, rules=rules)
+        except QuantityResolutionError as exc:
+            raise ValueError(
+                f"Strategy '{pair.name}' quantity {pair.head_quantity} is not "
+                f"valid for {route.label}: {_compact_admin_error(exc)}"
+            ) from exc
+        self.logger.info(
+            "QTY_ABS_READY (%s): %s",
+            pair.name,
+            _runtime_admin_fields(
+                route.label,
+                f"qty={validation.quantity}",
+                f"step={validation.quantity_step}",
+                f"min={validation.min_quantity}",
+            ),
+        )
+
+    def _validate_startup_usd_quantity(
+        self,
+        pair: OrderPairSpec,
+        route: ExchangeRoute,
+        rules: dict[str, object],
+    ) -> None:
+        if self.runtime_state is None:
+            raise ValueError(
+                f"Strategy '{pair.name}' uses qty U but no runtime market state is "
+                f"available for startup validation on {route.label}."
+            )
+        market = _fetch_service_market_state(self.runtime_state, route)
+        try:
+            resolution = resolve_pair_usd_quantity(
+                pair,
+                mark_price=mark_price_for_usd_quantity(pair, market),
+                rules=rules,
+            )
+        except QuantityResolutionError as exc:
+            raise ValueError(
+                f"Strategy '{pair.name}' qty U{pair.head_quantity} is not "
+                f"placeable at startup for {route.label}: {_compact_admin_error(exc)}"
+            ) from exc
+        self.logger.info(
+            "QTY_USD_READY (%s): %s",
+            pair.name,
+            _runtime_admin_fields(
+                route.label,
+                f"U{resolution.nominal_usd}",
+                f"mark={resolution.mark_price}",
+                f"contract={resolution.contract_size}",
+                f"step={resolution.quantity_step}",
+                f"min={resolution.min_quantity}",
+                f"qty={resolution.quantity}",
+                f"usd={resolution.approx_usd}",
+            ),
+        )
+
+    def _validate_startup_percent_quantity(
+        self,
+        pair: OrderPairSpec,
+        route: ExchangeRoute,
+        rules: dict[str, object],
+    ) -> None:
+        if self.runtime_state is None:
+            raise ValueError(
+                f"Strategy '{pair.name}' uses qty % but no runtime account state is "
+                f"available for startup validation on {route.label}."
+            )
+        market = _fetch_service_market_state(self.runtime_state, route)
+        balance = _fetch_service_account_balance(self.runtime_state, route)
+        try:
+            resolution = resolve_pair_percent_balance_quantity(
+                pair,
+                available_usd=available_usd_for_percent_quantity(pair, balance),
+                mark_price=mark_price_for_usd_quantity(
+                    pair,
+                    market,
+                    error_code="QTY_PCT_TOO_SMALL",
+                ),
+                rules=rules,
+            )
+        except QuantityResolutionError as exc:
+            raise ValueError(
+                f"Strategy '{pair.name}' qty %{pair.head_quantity} is not "
+                f"placeable at startup for {route.label}: {_compact_admin_error(exc)}"
+            ) from exc
+        self.logger.info(
+            "QTY_PCT_READY (%s): %s",
+            pair.name,
+            _runtime_admin_fields(
+                route.label,
+                f"%{resolution.percent}",
+                f"available={resolution.available_usd}",
+                f"nominal_usd={resolution.nominal_usd}",
+                f"mark={resolution.mark_price}",
+                f"contract={resolution.contract_size}",
+                f"step={resolution.quantity_step}",
+                f"min={resolution.min_quantity}",
+                f"qty={resolution.quantity}",
+                f"usd={resolution.approx_usd}",
+            ),
+        )
 
     def _materialize_strategy_symbols(self, strategy: StrategySpec) -> StrategySpec:
         """Attach the CLI default symbol to strategy rows that did not specify one."""
