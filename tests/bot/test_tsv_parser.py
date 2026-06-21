@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ DEFAULT_COLUMNS = (
     "essais",
     "tOut",
     "pause",
+    "cool",
     "side",
     "oType",
     "hDelta",
@@ -62,6 +64,7 @@ def _base_row(**overrides: str) -> dict[str, str]:
         "essais": "1",
         "tOut": "4",
         "pause": "",
+        "cool": "",
         "side": "buy",
         "oType": "L",
         "hDelta": "",
@@ -134,6 +137,50 @@ def test_org_strategy_table_parses_and_ignores_surrounding_text(tmp_path: Path) 
     assert strategy.pairs[1].tail_price_spec_type == "t%"
 
 
+def test_org_strategy_table_accepts_usd_notional_quantity(tmp_path: Path) -> None:
+    path = tmp_path / "usd.org"
+    _write_strategy(path, [_base_row(qty="U15.5")])
+
+    pair = read_strategy_file(path).pairs[0]
+
+    assert pair.head_quantity == 15.5
+    assert pair.head_quantity_type == "qU"
+    assert pair.amount_type.startswith("qU")
+
+
+def test_org_strategy_table_accepts_decimal_absolute_quantity(tmp_path: Path) -> None:
+    path = tmp_path / "absolute.org"
+    _write_strategy(path, [_base_row(qty="A.0001")])
+
+    pair = read_strategy_file(path).pairs[0]
+
+    assert pair.head_quantity == Decimal("0.0001")
+    assert pair.head_quantity_type == "qA"
+
+
+def test_org_strategy_table_accepts_decimal_percent_quantity(tmp_path: Path) -> None:
+    path = tmp_path / "percent.org"
+    _write_strategy(path, [_base_row(qty="%0.5")])
+
+    pair = read_strategy_file(path).pairs[0]
+
+    assert pair.head_quantity == Decimal("0.5")
+    assert pair.head_quantity_type == "q%"
+    assert pair.amount_type.startswith("q%")
+
+
+@pytest.mark.parametrize("qty", ["%0", "%100"])
+def test_org_strategy_table_rejects_percent_quantity_out_of_range(
+    tmp_path: Path,
+    qty: str,
+) -> None:
+    path = tmp_path / "bad-percent.org"
+    _write_strategy(path, [_base_row(qty=qty)])
+
+    with pytest.raises(ValueError, match="0 < percent < 100"):
+        read_strategy_file(path)
+
+
 def test_raw_tsv_content_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "old.tsv"
     path.write_text(
@@ -184,7 +231,7 @@ def test_org_row_with_shifted_cell_count_fails(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="expected 19 cells, saw 3"):
+    with pytest.raises(ValueError, match="expected 20 cells, saw 3"):
         read_strategy_file(path)
 
 
@@ -292,6 +339,37 @@ def test_typed_field_grammar_allows_empty_optional_values(tmp_path: Path) -> Non
     assert pair.tail_unblock_spec is None
     assert pair.tail_unblock_spec_type == "uD"
     assert pair.tail_second_update_wait_seconds == 360.0
+    assert pair.cooldown_minutes == 0.0
+
+
+def test_cool_field_parses_minutes_and_defaults_blank(tmp_path: Path) -> None:
+    path = _write_strategy(
+        tmp_path / "cool.tsv",
+        [
+            _base_row(name="COOL", side="sell", hPrice="D6", qty="A1", tPrice="D20", cool="2.5"),
+            _base_row(name="NCOOL", side="buy", hPrice="%0.20", qty="A1", tPrice="%0.10", hook="COOL-tail-closed"),
+        ],
+    )
+
+    strategy = read_strategy_file(path)
+
+    assert strategy.pairs[0].cooldown_minutes == 2.5
+    assert strategy.pairs[1].cooldown_minutes == 0.0
+
+
+def test_cool_rejects_negative_value(tmp_path: Path) -> None:
+    path = _write_strategy(tmp_path / "bad_cool.tsv", [_base_row(name="BAD", cool="-1")])
+
+    with pytest.raises(ValueError, match="Invalid cool value"):
+        read_strategy_file(path)
+
+
+def test_uppercase_cool_column_is_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "bad_cool_header.tsv"
+    columns = tuple("Cool" if column == "cool" else column for column in DEFAULT_COLUMNS)
+
+    with pytest.raises(ValueError, match="Legacy strategy field"):
+        read_strategy_file(_write_strategy(path, [_base_row()], columns=columns))
 
 
 def test_tublk_typed_field_parses_distance_and_percent(tmp_path: Path) -> None:

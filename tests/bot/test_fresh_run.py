@@ -37,6 +37,33 @@ def test_strategy_pair_count_reads_all_strategy_pairs() -> None:
     assert strategy_pair_count("orders/demo_cross_exchange_chain.org") == 3
 
 
+def test_fresh_run_route_resolution_accepts_decimal_absolute_quantity(tmp_path: Path) -> None:
+    strategy = tmp_path / "decimal_abs.org"
+    strategy.write_text(
+        "\n".join(
+            [
+                "| exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |",
+                "|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|",
+                "| KRKF | PF_XBTUSD | DEC | 0 60 | 1 | 4 |  |  | buy | L |  | A.0001 | S |  | D- + | D.5 | %1 |  |  |  |",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    plan = feeder_plan_for_strategy(
+        strategy,
+        default_exchange="kraken",
+        default_market_type="futures",
+        default_symbol="PF_XBTUSD",
+        environment="live",
+    )
+
+    assert route_lines(plan) == (
+        "kraken\tfutures\tPF_XBTUSD\tKRKF_API_KEY\tKRKF_API_SECRET",
+    )
+
+
 def test_fresh_run_dry_run_restarts_all_strategy_feed_routes() -> None:
     result = run_script(
         "--dry-run",

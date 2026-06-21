@@ -231,6 +231,13 @@ def add_single_order_options(parser: argparse.ArgumentParser) -> None:
         help="Pause between repeated attempts, in minutes.",
     )
     parser.add_argument(
+        "--cool",
+        dest="cool",
+        type=float,
+        default=None,
+        help="Extra cooldown after a successful tail fill before repeating, in minutes.",
+    )
+    parser.add_argument(
         "--pGate",
         "-x",
         dest="pGate",
@@ -255,7 +262,10 @@ def add_single_order_options(parser: argparse.ArgumentParser) -> None:
         "--qty",
         type=str,
         required=True,
-        help="Typed quantity, for example A17 for absolute size or %%5 for percent.",
+        help=(
+            "Typed quantity, for example A17 for absolute size, %%5 for percent, "
+            "or U15 for USD notional converted from mark price."
+        ),
     )
     parser.add_argument(
         "--tPrice",
@@ -425,7 +435,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run one typed strategy-defined order pair from the command line",
         description=(
             "Run one typed order pair through kolabi.bot. The typed values match "
-            "the Org strategy table columns: qty, pGate, hPrice, tPrice, hDelta, tDelta, tUblk."
+            "the Org strategy table columns: qty, pGate, hPrice, tPrice, hDelta, tDelta, tUblk, wUblk, cool."
         ),
         epilog=(
             "Examples:\n"

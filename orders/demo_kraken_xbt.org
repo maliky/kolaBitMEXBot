@@ -1,48 +1,48 @@
 # Org strategy table. File extension is kept for existing commands.
-| exchg | symbol | name | tps_run | essais | tOut | pause | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
-|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
-|  |  | CORE_BUY_M | 0 60 | 1 | 4 |  | buy | M |  | A1 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | CORE_SELL_M | 0 60 | 1 | 4 |  | sell | M |  | A2 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | CORE_BUY_L_POST | 0 60 | 1 | 4 |  | buy | L! |  | A3 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | CORE_SELL_L_POST | 0 60 | 1 | 4 |  | sell | L! |  | A4 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | HEAD_L_LAST | 0 60 | 1 | 4 |  | buy | Ll |  | A5 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_L_MARK | 0 60 | 1 | 4 |  | buy | Lm |  | A7 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_L_INDEX | 0 60 | 1 | 4 |  | buy | Li |  | A11 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_S_LAST | 0 60 | 1 | 4 |  | sell | Sl |  | A6 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | HEAD_S_MARK | 0 60 | 1 | 4 |  | sell | Sm |  | A8 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | HEAD_S_INDEX | 0 60 | 1 | 4 |  | sell | Si |  | A12 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | HEAD_SL_LAST | 0 60 | 1 | 4 |  | sell | SLl | D0.5 | A14 | S- |  | D5 + | D0 | D8 |  |  |  |
-|  |  | HEAD_SL_MARK | 0 60 | 1 | 4 |  | sell | SLm | D0.5 | A16 | S- |  | D5 + | D0 | D8 |  |  |  |
-|  |  | HEAD_SL_INDEX | 0 60 | 1 | 4 |  | sell | SLi | D0.5 | A20 | S- |  | D5 + | D0 | D8 |  |  |  |
-|  |  | HEAD_MT_LAST | 0 60 | 1 | 4 |  | buy | MTl |  | A13 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_MT_MARK | 0 60 | 1 | 4 |  | buy | MTm |  | A15 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_MT_INDEX | 0 60 | 1 | 4 |  | buy | MTi |  | A19 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_LT_LAST | 0 60 | 1 | 4 |  | buy | LTl | D0.5 | A21 | S- |  | D- -5 | D0 | D8 |  |  |  |
-|  |  | HEAD_LT_MARK | 0 60 | 1 | 4 |  | buy | LTm | D0.5 | A23 | S- |  | D- -5 | D0 | D8 |  |  |  |
-|  |  | HEAD_LT_INDEX | 0 60 | 1 | 4 |  | buy | LTi | D0.5 | A27 | S- |  | D- -5 | D0 | D8 |  |  |  |
-|  |  | TAIL_S_LAST | 0 60 | 1 | 4 |  | buy | L |  | A29 | Sl- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_S_MARK | 0 60 | 1 | 4 |  | buy | L |  | A31 | Sm- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_S_INDEX | 0 60 | 1 | 4 |  | buy | L |  | A35 | Si- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_SL_LAST | 0 60 | 1 | 4 |  | sell | L |  | A22 | SLl- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_SL_MARK | 0 60 | 1 | 4 |  | sell | L |  | A24 | SLm- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_SL_INDEX | 0 60 | 1 | 4 |  | sell | L |  | A28 | SLi- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_MT_LAST | 0 60 | 1 | 4 |  | buy | L |  | A37 | MTl- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_MT_MARK | 0 60 | 1 | 4 |  | buy | L |  | A39 | MTm- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_MT_INDEX | 0 60 | 1 | 4 |  | buy | L |  | A43 | MTi- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_LT_LAST | 0 60 | 1 | 4 |  | sell | L |  | A30 | LTl- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_LT_MARK | 0 60 | 1 | 4 |  | sell | L |  | A32 | LTm- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_LT_INDEX | 0 60 | 1 | 4 |  | sell | L |  | A36 | LTi- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | AT_QA_TD_PCT | 0 60 | 1 | 4 |  | buy | L |  | A45 | S- |  | %- -0.05 |  | D8 |  |  |  |
-|  |  | AT_QA_TD_PA | 0 60 | 1 | 4 |  | buy | L |  | A47 | S- |  | A- + |  | D8 |  |  |  |
-|  |  | AT_QA_TP_PD | 0 60 | 1 | 4 |  | buy | L |  | A49 | S- |  | D- -5 |  | %0.02 |  |  |  |
-|  |  | AT_QA_TA_PD | 0 60 | 1 | 4 |  | buy | L |  | A51 | S- |  | D- -5 |  | A73855 |  |  |  |
-|  |  | AT_QP_TD_PD | 0 60 | 1 | 4 |  | sell | L |  | %38 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | NOW_MARKET | 0 60 | 1 | 4 |  | buy | M |  | A53 | S- |  | D- -2 |  | D6 |  |  |  |
-|  |  | DELAY_MARKET | 2 60 | 1 | 4 |  | buy | M |  | A55 | S- |  | D- -2 |  | D6 |  |  |  |
-|  |  | SHORT_WINDOW | 0 1 | 1 | 4 |  | sell | M |  | A40 | S- |  | D2 + |  | D6 |  |  |  |
-|  |  | REPEAT_FAST | 0 20 | 3 | 4 | 0.2 | buy | M |  | A57 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | CHAIN_PARENT | 0 20 | 2 | 4 | 0.5 | sell | M |  | A42 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | CHAIN_CHILD | 0 20 | 2 | 4 | 0.5 | buy | M |  | A59 | S- |  | D- -4 |  | D8 |  |  | CHAIN_PARENT |
+| exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
+|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
+|  |  | CORE_BUY_M | 0 60 | 1 | 4 |  |  | buy | M |  | A1 | S- |  | D- -5 |  | D8 |  |  |  |
+|  |  | CORE_SELL_M | 0 60 | 1 | 4 |  |  | sell | M |  | A2 | S- |  | D5 + |  | D8 |  |  |  |
+|  |  | CORE_BUY_L_POST | 0 60 | 1 | 4 |  |  | buy | L! |  | A3 | S- |  | D- -5 |  | D8 |  |  |  |
+|  |  | CORE_SELL_L_POST | 0 60 | 1 | 4 |  |  | sell | L! |  | A4 | S- |  | D5 + |  | D8 |  |  |  |
+|  |  | HEAD_L_LAST | 0 60 | 1 | 4 |  |  | buy | Ll |  | A5 | S- |  | D- -5 |  | D8 |  |  |  |
+|  |  | HEAD_L_MARK | 0 60 | 1 | 4 |  |  | buy | Lm |  | A7 | S- |  | D- -5 |  | D8 |  |  |  |
+|  |  | HEAD_L_INDEX | 0 60 | 1 | 4 |  |  | buy | Li |  | A11 | S- |  | D- -5 |  | D8 |  |  |  |
+|  |  | HEAD_S_LAST | 0 60 | 1 | 4 |  |  | sell | Sl |  | A6 | S- |  | D5 + |  | D8 |  |  |  |
+|  |  | HEAD_S_MARK | 0 60 | 1 | 4 |  |  | sell | Sm |  | A8 | S- |  | D5 + |  | D8 |  |  |  |
+|  |  | HEAD_S_INDEX | 0 60 | 1 | 4 |  |  | sell | Si |  | A12 | S- |  | D5 + |  | D8 |  |  |  |
+|  |  | HEAD_SL_LAST | 0 60 | 1 | 4 |  |  | sell | SLl | D0.5 | A14 | S- |  | D5 + | D0 | D8 |  |  |  |
+|  |  | HEAD_SL_MARK | 0 60 | 1 | 4 |  |  | sell | SLm | D0.5 | A16 | S- |  | D5 + | D0 | D8 |  |  |  |
+|  |  | HEAD_SL_INDEX | 0 60 | 1 | 4 |  |  | sell | SLi | D0.5 | A20 | S- |  | D5 + | D0 | D8 |  |  |  |
+|  |  | HEAD_MT_LAST | 0 60 | 1 | 4 |  |  | buy | MTl |  | A13 | S- |  | D- -5 |  | D8 |  |  |  |
+|  |  | HEAD_MT_MARK | 0 60 | 1 | 4 |  |  | buy | MTm |  | A15 | S- |  | D- -5 |  | D8 |  |  |  |
+|  |  | HEAD_MT_INDEX | 0 60 | 1 | 4 |  |  | buy | MTi |  | A19 | S- |  | D- -5 |  | D8 |  |  |  |
+|  |  | HEAD_LT_LAST | 0 60 | 1 | 4 |  |  | buy | LTl | D0.5 | A21 | S- |  | D- -5 | D0 | D8 |  |  |  |
+|  |  | HEAD_LT_MARK | 0 60 | 1 | 4 |  |  | buy | LTm | D0.5 | A23 | S- |  | D- -5 | D0 | D8 |  |  |  |
+|  |  | HEAD_LT_INDEX | 0 60 | 1 | 4 |  |  | buy | LTi | D0.5 | A27 | S- |  | D- -5 | D0 | D8 |  |  |  |
+|  |  | TAIL_S_LAST | 0 60 | 1 | 4 |  |  | buy | L |  | A29 | Sl- |  | D- -5 |  | D8 |  |  |  |
+|  |  | TAIL_S_MARK | 0 60 | 1 | 4 |  |  | buy | L |  | A31 | Sm- |  | D- -5 |  | D8 |  |  |  |
+|  |  | TAIL_S_INDEX | 0 60 | 1 | 4 |  |  | buy | L |  | A35 | Si- |  | D- -5 |  | D8 |  |  |  |
+|  |  | TAIL_SL_LAST | 0 60 | 1 | 4 |  |  | sell | L |  | A22 | SLl- | D0.5 | D5 + |  | D8 |  |  |  |
+|  |  | TAIL_SL_MARK | 0 60 | 1 | 4 |  |  | sell | L |  | A24 | SLm- | D0.5 | D5 + |  | D8 |  |  |  |
+|  |  | TAIL_SL_INDEX | 0 60 | 1 | 4 |  |  | sell | L |  | A28 | SLi- | D0.5 | D5 + |  | D8 |  |  |  |
+|  |  | TAIL_MT_LAST | 0 60 | 1 | 4 |  |  | buy | L |  | A37 | MTl- |  | D- -5 |  | D8 |  |  |  |
+|  |  | TAIL_MT_MARK | 0 60 | 1 | 4 |  |  | buy | L |  | A39 | MTm- |  | D- -5 |  | D8 |  |  |  |
+|  |  | TAIL_MT_INDEX | 0 60 | 1 | 4 |  |  | buy | L |  | A43 | MTi- |  | D- -5 |  | D8 |  |  |  |
+|  |  | TAIL_LT_LAST | 0 60 | 1 | 4 |  |  | sell | L |  | A30 | LTl- | D0.5 | D5 + |  | D8 |  |  |  |
+|  |  | TAIL_LT_MARK | 0 60 | 1 | 4 |  |  | sell | L |  | A32 | LTm- | D0.5 | D5 + |  | D8 |  |  |  |
+|  |  | TAIL_LT_INDEX | 0 60 | 1 | 4 |  |  | sell | L |  | A36 | LTi- | D0.5 | D5 + |  | D8 |  |  |  |
+|  |  | AT_QA_TD_PCT | 0 60 | 1 | 4 |  |  | buy | L |  | A45 | S- |  | %- -0.05 |  | D8 |  |  |  |
+|  |  | AT_QA_TD_PA | 0 60 | 1 | 4 |  |  | buy | L |  | A47 | S- |  | A- + |  | D8 |  |  |  |
+|  |  | AT_QA_TP_PD | 0 60 | 1 | 4 |  |  | buy | L |  | A49 | S- |  | D- -5 |  | %0.02 |  |  |  |
+|  |  | AT_QA_TA_PD | 0 60 | 1 | 4 |  |  | buy | L |  | A51 | S- |  | D- -5 |  | A73855 |  |  |  |
+|  |  | AT_QP_TD_PD | 0 60 | 1 | 4 |  |  | sell | L |  | %38 | S- |  | D5 + |  | D8 |  |  |  |
+|  |  | NOW_MARKET | 0 60 | 1 | 4 |  |  | buy | M |  | A53 | S- |  | D- -2 |  | D6 |  |  |  |
+|  |  | DELAY_MARKET | 2 60 | 1 | 4 |  |  | buy | M |  | A55 | S- |  | D- -2 |  | D6 |  |  |  |
+|  |  | SHORT_WINDOW | 0 1 | 1 | 4 |  |  | sell | M |  | A40 | S- |  | D2 + |  | D6 |  |  |  |
+|  |  | REPEAT_FAST | 0 20 | 3 | 4 | 0.2 |  | buy | M |  | A57 | S- |  | D- -5 |  | D8 |  |  |  |
+|  |  | CHAIN_PARENT | 0 20 | 2 | 4 | 0.5 |  | sell | M |  | A42 | S- |  | D5 + |  | D8 |  |  |  |
+|  |  | CHAIN_CHILD | 0 20 | 2 | 4 | 0.5 |  | buy | M |  | A59 | S- |  | D- -4 |  | D8 |  |  | CHAIN_PARENT |
 
 # Notes from the previous strategy fixture:
 # Kolabi XBT scenario grammar:

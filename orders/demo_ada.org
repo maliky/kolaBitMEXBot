@@ -1,12 +1,12 @@
 # Org strategy table. File extension is kept for existing commands.
-| exchg | symbol | name | tps_run | essais | tOut | pause | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
-|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
-|  |  | SLS0 | 0 5440 | 1 |  |  | sell | SL |  | A1.4e3 | S | D1e-7 | D-2e-6 -1e-6 |  | D1e-6 |  |  |  |
-|  |  | LTS0 | 0 5440 | 1 |  |  | buy | LT |  | A1.5e3 | S | D1e-7 | D-2e-6 -1e-6 |  | D1e-6 |  |  |  |
+| exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
+|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
+|  |  | SLS0 | 0 5440 | 1 |  |  |  | sell | SL |  | A1.4e3 | S | D1e-7 | D-2e-6 -1e-6 |  | D1e-6 |  |  |  |
+|  |  | LTS0 | 0 5440 | 1 |  |  |  | buy | LT |  | A1.5e3 | S | D1e-7 | D-2e-6 -1e-6 |  | D1e-6 |  |  |  |
 
 
 # Notes:
 # M, L, S, MT, SL, and LT are the primary order families.
 # ! means post-only and - means reduce-only; both are rejected when the exchange order family cannot carry them.
-# tOut and pause are in minutes.
+# tOut, pause, and cool are in minutes.
 # Use typed cells: qty=A1400, tPrice=D1e-6, pGate=D-2e-6 -1e-6, tDelta=D1e-7.

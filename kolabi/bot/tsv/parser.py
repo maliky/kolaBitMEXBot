@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict
+from decimal import Decimal
 from pathlib import Path
 from typing import Iterable, Mapping, TypedDict
 
@@ -29,13 +30,14 @@ class _TypedStrategyRow(TypedDict):
     tps_run: NumberPair
     essais: int | str | None
     dr_pause: float | None
+    cooldown_minutes: float
     timeout: float | None
     side: str
     pGate: NumberPair
     head_price_type: str
     hPrice: float | None
     head_order_price_type: str
-    quantity: int
+    quantity: int | float | Decimal
     quantity_type: str
     tPrice: float | None
     tail_price_type: str
@@ -80,7 +82,7 @@ def order_pair_from_typed_values(
     head_price_type: str,
     hPrice: float | None,
     head_order_price_type: str,
-    quantity: int,
+    quantity: int | float | Decimal,
     quantity_type: str,
     tPrice: float | None,
     tail_price_type: str,
@@ -95,12 +97,14 @@ def order_pair_from_typed_values(
     tUblk: float | None = None,
     tUblk_type: str = "uD",
     wUblk: float = 6.0,
+    cooldown_minutes: float = 0.0,
 ) -> OrderPairSpec:
     """Normalise des valeurs typees vers une paire canonique."""
     normalized_side = normalize_side(side)
     exchange_name, market_type = parse_exchange_code(exchange)
     window = TimeWindow(start_minutes=float(tps_run[0]), end_minutes=float(tps_run[1]))
     attempts = _validate_attempts(essais, name=name)
+    cooldown = _validate_cooldown_minutes(cooldown_minutes, name=name)
     timeout_minutes = _resolve_timeout_minutes(
         timeout=timeout,
         attempts=attempts,
@@ -156,6 +160,7 @@ def order_pair_from_typed_values(
         tail_second_update_wait_seconds=wUblk,
         head_order_price_spec=hPrice,
         head_order_price_spec_type=head_order_price_type,
+        cooldown_minutes=cooldown,
     )
 
 
@@ -170,6 +175,7 @@ def strategy_from_run_once_args(args: object) -> StrategySpec:
         "tps_run": " ".join(str(value) for value in getattr(args, "tps_run")),
         "essais": getattr(args, "essais"),
         "pause": getattr(args, "pause"),
+        "cool": getattr(args, "cool", None),
         "tOut": getattr(args, "tOut"),
         "side": getattr(args, "side"),
         "pGate": getattr(args, "pGate"),
@@ -225,11 +231,12 @@ def normalize_typed_strategy_row(row: Mapping[str, object]) -> _TypedStrategyRow
         _row_value(row, "qty"),
         field="qty",
         token_prefix="q",
-        allowed_suffixes={"A", "%"},
-        as_int=True,
+        allowed_suffixes={"A", "%", "U"},
+        as_decimal=True,
     )
-    if not isinstance(raw_q, int):
-        raise ValueError("Invalid qty value; expected an integer payload.")
+    if quantity_type == "q%":
+        if raw_q <= 0 or raw_q >= 100:
+            raise ValueError("Invalid qty value; expected 0 < percent < 100.")
     t_price, tail_price_type = _parse_optional_typed_number(
         _row_value(row, "tPrice"),
         field="tPrice",
@@ -266,6 +273,7 @@ def normalize_typed_strategy_row(row: Mapping[str, object]) -> _TypedStrategyRow
         "tps_run": _parse_interval(str(_require_row_value(row, "tps_run")), field="tps_run"),
         "essais": _parse_essais(_row_value(row, "essais")),
         "dr_pause": _coerce_to("float", _row_value(row, "pause")),
+        "cooldown_minutes": _parse_optional_cooldown(_row_value(row, "cool")),
         "timeout": _coerce_to("float", _row_value(row, "tOut")),
         "side": str(_require_row_value(row, "side")).strip(),
         "pGate": p_gate,
@@ -388,6 +396,7 @@ def _duplicate_values(values: Iterable[str]) -> tuple[str, ...]:
 def _reject_legacy_columns(row: Mapping[str, object]) -> None:
     legacy = {
         "atype",
+        "Cool",
         "exchange",
         "hprice",
         "oDelta",
@@ -401,7 +410,7 @@ def _reject_legacy_columns(row: Mapping[str, object]) -> None:
     if present:
         raise ValueError(
             "Legacy strategy field(s) are no longer supported: "
-            f"{', '.join(present)}. Use typed Org fields such as qty, tPrice, pGate, hPrice, and exchg."
+            f"{', '.join(present)}. Use typed Org fields such as qty, tPrice, pGate, hPrice, cool, and exchg."
         )
 
 
@@ -466,6 +475,13 @@ def _validate_attempts(essais: int | str | None, *, name: str) -> int | None:
     return attempts
 
 
+def _validate_cooldown_minutes(value: float | None, *, name: str) -> float:
+    minutes = 0.0 if value is None else float(value)
+    if minutes < 0:
+        raise ValueError(f"Invalid cool for pair '{name}'; expected a non-negative wait in minutes.")
+    return minutes
+
+
 def _resolve_timeout_minutes(
     *,
     timeout: float | None,
@@ -509,7 +525,8 @@ def _parse_required_typed_number(
     token_prefix: str,
     allowed_suffixes: set[str],
     as_int: bool = False,
-) -> tuple[int | float, str]:
+    as_decimal: bool = False,
+) -> tuple[int | float | Decimal, str]:
     parsed, amount_type = _parse_optional_typed_number(
         value,
         field=field,
@@ -517,6 +534,7 @@ def _parse_required_typed_number(
         allowed_suffixes=allowed_suffixes,
         default_type=None,
         as_int=as_int,
+        as_decimal=as_decimal,
     )
     if parsed is None:
         raise ValueError(f"Missing required strategy field '{field}'.")
@@ -531,7 +549,8 @@ def _parse_optional_typed_number(
     allowed_suffixes: set[str],
     default_type: str | None,
     as_int: bool = False,
-) -> tuple[int | float | None, str]:
+    as_decimal: bool = False,
+) -> tuple[int | float | Decimal | None, str]:
     text = _optional_text(value)
     if text is None:
         if default_type is None:
@@ -544,8 +563,13 @@ def _parse_optional_typed_number(
     )
     if not payload:
         raise ValueError(f"Invalid {field} value '{text}'; missing numeric payload.")
-    number = float(payload)
-    if as_int and not number.is_integer():
+    number = Decimal(payload) if as_decimal else float(payload)
+    is_integer = (
+        number == number.to_integral_value()
+        if isinstance(number, Decimal)
+        else number.is_integer()
+    )
+    if as_int and not is_integer:
         raise ValueError(f"Invalid {field} value '{text}'; expected an integer payload.")
     return (int(number) if as_int else number), f"{token_prefix}{suffix}"
 
@@ -615,6 +639,16 @@ def _parse_optional_tail_wait(value: object) -> float:
     return minutes * 60.0
 
 
+def _parse_optional_cooldown(value: object) -> float:
+    text = _optional_text(value)
+    if text is None:
+        return 0.0
+    minutes = float(text)
+    if minutes < 0:
+        raise ValueError("Invalid cool value; expected a non-negative wait in minutes.")
+    return minutes
+
+
 def _split_typed_payload(
     text: str,
     *,
@@ -678,7 +712,7 @@ def validate_head_price_fields(
         )
 
 
-def validate_quantity(quantity: int | None) -> None:
+def validate_quantity(quantity: int | float | Decimal | None) -> None:
     """Verifie qu'une quantite strategique est positive quand elle existe."""
     if quantity is not None and quantity <= 0:
         raise ValueError(

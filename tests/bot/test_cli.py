@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from decimal import Decimal
 
 import pytest
 from kolabi.bot.__main__ import (
@@ -93,6 +94,96 @@ def test_run_once_parser_keeps_percent_tail_percent_head_grammar() -> None:
     assert pair.tail_price_spec_type == "t%"
     assert pair.head_price_type == "p%"
     assert pair.tail_price_spec == 0.5
+
+
+def test_run_once_parser_accepts_usd_notional_quantity() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "run-once",
+            "-m",
+            "XUsdQty",
+            "-x",
+            "D1 2",
+            "--qty",
+            "U15.5",
+            "--tPrice",
+            "%0.5",
+            "-o",
+            "L",
+            "-y",
+            "S-",
+            "-c",
+            "sell",
+            "--dry-run",
+        ]
+    )
+
+    pair = build_single_strategy(args).pairs[0]
+
+    assert pair.head_quantity == 15.5
+    assert pair.head_quantity_type == "qU"
+
+
+def test_run_once_parser_accepts_decimal_absolute_quantity() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "run-once",
+            "-m",
+            "XAbsQty",
+            "-x",
+            "D1 2",
+            "--qty",
+            "A0.0001",
+            "--tPrice",
+            "%0.5",
+            "-o",
+            "L",
+            "-y",
+            "S-",
+            "-c",
+            "sell",
+            "--dry-run",
+        ]
+    )
+
+    pair = build_single_strategy(args).pairs[0]
+
+    assert pair.head_quantity == Decimal("0.0001")
+    assert pair.head_quantity_type == "qA"
+
+
+def test_run_once_parser_accepts_decimal_percent_quantity() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "run-once",
+            "-m",
+            "XPctQty",
+            "-x",
+            "D1 2",
+            "--qty",
+            "%0.5",
+            "--tPrice",
+            "%0.5",
+            "-o",
+            "L",
+            "-y",
+            "S-",
+            "-c",
+            "sell",
+            "--dry-run",
+        ]
+    )
+
+    pair = build_single_strategy(args).pairs[0]
+
+    assert pair.head_quantity == Decimal("0.5")
+    assert pair.head_quantity_type == "q%"
 
 
 @pytest.mark.parametrize(
@@ -197,6 +288,37 @@ def test_run_once_parser_accepts_wublk_keyword() -> None:
     pair = build_single_strategy(args).pairs[0]
 
     assert pair.tail_second_update_wait_seconds == 360.0
+
+
+def test_run_once_parser_accepts_cool_keyword() -> None:
+    parser = build_parser()
+
+    args = parser.parse_args(
+        [
+            "run-once",
+            "-m",
+            "XCool",
+            "-x",
+            "D1 2",
+            "--qty",
+            "A1",
+            "--tPrice",
+            "%0.5",
+            "--cool",
+            "2.5",
+            "-o",
+            "L",
+            "-y",
+            "S-",
+            "-c",
+            "sell",
+            "--dry-run",
+        ]
+    )
+
+    pair = build_single_strategy(args).pairs[0]
+
+    assert pair.cooldown_minutes == 2.5
 
 
 def test_bot_parser_uses_critical_db_url_only() -> None:

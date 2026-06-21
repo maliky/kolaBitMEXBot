@@ -4,7 +4,7 @@ This file shows the active strategy grammar used by =kolabi.bot=. Strategy files
 
 * Typed Value Rules
 
-- =qty= is required and starts with =A= or =%=, for example =A11=.
+- =qty= is required and starts with =A=, =%=, or =U=, for example =A11= or =U15= for USD notional converted from mark price.
 - =pGate= is a typed two-bound interval, for example =D1 2=, =D- +=, =%-1 1=, or =A79320 79340=.
 - =hPrice= is a lazy typed head price, for example =D6=, =%0.2=, or =A79350=; it is computed only when =pGate= opens.
 - =tPrice= is a typed tail distance, for example =D20=, =%1.2=, or =A0.25=.
@@ -65,11 +65,11 @@ python -m kolabi.bot run-once \
 * Strategy Table Shape
 
 #+begin_src org
-| exchg | symbol | name | tps_run | essais | tOut | pause | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
-|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
-| KRKF | PI_XBTUSD | XBTC_SEL | 0 1440 | 1 | 6 |  | sell | L |  | A1 | S- |  | D- + | D6 | D20 |  |  |  |
-| KRKF | PI_ADAUSD | KADA_SEL | 0 1440 | 1 | 6 |  | sell | L |  | A1 | S- |  | D- + | %0.20 | %0.10 |  |  | XBTC_SEL-head-filled |
-| BINS | ADAUSDT | NADA_BUY | 0 1440 | 1 | 6 |  | buy | M |  | A3 | L! |  | D- + |  | D0 |  |  | KADA_SEL-tail-closed |
+| exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
+|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
+| KRKF | PI_XBTUSD | XBTC_SEL | 0 1440 | 1 | 6 |  |  | sell | L |  | A1 | S- |  | D- + | D6 | D20 |  |  |  |
+| KRKF | PI_ADAUSD | KADA_SEL | 0 1440 | 1 | 6 |  |  | sell | L |  | A1 | S- |  | D- + | %0.20 | %0.10 |  |  | XBTC_SEL-head-filled |
+| BINS | ADAUSDT | NADA_BUY | 0 1440 | 1 | 6 |  |  | buy | M |  | A3 | L! |  | D- + |  | D0 |  |  | KADA_SEL-tail-closed |
 #+end_src
 
 Run the table through the normal strategy path:
