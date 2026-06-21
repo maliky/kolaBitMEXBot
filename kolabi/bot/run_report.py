@@ -9,8 +9,10 @@ on disk, without depending on an exchange UI or other external witness.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
+import shlex
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -19,11 +21,21 @@ from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence, TextIO
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from kolabi.shared.persistence import ExchangeFill, ExchangeOrder
+from kolabi.shared.persistence import (
+    ExchangeFill,
+    ExchangeInstrument,
+    ExchangeOrder,
+    RawExchangeEvent,
+)
+from kolabi.shared.redaction import redact_url
+
+
+NO_GATE_LOG = "no_gate_log"
+NO_DEADLINE_LOG = "no_deadline_log"
 
 
 class ReportError(RuntimeError):
@@ -112,6 +124,28 @@ class LatentAttempt:
     ended: bool = False
 
 
+@dataclass(frozen=True, order=True)
+class RuntimeRoute:
+    """One exchange route declared by runtime preflight or ready logs."""
+
+    exchange: str
+    market_type: str
+    symbol: str
+
+    @property
+    def label(self) -> str:
+        return f"{self.exchange}:{self.market_type}:{self.symbol}"
+
+
+@dataclass(frozen=True)
+class RuntimeMetadata:
+    """Run-level facts used to make report identity stable."""
+
+    started_at: datetime | None = None
+    environment: str | None = None
+    routes: tuple[RuntimeRoute, ...] = ()
+
+
 @dataclass(frozen=True)
 class RunLogSnapshot:
     """Parsed report state from one runtime log."""
@@ -119,8 +153,20 @@ class RunLogSnapshot:
     lifecycles: dict[PairKey, PairLifecycle]
     tail_telemetry: dict[PairKey, TailTelemetry]
     latent_attempts: dict[PairKey, LatentAttempt]
+    quantity_diagnostics: tuple["QuantityDiagnostic", ...]
     market_snapshot: MarketSnapshot | None
+    first_log_at: datetime | None
     last_log_at: datetime | None
+    runtime_metadata: RuntimeMetadata = RuntimeMetadata()
+
+
+@dataclass(frozen=True)
+class ReportIdentity:
+    """Stable operator-facing name for one runtime report."""
+
+    name: str
+    run_started_at: datetime
+    command_line: str
 
 
 @dataclass(frozen=True)
@@ -128,7 +174,12 @@ class DbFillSummary:
     """DB-derived fill summary for one client order id."""
 
     client_order_id: str
+    exchange: str
+    environment: str
+    market_type: str
+    symbol: str
     side: str
+    fill_count: int
     quantity: Decimal
     price: Decimal
     fee: Decimal
@@ -146,6 +197,75 @@ class DbOrderSummary:
     price: Decimal | None
     quantity: Decimal
     filled_quantity: Decimal
+
+
+@dataclass(frozen=True)
+class InstrumentSummary:
+    """Local instrument metadata needed for volume and sizing context."""
+
+    route: RuntimeRoute
+    environment: str | None
+    instrument_type: str | None
+    tick_size: Decimal | None
+    contract_size: Decimal
+    min_quantity: Decimal | None
+    quantity_step: Decimal | None
+
+
+@dataclass(frozen=True)
+class VolumeRow:
+    """Aggregated run volume attributed to one strategy pair and market route."""
+
+    pair_name: str
+    market: str
+    fills: int
+    quantity: Decimal
+    bot_usd_volume: Decimal
+    market_usd_volume: Decimal | None
+    min_qty_base: Decimal | None
+    min_qty_usd: Decimal | None
+    tick_base: Decimal | None
+    tick_usd: Decimal | None
+
+
+@dataclass(frozen=True)
+class QuantityDiagnostic:
+    """Log-derived USD quantity sizing fact from runtime validation."""
+
+    pair_name: str
+    route: RuntimeRoute | None
+    status: str
+    nominal_usd: Decimal | None
+    mark_price: Decimal | None
+    contract_size: Decimal | None
+    min_quantity: Decimal | None
+    quantity_step: Decimal | None
+    resolved_quantity: Decimal | None
+    resolved_usd: Decimal | None
+    source: str = "runtime"
+    percent: Decimal | None = None
+    available_usd: Decimal | None = None
+
+
+@dataclass(frozen=True)
+class SizingRow:
+    """Operator-facing minimum/step sizing row for one route."""
+
+    route: str
+    pair_name: str
+    nominal_usd: Decimal | None
+    percent: Decimal | None
+    available_usd: Decimal | None
+    mark_price: Decimal | None
+    contract_size: Decimal | None
+    min_quantity: Decimal | None
+    quantity_step: Decimal | None
+    min_usd: Decimal | None
+    step_usd: Decimal | None
+    resolved_quantity: Decimal | None
+    resolved_usd: Decimal | None
+    status: str
+    source: str
 
 
 @dataclass(frozen=True)
@@ -223,10 +343,15 @@ class ReportOptions:
 @dataclass
 class _FillAccumulator:
     client_order_id: str
+    exchange: str
+    environment: str
+    market_type: str
+    symbol: str
     side: str
     total_quantity: Decimal = Decimal("0")
     weighted_price: Decimal = Decimal("0")
     fee: Decimal = Decimal("0")
+    fill_count: int = 0
     fee_currencies: set[str] = field(default_factory=set)
     liquidity_roles: list[str] = field(default_factory=list)
     seen_fill_ids: set[int] = field(default_factory=set)
@@ -244,6 +369,7 @@ class _FillAccumulator:
         if fill_id in self.seen_fill_ids:
             return
         self.seen_fill_ids.add(fill_id)
+        self.fill_count += 1
         self.total_quantity += quantity
         self.weighted_price += price * quantity
         if fee is not None:
@@ -266,7 +392,12 @@ class _FillAccumulator:
             fee_currency = "mixed"
         return DbFillSummary(
             client_order_id=self.client_order_id,
+            exchange=self.exchange,
+            environment=self.environment,
+            market_type=self.market_type,
+            symbol=self.symbol,
             side=self.side,
+            fill_count=self.fill_count,
             quantity=self.total_quantity,
             price=price,
             fee=self.fee,
@@ -275,12 +406,106 @@ class _FillAccumulator:
         )
 
 
+@dataclass
+class _VolumeAccumulator:
+    pair_name: str
+    route: RuntimeRoute
+    fills: int = 0
+    quantity: Decimal = Decimal("0")
+    weighted_price: Decimal = Decimal("0")
+    bot_usd_volume: Decimal = Decimal("0")
+
+    def add_fill(
+        self,
+        summary: DbFillSummary,
+        *,
+        instrument: InstrumentSummary | None,
+    ) -> None:
+        self.fills += max(summary.fill_count, 1)
+        self.quantity += summary.quantity
+        self.weighted_price += summary.price * summary.quantity
+        self.bot_usd_volume += _usd_notional(
+            summary.price,
+            summary.quantity,
+            instrument,
+        )
+
+    @property
+    def reference_price(self) -> Decimal | None:
+        if self.quantity <= 0:
+            return None
+        return self.weighted_price / self.quantity
+
+
 _EVENT_RE = re.compile(
     r"^(?P<log_ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+) .*?/ "
     r"(?P<event>[A-Z0-9_-]+) \((?P<pair>[^)]+)\): (?P<body>.*)$"
 )
+_RUNTIME_METADATA_RE = re.compile(
+    r"^(?P<log_ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+) .*?/ "
+    r"(?P<default_exchange>\S+) runtime (?P<phase>preflight|ready) "
+    r"routes=(?P<routes>\S+)(?P<body>.*)$"
+)
+_QTY_USD_EXCEPTION_RE = re.compile(
+    r"Strategy '(?P<pair>[^']+)' qty U(?P<nominal>[^\s]+) is not placeable "
+    r"at startup for (?P<route>[^:]+:[^:]+:[^:]+): (?P<body>.*)$"
+)
+_QTY_PCT_EXCEPTION_RE = re.compile(
+    r"Strategy '(?P<pair>[^']+)' qty %(?P<percent>[^\s]+) is not placeable "
+    r"at startup for (?P<route>[^:]+:[^:]+:[^:]+): (?P<body>.*)$"
+)
 _ENV_REF_RE = re.compile(r"\$\{([^}]+)\}")
 _USD_FEE_CURRENCIES = {"", "usd", "usdt", "zfusd"}
+_REPORT_CODENAMES = (
+    "almond",
+    "apple",
+    "apricot",
+    "avocado",
+    "banana",
+    "cashew",
+    "cherry",
+    "coconut",
+    "fig",
+    "guava",
+    "hazelnut",
+    "kiwi",
+    "lemon",
+    "lime",
+    "mango",
+    "melon",
+    "olive",
+    "orange",
+    "papaya",
+    "peach",
+    "pear",
+    "pineapple",
+    "plum",
+    "walnut",
+)
+_EXCHANGE_CODES = {
+    "kraken": "kr",
+    "binance": "bin",
+    "bitmex": "bmx",
+}
+_MARKET_CODES = {
+    "futures": "f",
+    "spot": "s",
+    "margin": "m",
+    "isolated_margin": "im",
+}
+_QUOTE_SUFFIXES = (
+    "USDT",
+    "USDC",
+    "BUSD",
+    "USD",
+    "ZUSD",
+    "EUR",
+    "ZEUR",
+    "BTC",
+    "XBT",
+    "ETH",
+)
+_BASE_ALIASES = {"BTC": "XBT"}
 
 
 def parse_log_file(path: str | Path) -> dict[PairKey, PairLifecycle]:
@@ -317,24 +542,49 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
     lifecycles: dict[PairKey, PairLifecycle] = {}
     tail_telemetry: dict[PairKey, TailTelemetry] = {}
     latent_attempts: dict[PairKey, LatentAttempt] = {}
+    quantity_diagnostics: list[QuantityDiagnostic] = []
     market_snapshot: MarketSnapshot | None = None
+    first_log_at: datetime | None = None
     last_log_at: datetime | None = None
+    runtime_metadata = RuntimeMetadata()
     for raw_line in text.splitlines():
+        parsed_runtime = _parse_runtime_metadata_line(raw_line)
+        if parsed_runtime is not None:
+            runtime_metadata = _merge_runtime_metadata(
+                runtime_metadata,
+                parsed_runtime,
+            )
+            log_time = parsed_runtime.started_at
+            if log_time is not None:
+                first_log_at = _earliest_time(first_log_at, log_time)
+                last_log_at = _latest_time(last_log_at, log_time)
+            continue
+        quantity_diagnostic = _parse_quantity_exception_line(raw_line)
+        if quantity_diagnostic is not None:
+            quantity_diagnostics.append(quantity_diagnostic)
+            continue
         match = _EVENT_RE.match(raw_line)
         if match is None:
             continue
         log_time = _parse_log_utc(match.group("log_ts"))
-        if last_log_at is None or log_time > last_log_at:
-            last_log_at = log_time
+        first_log_at = _earliest_time(first_log_at, log_time)
+        last_log_at = _latest_time(last_log_at, log_time)
+        event = match.group("event")
+        body = match.group("body")
+        parsed_quantity = _parse_quantity_event(event, match.group("pair"), body)
+        if parsed_quantity is not None:
+            quantity_diagnostics.append(parsed_quantity)
+            if event.startswith(("QTY_USD_", "QTY_PCT_")):
+                continue
         key = _parse_pair_key(match.group("pair"))
         if key is None:
             continue
         lifecycle = lifecycles.setdefault(key, PairLifecycle(key=key))
-        event = match.group("event")
-        body = match.group("body")
         if event == "HEAD_SENT":
             _parse_head_sent(lifecycle, body)
             _parse_latent_head_sent(latent_attempts, key, body, log_time)
+        elif event == "HEAD_ACK":
+            _parse_latent_head_ack(latent_attempts, key, body, log_time)
         elif event == "UPDATE":
             _parse_update(lifecycle, body)
         elif event == "AMEND_SENT":
@@ -350,6 +600,17 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
             _parse_repeat_ready(latent_attempts, key, body, log_time)
         elif event == "LATENT_TIMEOUT_ARMED":
             _parse_latent_timeout_armed(latent_attempts, key, body, log_time)
+        elif event == "HEAD_VISIBILITY_TIMEOUT_ARMED":
+            _parse_latent_head_visibility_timeout_armed(
+                latent_attempts,
+                key,
+                body,
+                log_time,
+            )
+        elif event == "HEAD_VISIBILITY_PENDING":
+            _parse_latent_head_visibility_pending(latent_attempts, key, body, log_time)
+        elif event == "HEAD_VISIBILITY_TIMEOUT":
+            _parse_latent_head_visibility_timeout(latent_attempts, key, body, log_time)
         elif event.startswith("GATE_WAIT"):
             _parse_gate_wait(latent_attempts, key, event, body, log_time)
         elif event in {
@@ -363,8 +624,11 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
         lifecycles=lifecycles,
         tail_telemetry=tail_telemetry,
         latent_attempts=latent_attempts,
+        quantity_diagnostics=tuple(quantity_diagnostics),
         market_snapshot=market_snapshot,
+        first_log_at=first_log_at,
         last_log_at=last_log_at,
+        runtime_metadata=runtime_metadata,
     )
 
 
@@ -403,7 +667,14 @@ def fetch_fill_summaries(
             continue
         accumulator = accumulators.setdefault(
             client_id,
-            _FillAccumulator(client_order_id=client_id, side=order.side),
+            _FillAccumulator(
+                client_order_id=client_id,
+                exchange=order.exchange,
+                environment=order.environment,
+                market_type=order.market_type,
+                symbol=order.symbol,
+                side=order.side,
+            ),
         )
         accumulator.add_fill(
             fill_id=fill.id,
@@ -454,6 +725,129 @@ def fetch_order_summaries(
     finally:
         engine.dispose()
     return summaries
+
+
+def fetch_instrument_summaries(
+    db_url: str,
+    routes: Iterable[RuntimeRoute],
+    *,
+    environment: str | None = None,
+) -> dict[RuntimeRoute, InstrumentSummary]:
+    """Fetch locally cached instrument sizing rules for the report routes."""
+
+    wanted = tuple(sorted(set(routes)))
+    if not wanted:
+        return {}
+    exchanges = tuple(sorted({route.exchange for route in wanted}))
+    market_types = tuple(sorted({route.market_type for route in wanted}))
+    symbols = tuple(sorted({route.symbol for route in wanted}))
+    wanted_keys = {
+        (route.exchange.lower(), route.market_type.lower(), route.symbol): route
+        for route in wanted
+    }
+    engine = create_engine(db_url, echo=False, future=True)
+    try:
+        with Session(engine) as session:
+            statement = (
+                select(ExchangeInstrument)
+                .where(
+                    ExchangeInstrument.exchange.in_(exchanges),
+                    ExchangeInstrument.market_type.in_(market_types),
+                    ExchangeInstrument.symbol.in_(symbols),
+                )
+                .order_by(ExchangeInstrument.updated_at, ExchangeInstrument.id)
+            )
+            if environment:
+                statement = statement.where(ExchangeInstrument.environment == environment)
+            rows = session.execute(statement).scalars()
+            summaries: dict[RuntimeRoute, InstrumentSummary] = {}
+            for row in rows:
+                key = (
+                    row.exchange.lower(),
+                    row.market_type.lower(),
+                    row.symbol,
+                )
+                route = wanted_keys.get(key)
+                if route is None:
+                    continue
+                summaries[route] = _instrument_summary_from_row(row, route)
+    except SQLAlchemyError as exc:
+        raise ReportError(f"could not read local market DB: {_compact_error(exc)}") from exc
+    finally:
+        engine.dispose()
+    return summaries
+
+
+def fetch_market_usd_volumes(
+    db_url: str,
+    routes: Iterable[RuntimeRoute],
+    *,
+    started_at: datetime,
+    ended_at: datetime,
+    environment: str | None = None,
+    instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] | None = None,
+) -> dict[RuntimeRoute, Decimal]:
+    """Aggregate local public trade volume in USD for each route.
+
+    The market DB is an optional local witness.  Only raw public trade events
+    that already exist on disk inside the run window are counted.
+    """
+
+    wanted = tuple(sorted(set(routes)))
+    if not wanted:
+        return {}
+    exchanges = tuple(sorted({route.exchange for route in wanted}))
+    market_types = tuple(sorted({route.market_type for route in wanted}))
+    symbols = tuple(sorted({route.symbol for route in wanted}))
+    wanted_keys = {
+        (route.exchange.lower(), route.market_type.lower(), route.symbol): route
+        for route in wanted
+    }
+    instrument_summaries = instrument_summaries or {}
+    totals: dict[RuntimeRoute, Decimal] = {}
+    engine = create_engine(db_url, echo=False, future=True)
+    try:
+        with Session(engine) as session:
+            statement = (
+                select(RawExchangeEvent)
+                .where(
+                    RawExchangeEvent.exchange.in_(exchanges),
+                    RawExchangeEvent.market_type.in_(market_types),
+                    RawExchangeEvent.symbol.in_(symbols),
+                    RawExchangeEvent.received_at >= _as_utc(started_at),
+                    RawExchangeEvent.received_at <= _as_utc(ended_at),
+                    or_(
+                        RawExchangeEvent.account_scope.is_(None),
+                        RawExchangeEvent.account_scope == "public",
+                    ),
+                )
+                .order_by(RawExchangeEvent.received_at, RawExchangeEvent.id)
+            )
+            if environment:
+                statement = statement.where(RawExchangeEvent.environment == environment)
+            for event in session.execute(statement).scalars():
+                if not _raw_event_is_public_trade(event):
+                    continue
+                key = (
+                    event.exchange.lower(),
+                    str(event.market_type or "").lower(),
+                    str(event.symbol or ""),
+                )
+                route = wanted_keys.get(key)
+                if route is None:
+                    continue
+                instrument = instrument_summaries.get(route)
+                for price, quantity in _raw_trade_price_quantities(event.payload):
+                    totals[route] = totals.get(route, Decimal("0")) + _usd_notional(
+                        price,
+                        quantity,
+                        instrument,
+                    )
+    except SQLAlchemyError as exc:
+        raise ReportError(f"could not read local market DB: {_compact_error(exc)}") from exc
+    finally:
+        engine.dispose()
+    return totals
 
 
 def build_report_rows(
@@ -783,7 +1177,7 @@ def build_latent_rows(
                 key=attempt.key,
                 time=attempt.last_event_at,
                 status=_latent_status(attempt),
-                gate=attempt.gate,
+                gate=_latent_gate_display(attempt),
                 reference_price=attempt.reference_price,
                 head_price=attempt.head_price,
                 quantity=attempt.quantity,
@@ -825,7 +1219,7 @@ def render_latent_table(
             _format_optional_decimal(row.head_price, options.price_places),
             _format_optional_quantity(row.quantity),
             row.order_type,
-            _format_optional_time(row.deadline_at),
+            _format_latent_deadline(row),
             row.last_event,
         )
         for row in rows
@@ -834,6 +1228,257 @@ def render_latent_table(
         headers,
         body,
         align_right={"H price", "Qty"},
+    )
+
+
+def build_volume_rows(
+    lifecycles: Mapping[PairKey, PairLifecycle],
+    *,
+    fill_summaries: Mapping[str, DbFillSummary] | None = None,
+    instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] | None = None,
+    market_usd_volumes: Mapping[RuntimeRoute, Decimal] | None = None,
+) -> tuple[VolumeRow, ...]:
+    """Aggregate bot and market volume by strategy pair and route."""
+
+    fill_summaries = fill_summaries or {}
+    instrument_summaries = instrument_summaries or {}
+    market_usd_volumes = market_usd_volumes or {}
+    accumulators: dict[tuple[str, RuntimeRoute], _VolumeAccumulator] = {}
+    for lifecycle in sorted(lifecycles.values(), key=lambda item: item.key):
+        for client_id in (lifecycle.head_client_id, lifecycle.tail_client_id):
+            summary = _fill_summary_for(client_id, fill_summaries)
+            if summary is None:
+                continue
+            route = _fill_summary_route(summary)
+            instrument = instrument_summaries.get(route)
+            key = (lifecycle.key.name, route)
+            accumulator = accumulators.setdefault(
+                key,
+                _VolumeAccumulator(pair_name=lifecycle.key.name, route=route),
+            )
+            accumulator.add_fill(summary, instrument=instrument)
+
+    rows: list[VolumeRow] = []
+    for accumulator in sorted(
+        accumulators.values(),
+        key=lambda item: (item.pair_name, item.route.label),
+    ):
+        instrument = instrument_summaries.get(accumulator.route)
+        reference_price = accumulator.reference_price
+        min_qty_base = instrument.min_quantity if instrument is not None else None
+        tick_base = _instrument_quantity_tick(instrument)
+        rows.append(
+            VolumeRow(
+                pair_name=accumulator.pair_name,
+                market=accumulator.route.label,
+                fills=accumulator.fills,
+                quantity=accumulator.quantity,
+                bot_usd_volume=accumulator.bot_usd_volume,
+                market_usd_volume=market_usd_volumes.get(accumulator.route),
+                min_qty_base=min_qty_base,
+                min_qty_usd=_quantity_usd_value(
+                    min_qty_base,
+                    reference_price=reference_price,
+                    instrument=instrument,
+                ),
+                tick_base=tick_base,
+                tick_usd=_quantity_usd_value(
+                    tick_base,
+                    reference_price=reference_price,
+                    instrument=instrument,
+                ),
+            )
+        )
+    return tuple(rows)
+
+
+def render_volume_table(
+    rows: Sequence[VolumeRow],
+    *,
+    options: ReportOptions | None = None,
+) -> str:
+    """Render volume and local sizing context by strategy pair and market."""
+
+    options = options or ReportOptions()
+    headers = (
+        "Pair",
+        "Market",
+        "Fills",
+        "Qty",
+        "Bot USD Vol",
+        "Market USD Vol",
+        "Min Qty Base",
+        "Min Qty USD",
+        "Tick Base",
+        "Tick USD",
+    )
+    body = [
+        (
+            row.pair_name,
+            row.market,
+            str(row.fills),
+            _format_quantity(row.quantity),
+            _format_decimal(row.bot_usd_volume, options.money_places),
+            _format_optional_money_word(row.market_usd_volume, options.money_places),
+            _format_optional_quantity(row.min_qty_base),
+            _format_optional_money_word(row.min_qty_usd, options.money_places),
+            _format_optional_quantity(row.tick_base),
+            _format_optional_money_word(row.tick_usd, options.money_places),
+        )
+        for row in rows
+    ]
+    return _format_table(
+        headers,
+        body,
+        align_right=set(headers) - {"Pair", "Market"},
+    )
+
+
+def build_sizing_rows(
+    routes: Iterable[RuntimeRoute],
+    *,
+    quantity_diagnostics: Sequence[QuantityDiagnostic] = (),
+    instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] | None = None,
+    market_snapshot: MarketSnapshot | None = None,
+) -> tuple[SizingRow, ...]:
+    """Build operator sizing rows from runtime logs and cached instruments."""
+
+    instrument_summaries = instrument_summaries or {}
+    rows: list[SizingRow] = []
+    for diagnostic in quantity_diagnostics:
+        instrument = (
+            instrument_summaries.get(diagnostic.route)
+            if diagnostic.route is not None
+            else None
+        )
+        contract_size = diagnostic.contract_size or (
+            instrument.contract_size if instrument is not None else None
+        )
+        rows.append(
+            SizingRow(
+                route=diagnostic.route.label if diagnostic.route is not None else "-",
+                pair_name=diagnostic.pair_name or "-",
+                nominal_usd=diagnostic.nominal_usd,
+                percent=diagnostic.percent,
+                available_usd=diagnostic.available_usd,
+                mark_price=diagnostic.mark_price,
+                contract_size=contract_size,
+                min_quantity=diagnostic.min_quantity,
+                quantity_step=diagnostic.quantity_step,
+                min_usd=_sizing_usd(
+                    diagnostic.min_quantity,
+                    mark_price=diagnostic.mark_price,
+                    contract_size=contract_size,
+                ),
+                step_usd=_sizing_usd(
+                    diagnostic.quantity_step,
+                    mark_price=diagnostic.mark_price,
+                    contract_size=contract_size,
+                ),
+                resolved_quantity=diagnostic.resolved_quantity,
+                resolved_usd=diagnostic.resolved_usd
+                or _sizing_usd(
+                    diagnostic.resolved_quantity,
+                    mark_price=diagnostic.mark_price,
+                    contract_size=contract_size,
+                ),
+                status=diagnostic.status,
+                source=diagnostic.source,
+            )
+        )
+
+    diagnostic_marks = _diagnostic_marks_by_route(quantity_diagnostics)
+    route_set = set(routes)
+    route_set.update(instrument_summaries)
+    for route in sorted(route_set):
+        instrument = instrument_summaries.get(route)
+        if instrument is None:
+            continue
+        mark_price = (
+            diagnostic_marks.get(route)
+            or _market_snapshot_reference_price(market_snapshot)
+        )
+        min_quantity = instrument.min_quantity
+        quantity_step = _instrument_quantity_tick(instrument)
+        rows.append(
+            SizingRow(
+                route=route.label,
+                pair_name="-",
+                nominal_usd=None,
+                percent=None,
+                available_usd=None,
+                mark_price=mark_price,
+                contract_size=instrument.contract_size,
+                min_quantity=min_quantity,
+                quantity_step=quantity_step,
+                min_usd=_sizing_usd(
+                    min_quantity,
+                    mark_price=mark_price,
+                    contract_size=instrument.contract_size,
+                ),
+                step_usd=_sizing_usd(
+                    quantity_step,
+                    mark_price=mark_price,
+                    contract_size=instrument.contract_size,
+                ),
+                resolved_quantity=None,
+                resolved_usd=None,
+                status="cached",
+                source="market_db",
+            )
+        )
+    return tuple(rows)
+
+
+def render_sizing_table(
+    rows: Sequence[SizingRow],
+    *,
+    options: ReportOptions | None = None,
+) -> str:
+    """Render minimum/step sizing diagnostics as an aligned Org table."""
+
+    options = options or ReportOptions()
+    headers = (
+        "Route",
+        "Pair",
+        "Nom USD",
+        "Pct",
+        "Avail USD",
+        "Mark",
+        "Contract",
+        "Min Qty",
+        "Step Qty",
+        "Min USD",
+        "Step USD",
+        "Resolved Qty",
+        "Resolved USD",
+        "Status",
+        "Src",
+    )
+    body = [
+        (
+            row.route,
+            row.pair_name,
+            _format_optional_money_word(row.nominal_usd, options.money_places),
+            _format_optional_quantity_word(row.percent),
+            _format_optional_money_word(row.available_usd, options.money_places),
+            _format_optional_money_word(row.mark_price, options.money_places),
+            _format_optional_quantity_word(row.contract_size),
+            _format_optional_quantity_word(row.min_quantity),
+            _format_optional_quantity_word(row.quantity_step),
+            _format_optional_money_word(row.min_usd, options.money_places),
+            _format_optional_money_word(row.step_usd, options.money_places),
+            _format_optional_quantity_word(row.resolved_quantity),
+            _format_optional_money_word(row.resolved_usd, options.money_places),
+            row.status,
+            row.source,
+        )
+        for row in rows
+    ]
+    return _format_table(
+        headers,
+        body,
+        align_right=set(headers) - {"Route", "Pair", "Status", "Src"},
     )
 
 
@@ -887,24 +1532,27 @@ def render_run_report(
     terminated_rows: Sequence[ReportRow],
     living_rows: Sequence[LivingTailRow],
     latent_rows: Sequence[LatentRow],
+    volume_rows: Sequence[VolumeRow] = (),
     *,
+    sizing_rows: Sequence[SizingRow] = (),
+    sizing_notes: Sequence[str] = (),
     market_snapshot: MarketSnapshot | None = None,
     report_at: datetime | None = None,
+    identity: ReportIdentity | None = None,
     options: ReportOptions | None = None,
 ) -> str:
     """Render the full operator report as Org sections."""
 
     options = options or ReportOptions()
+    timestamp = _report_timestamp(
+        terminated_rows,
+        living_rows,
+        latent_rows,
+        market_snapshot=market_snapshot,
+        report_at=report_at,
+    )
     sections = [
-        _format_org_heading(
-            _report_timestamp(
-                terminated_rows,
-                living_rows,
-                latent_rows,
-                market_snapshot=market_snapshot,
-                report_at=report_at,
-            )
-        ),
+        _format_org_heading(timestamp, report_name=identity.name if identity else None),
         render_market_snapshot_table(market_snapshot, options=options),
         "",
         "** Terminated pairs",
@@ -919,6 +1567,34 @@ def render_run_report(
         "** Latest latent pairs",
         _render_section_table(render_latent_table, latent_rows, options=options),
     ]
+    latent_gate_note = _render_latent_gate_note(latent_rows)
+    if latent_gate_note:
+        sections.append(latent_gate_note)
+    latent_deadline_note = _render_latent_deadline_note(latent_rows)
+    if latent_deadline_note:
+        sections.append(latent_deadline_note)
+    sections.extend(
+        (
+            "",
+            "** Sizing diagnostics",
+            _render_section_table(render_sizing_table, sizing_rows, options=options),
+        )
+    )
+    sizing_note = _render_sizing_note(sizing_rows, sizing_notes)
+    if sizing_note:
+        sections.append(sizing_note)
+    sections.extend(
+        (
+            "",
+            "** Volume by pair/market",
+            _render_section_table(render_volume_table, volume_rows, options=options),
+        )
+    )
+    volume_market_note = _render_volume_market_note(volume_rows)
+    if volume_market_note:
+        sections.append(volume_market_note)
+    if identity is not None:
+        sections.insert(1, _format_report_provenance(identity))
     return "\n".join(sections)
 
 
@@ -926,14 +1602,28 @@ def build_report_table(
     log_path: str | Path,
     *,
     db_url: str | None = None,
+    market_db_url: str | None = None,
     log_only: bool = False,
+    report_command: str | None = None,
+    run_started_at: datetime | None = None,
     options: ReportOptions | None = None,
 ) -> str:
     """Build the full report table from a runtime log and optional DB URL."""
 
+    log_path = Path(log_path)
     snapshot = parse_run_log_file(log_path)
+    resolved_run_started_at = run_started_at or _report_run_started_at(snapshot, log_path)
+    identity = build_report_identity(
+        snapshot.runtime_metadata,
+        log_path=log_path,
+        command_line=report_command or f"kolabi-run-report {shlex.quote(str(log_path))}",
+        run_started_at=resolved_run_started_at,
+    )
     fill_summaries: Mapping[str, DbFillSummary] = {}
     order_summaries: Mapping[str, DbOrderSummary] = {}
+    instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] = {}
+    market_usd_volumes: Mapping[RuntimeRoute, Decimal] = {}
+    sizing_notes: list[str] = []
     if not log_only:
         if not db_url:
             raise ReportError(
@@ -943,6 +1633,36 @@ def build_report_table(
         client_ids = _client_ids(snapshot.lifecycles.values())
         fill_summaries = fetch_fill_summaries(db_url, client_ids)
         order_summaries = fetch_order_summaries(db_url, client_ids)
+    routes = _routes_for_report(
+        snapshot.runtime_metadata.routes,
+        fill_summaries=fill_summaries.values(),
+        quantity_diagnostics=snapshot.quantity_diagnostics,
+    )
+    if market_db_url and routes:
+        try:
+            instrument_summaries = fetch_instrument_summaries(
+                market_db_url,
+                routes,
+                environment=snapshot.runtime_metadata.environment,
+            )
+        except ReportError:
+            sizing_notes.append(
+                "Market DB unavailable for sizing; showing runtime log values only."
+            )
+        else:
+            try:
+                market_usd_volumes = fetch_market_usd_volumes(
+                    market_db_url,
+                    routes,
+                    started_at=resolved_run_started_at,
+                    ended_at=snapshot.last_log_at or datetime.now(timezone.utc),
+                    environment=snapshot.runtime_metadata.environment,
+                    instrument_summaries=instrument_summaries,
+                )
+            except ReportError:
+                sizing_notes.append(
+                    "Market DB unavailable for market volume; Market USD Vol may be n/a."
+                )
     terminated_rows = build_report_rows(
         snapshot.lifecycles,
         fill_summaries=fill_summaries,
@@ -956,15 +1676,47 @@ def build_report_table(
         snapshot_at=snapshot.last_log_at,
     )
     latent_rows = build_latent_rows(snapshot.lifecycles, snapshot.latent_attempts)
+    sizing_rows = build_sizing_rows(
+        routes,
+        quantity_diagnostics=snapshot.quantity_diagnostics,
+        instrument_summaries=instrument_summaries,
+        market_snapshot=snapshot.market_snapshot,
+    )
+    volume_rows = build_volume_rows(
+        snapshot.lifecycles,
+        fill_summaries=fill_summaries,
+        instrument_summaries=instrument_summaries,
+        market_usd_volumes=market_usd_volumes,
+    )
     return render_run_report(
         terminated_rows,
         living_rows,
         latent_rows,
+        volume_rows,
+        sizing_rows=sizing_rows,
+        sizing_notes=sizing_notes,
         market_snapshot=snapshot.market_snapshot,
         report_at=snapshot.market_snapshot.recorded_at
         if snapshot.market_snapshot is not None
         else snapshot.last_log_at,
+        identity=identity,
         options=options,
+    )
+
+
+def build_report_identity(
+    metadata: RuntimeMetadata,
+    *,
+    log_path: str | Path,
+    command_line: str,
+    run_started_at: datetime,
+) -> ReportIdentity:
+    """Build the stable report identity used in headings and provenance."""
+
+    return ReportIdentity(
+        name=_runtime_report_name(metadata, Path(log_path)),
+        run_started_at=_as_utc(run_started_at),
+        command_line=command_line,
     )
 
 
@@ -985,6 +1737,25 @@ def resolve_account_db_url(
         return None
     values = _load_env_file(Path(env_file), env=env_mapping)
     return values.get("KOLABI_ACCOUNT_DB_URL")
+
+
+def resolve_market_db_url(
+    explicit_url: str | None,
+    *,
+    env_file: str | Path | None,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Resolve the market DB URL from CLI, environment, then env file."""
+
+    if explicit_url:
+        return explicit_url
+    env_mapping = env or os.environ
+    if env_mapping.get("KOLABI_MARKET_DB_URL"):
+        return env_mapping["KOLABI_MARKET_DB_URL"]
+    if env_file is None:
+        return None
+    values = _load_env_file(Path(env_file), env=env_mapping)
+    return values.get("KOLABI_MARKET_DB_URL")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1011,9 +1782,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Local account DB URL used for exact fill, fee, and liquidity data.",
     )
     parser.add_argument(
+        "--market-db-url",
+        help=(
+            "Local market DB URL used for cached instrument sizing and public "
+            "trade-volume data."
+        ),
+    )
+    parser.add_argument(
         "--env-file",
         default=".env.postgres",
-        help="Env file to read KOLABI_ACCOUNT_DB_URL from when needed.",
+        help=(
+            "Env file to read KOLABI_ACCOUNT_DB_URL and KOLABI_MARKET_DB_URL "
+            "from when needed."
+        ),
     )
     parser.add_argument(
         "--log-only",
@@ -1042,15 +1823,24 @@ def main(
 ) -> int:
     out = stdout or sys.stdout
     err = stderr or sys.stderr
-    args = build_parser().parse_args(argv)
+    raw_argv = tuple(argv if argv is not None else sys.argv[1:])
+    command_line = _format_command_line(_report_program_name(argv), raw_argv)
+    args = build_parser().parse_args(raw_argv)
     try:
         db_url = None
+        market_db_url = None
         if not args.log_only:
             db_url = resolve_account_db_url(args.account_db_url, env_file=args.env_file)
+            market_db_url = resolve_market_db_url(
+                args.market_db_url,
+                env_file=args.env_file,
+            )
         table = build_report_table(
             args.log_file,
             db_url=db_url,
+            market_db_url=market_db_url,
             log_only=args.log_only,
+            report_command=command_line,
             options=ReportOptions(price_places=args.price_dp),
         )
         if args.output:
@@ -1074,6 +1864,217 @@ def _parse_pair_key(raw: str) -> PairKey | None:
         return PairKey(name=name, attempt=int(attempt))
     except ValueError:
         return None
+
+
+def _parse_runtime_metadata_line(raw_line: str) -> RuntimeMetadata | None:
+    match = _RUNTIME_METADATA_RE.match(raw_line)
+    if match is None:
+        return None
+    routes = _parse_runtime_routes(match.group("routes"))
+    environment = _parse_runtime_environment(match.group("body"))
+    return RuntimeMetadata(
+        started_at=_parse_log_utc(match.group("log_ts")),
+        environment=environment,
+        routes=routes,
+    )
+
+
+def _parse_runtime_routes(raw_routes: str) -> tuple[RuntimeRoute, ...]:
+    routes: list[RuntimeRoute] = []
+    for raw_route in raw_routes.split(","):
+        fields = raw_route.strip().split(":", 2)
+        if len(fields) != 3:
+            continue
+        exchange, market_type, symbol = (field.strip() for field in fields)
+        if not exchange or not market_type or not symbol:
+            continue
+        routes.append(
+            RuntimeRoute(
+                exchange=exchange.lower(),
+                market_type=market_type.lower(),
+                symbol=symbol,
+            )
+        )
+    return tuple(routes)
+
+
+def _parse_runtime_environment(body: str) -> str | None:
+    for field in body.split():
+        if field.startswith("env="):
+            value = field.split("=", 1)[1].strip()
+            return value or None
+    return None
+
+
+def _merge_runtime_metadata(
+    current: RuntimeMetadata,
+    candidate: RuntimeMetadata,
+) -> RuntimeMetadata:
+    started_at = current.started_at
+    if started_at is None or (
+        candidate.started_at is not None and candidate.started_at < started_at
+    ):
+        started_at = candidate.started_at
+    return RuntimeMetadata(
+        started_at=started_at,
+        environment=current.environment or candidate.environment,
+        routes=current.routes or candidate.routes,
+    )
+
+
+def _parse_quantity_event(
+    event: str,
+    raw_pair: str,
+    body: str,
+) -> QuantityDiagnostic | None:
+    if event in {
+        "QTY_USD_READY",
+        "QTY_USD_RESOLVED",
+        "QTY_PCT_READY",
+        "QTY_PCT_RESOLVED",
+    }:
+        fields = body.split()
+        route = _parse_runtime_route_label(fields[0]) if fields else None
+        nominal = _quantity_nominal_from_token(fields[1]) if len(fields) >= 2 else None
+        values = _parse_key_value_fields(body)
+        if nominal is None:
+            nominal = _decimal_field(values, "nominal_usd", "nominal")
+        return QuantityDiagnostic(
+            pair_name=_pair_name_from_raw(raw_pair),
+            route=route,
+            status="resolved" if event.endswith("_RESOLVED") else "ready",
+            nominal_usd=nominal,
+            mark_price=_decimal_field(values, "mark"),
+            contract_size=_decimal_field(values, "contract", "contract_size"),
+            min_quantity=_decimal_field(values, "min", "min_quantity"),
+            quantity_step=_decimal_field(values, "step", "quantity_step"),
+            resolved_quantity=_decimal_field(values, "qty", "resolved"),
+            resolved_usd=_decimal_field(values, "usd"),
+            percent=(
+                _quantity_percent_from_token(fields[1])
+                if len(fields) >= 2
+                else None
+            ),
+            available_usd=_decimal_field(values, "available", "available_usd"),
+        )
+    if "QTY_USD_TOO_SMALL" not in body and "QTY_PCT_TOO_SMALL" not in body:
+        return None
+    values = _parse_key_value_fields(body)
+    pair_name = values.get("pair") or _pair_name_from_raw(raw_pair)
+    route = _parse_runtime_route_label(values.get("route", ""))
+    return QuantityDiagnostic(
+        pair_name=pair_name,
+        route=route,
+        status="too_small",
+        nominal_usd=_decimal_field(values, "nominal_usd"),
+        mark_price=_decimal_field(values, "mark"),
+        contract_size=_decimal_field(values, "contract", "contract_size"),
+        min_quantity=_decimal_field(values, "min", "min_quantity"),
+        quantity_step=_decimal_field(values, "step", "quantity_step"),
+        resolved_quantity=_decimal_field(values, "qty", "resolved"),
+        resolved_usd=_decimal_field(values, "usd"),
+        percent=_decimal_field(values, "percent"),
+        available_usd=_decimal_field(values, "available", "available_usd"),
+    )
+
+
+def _parse_quantity_exception_line(raw_line: str) -> QuantityDiagnostic | None:
+    if "QTY_USD_TOO_SMALL" not in raw_line and "QTY_PCT_TOO_SMALL" not in raw_line:
+        return None
+    match = _QTY_USD_EXCEPTION_RE.search(raw_line)
+    percent_match = None
+    if match is None:
+        percent_match = _QTY_PCT_EXCEPTION_RE.search(raw_line)
+        if percent_match is None:
+            return None
+        match = percent_match
+    values = _parse_key_value_fields(match.group("body"))
+    nominal = (
+        _optional_decimal_token(match.group("nominal"))
+        if percent_match is None
+        else _decimal_field(values, "nominal_usd", "nominal")
+    )
+    return QuantityDiagnostic(
+        pair_name=values.get("pair") or match.group("pair"),
+        route=_parse_runtime_route_label(match.group("route")),
+        status="too_small",
+        nominal_usd=_decimal_field(values, "nominal_usd") or nominal,
+        mark_price=_decimal_field(values, "mark"),
+        contract_size=_decimal_field(values, "contract", "contract_size"),
+        min_quantity=_decimal_field(values, "min", "min_quantity"),
+        quantity_step=_decimal_field(values, "step", "quantity_step"),
+        resolved_quantity=_decimal_field(values, "qty", "resolved"),
+        resolved_usd=_decimal_field(values, "usd"),
+        percent=(
+            None
+            if percent_match is None
+            else _optional_decimal_token(match.group("percent"))
+        ),
+        available_usd=_decimal_field(values, "available", "available_usd"),
+    )
+
+
+def _parse_key_value_fields(text: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for raw_token in text.split():
+        token = raw_token.strip().strip(",;")
+        if "=" not in token:
+            continue
+        key, value = token.split("=", 1)
+        fields[key.strip()] = value.strip().strip(",;")
+    return fields
+
+
+def _decimal_field(values: Mapping[str, str], *keys: str) -> Decimal | None:
+    for key in keys:
+        if key not in values:
+            continue
+        parsed = _optional_decimal_token(values[key])
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _quantity_nominal_from_token(token: str) -> Decimal | None:
+    if not token.startswith("U"):
+        return None
+    return _optional_decimal_token(token[1:])
+
+
+def _quantity_percent_from_token(token: str) -> Decimal | None:
+    if not token.startswith("%"):
+        return None
+    return _optional_decimal_token(token[1:])
+
+
+def _optional_decimal_token(token: str) -> Decimal | None:
+    text = token.strip().strip(",;")
+    if not text or text == "-":
+        return None
+    try:
+        return _decimal(text)
+    except Exception:
+        return None
+
+
+def _pair_name_from_raw(raw_pair: str) -> str:
+    return raw_pair.split("#", 1)[0]
+
+
+def _parse_runtime_route_label(raw: str | None) -> RuntimeRoute | None:
+    if not raw:
+        return None
+    fields = raw.strip().strip(",;").split(":", 2)
+    if len(fields) != 3:
+        return None
+    exchange, market_type, symbol = (field.strip() for field in fields)
+    if not exchange or not market_type or not symbol:
+        return None
+    return RuntimeRoute(
+        exchange=exchange.lower(),
+        market_type=market_type.lower(),
+        symbol=symbol,
+    )
 
 
 def _parse_head_sent(lifecycle: PairLifecycle, body: str) -> None:
@@ -1245,6 +2246,88 @@ def _parse_latent_head_sent(
     attempt.last_event = "HEAD_SENT"
 
 
+def _parse_latent_head_ack(
+    latent_attempts: dict[PairKey, LatentAttempt],
+    key: PairKey,
+    body: str,
+    log_time: datetime,
+) -> None:
+    _parse_latent_head_deadline(
+        latent_attempts,
+        key,
+        body,
+        log_time,
+        event="HEAD_ACK",
+        status="head_acked",
+    )
+
+
+def _parse_latent_head_visibility_timeout_armed(
+    latent_attempts: dict[PairKey, LatentAttempt],
+    key: PairKey,
+    body: str,
+    log_time: datetime,
+) -> None:
+    _parse_latent_head_deadline(
+        latent_attempts,
+        key,
+        body,
+        log_time,
+        event="HEAD_VISIBILITY_TIMEOUT_ARMED",
+        status="head_visibility_timeout_armed",
+    )
+
+
+def _parse_latent_head_deadline(
+    latent_attempts: dict[PairKey, LatentAttempt],
+    key: PairKey,
+    body: str,
+    log_time: datetime,
+    *,
+    event: str,
+    status: str,
+) -> None:
+    attempt = _latent_attempt(latent_attempts, key, log_time, event)
+    fields = body.split()
+    if fields:
+        attempt.head_client_id = fields[0]
+    if len(fields) >= 3:
+        attempt.deadline_at = _parse_iso_utc(fields[2])
+    attempt.status = status
+    attempt.last_event_at = log_time
+    attempt.last_event = event
+
+
+def _parse_latent_head_visibility_pending(
+    latent_attempts: dict[PairKey, LatentAttempt],
+    key: PairKey,
+    body: str,
+    log_time: datetime,
+) -> None:
+    attempt = _latent_attempt(latent_attempts, key, log_time, "HEAD_VISIBILITY_PENDING")
+    fields = body.split()
+    if len(fields) >= 2:
+        attempt.head_client_id = fields[1]
+    attempt.status = "head_visibility_pending"
+    attempt.last_event_at = log_time
+    attempt.last_event = "HEAD_VISIBILITY_PENDING"
+
+
+def _parse_latent_head_visibility_timeout(
+    latent_attempts: dict[PairKey, LatentAttempt],
+    key: PairKey,
+    body: str,
+    log_time: datetime,
+) -> None:
+    attempt = _latent_attempt(latent_attempts, key, log_time, "HEAD_VISIBILITY_TIMEOUT")
+    fields = body.split()
+    if len(fields) >= 3:
+        attempt.head_client_id = fields[2]
+    attempt.status = "head_visibility_timeout"
+    attempt.last_event_at = log_time
+    attempt.last_event = "HEAD_VISIBILITY_TIMEOUT"
+
+
 def _mark_latent_ended(
     latent_attempts: dict[PairKey, LatentAttempt],
     key: PairKey,
@@ -1368,6 +2451,238 @@ def _order_summary_for(
     return order_summaries.get(client_id)
 
 
+def _fill_summary_route(summary: DbFillSummary) -> RuntimeRoute:
+    return RuntimeRoute(
+        exchange=summary.exchange.lower(),
+        market_type=summary.market_type.lower(),
+        symbol=summary.symbol,
+    )
+
+
+def _routes_from_fill_summaries(
+    summaries: Iterable[DbFillSummary],
+) -> tuple[RuntimeRoute, ...]:
+    return tuple(sorted({_fill_summary_route(summary) for summary in summaries}))
+
+
+def _routes_for_report(
+    runtime_routes: Iterable[RuntimeRoute],
+    *,
+    fill_summaries: Iterable[DbFillSummary],
+    quantity_diagnostics: Iterable[QuantityDiagnostic],
+) -> tuple[RuntimeRoute, ...]:
+    routes = set(runtime_routes)
+    routes.update(_routes_from_fill_summaries(fill_summaries))
+    routes.update(
+        diagnostic.route
+        for diagnostic in quantity_diagnostics
+        if diagnostic.route is not None
+    )
+    return tuple(sorted(routes))
+
+
+def _instrument_summary_from_row(
+    row: ExchangeInstrument,
+    route: RuntimeRoute,
+) -> InstrumentSummary:
+    payload = dict(row.raw_payload or {})
+    min_quantity = _optional_positive_decimal(row.min_quantity)
+    contract_size = (
+        _optional_positive_decimal(row.contract_size)
+        or _first_payload_decimal(payload, ("contractSize", "contract_size"))
+        or Decimal("1")
+    )
+    return InstrumentSummary(
+        route=route,
+        environment=row.environment,
+        instrument_type=row.instrument_type,
+        tick_size=_optional_positive_decimal(row.tick_size),
+        contract_size=contract_size,
+        min_quantity=min_quantity,
+        quantity_step=_quantity_step_from_payload(payload, min_quantity=min_quantity),
+    )
+
+
+def _quantity_step_from_payload(
+    payload: Mapping[str, object],
+    *,
+    min_quantity: Decimal | None,
+) -> Decimal | None:
+    value = _first_payload_decimal(
+        payload,
+        (
+            "quantityStep",
+            "quantity_step",
+            "quantityIncrement",
+            "qtyIncrement",
+            "orderQtyStep",
+            "lotSize",
+            "stepSize",
+        ),
+    )
+    if value is not None:
+        return value
+    if min_quantity is not None and min_quantity > 0:
+        return min_quantity
+    return _first_payload_decimal(payload, ("contractSize", "contract_size"))
+
+
+def _instrument_quantity_tick(instrument: InstrumentSummary | None) -> Decimal | None:
+    if instrument is None:
+        return None
+    if instrument.quantity_step is not None and instrument.quantity_step > 0:
+        return instrument.quantity_step
+    return instrument.min_quantity
+
+
+def _quantity_usd_value(
+    quantity: Decimal | None,
+    *,
+    reference_price: Decimal | None,
+    instrument: InstrumentSummary | None,
+) -> Decimal | None:
+    if quantity is None or reference_price is None:
+        return None
+    return _usd_notional(reference_price, quantity, instrument)
+
+
+def _sizing_usd(
+    quantity: Decimal | None,
+    *,
+    mark_price: Decimal | None,
+    contract_size: Decimal | None,
+) -> Decimal | None:
+    if quantity is None or mark_price is None:
+        return None
+    multiplier = contract_size or Decimal("1")
+    if multiplier <= 0:
+        multiplier = Decimal("1")
+    return quantity * mark_price * multiplier
+
+
+def _diagnostic_marks_by_route(
+    diagnostics: Sequence[QuantityDiagnostic],
+) -> dict[RuntimeRoute, Decimal]:
+    marks: dict[RuntimeRoute, Decimal] = {}
+    for diagnostic in diagnostics:
+        if diagnostic.route is None or diagnostic.mark_price is None:
+            continue
+        marks[diagnostic.route] = diagnostic.mark_price
+    return marks
+
+
+def _market_snapshot_reference_price(
+    snapshot: MarketSnapshot | None,
+) -> Decimal | None:
+    if snapshot is None:
+        return None
+    return snapshot.mark_price or snapshot.last_price or snapshot.index_price
+
+
+def _usd_notional(
+    price: Decimal,
+    quantity: Decimal,
+    instrument: InstrumentSummary | None,
+) -> Decimal:
+    contract_size = instrument.contract_size if instrument is not None else Decimal("1")
+    if contract_size <= 0:
+        contract_size = Decimal("1")
+    return price * quantity * contract_size
+
+
+def _raw_event_is_public_trade(event: RawExchangeEvent) -> bool:
+    stream = (event.stream_kind or "").lower()
+    scope = (event.account_scope or "public").lower()
+    if scope != "public" and "public" not in stream:
+        return False
+    payload = event.payload or {}
+    fields = [
+        event.event_type,
+        stream,
+        _payload_text(payload, "feed"),
+        _payload_text(payload, "channel"),
+        _payload_text(payload, "channelName"),
+        _payload_text(payload, "topic"),
+        _payload_text(payload, "type"),
+    ]
+    return "trade" in " ".join(field for field in fields if field).lower()
+
+
+def _raw_trade_price_quantities(
+    payload: object,
+) -> tuple[tuple[Decimal, Decimal], ...]:
+    pairs: list[tuple[Decimal, Decimal]] = []
+    for item in _trade_payload_items(payload):
+        price = _first_payload_decimal(
+            item,
+            ("price", "p", "last", "lastPrice", "tradePrice"),
+        )
+        quantity = _first_payload_decimal(
+            item,
+            ("quantity", "qty", "q", "size", "volume", "amount", "v"),
+        )
+        if price is not None and quantity is not None:
+            pairs.append((price, quantity))
+    return tuple(pairs)
+
+
+def _trade_payload_items(payload: object) -> tuple[Mapping[str, object], ...]:
+    if isinstance(payload, Mapping):
+        items: list[Mapping[str, object]] = []
+        if _payload_has_price_and_quantity(payload):
+            items.append(payload)
+        for key in ("trade", "trades", "data", "events", "items", "result"):
+            if key in payload:
+                items.extend(_trade_payload_items(payload[key]))
+        return tuple(items)
+    if isinstance(payload, list | tuple):
+        items = []
+        for item in payload:
+            items.extend(_trade_payload_items(item))
+        return tuple(items)
+    return ()
+
+
+def _payload_has_price_and_quantity(payload: Mapping[str, object]) -> bool:
+    return (
+        _first_payload_decimal(
+            payload,
+            ("price", "p", "last", "lastPrice", "tradePrice"),
+        )
+        is not None
+        and _first_payload_decimal(
+            payload,
+            ("quantity", "qty", "q", "size", "volume", "amount", "v"),
+        )
+        is not None
+    )
+
+
+def _payload_text(payload: object, key: str) -> str:
+    if isinstance(payload, Mapping):
+        value = payload.get(key)
+        if value is not None:
+            return str(value)
+    return ""
+
+
+def _first_payload_decimal(
+    payload: Mapping[str, object],
+    keys: Sequence[str],
+) -> Decimal | None:
+    for key in keys:
+        value = payload.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            parsed = _decimal(value)
+        except Exception:
+            continue
+        if parsed > 0:
+            return parsed
+    return None
+
+
 def _decimal(value: object) -> Decimal:
     return Decimal(str(value))
 
@@ -1409,6 +2724,34 @@ def _parse_iso_utc(raw: str) -> datetime:
 
 def _parse_log_utc(raw: str) -> datetime:
     return datetime.strptime(raw, "%Y-%m-%d %H:%M:%S,%f").replace(tzinfo=timezone.utc)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _earliest_time(current: datetime | None, candidate: datetime) -> datetime:
+    candidate = _as_utc(candidate)
+    if current is None or candidate < current:
+        return candidate
+    return current
+
+
+def _latest_time(current: datetime | None, candidate: datetime) -> datetime:
+    candidate = _as_utc(candidate)
+    if current is None or candidate > current:
+        return candidate
+    return current
+
+
+def _report_run_started_at(snapshot: RunLogSnapshot, log_path: Path) -> datetime:
+    if snapshot.runtime_metadata.started_at is not None:
+        return snapshot.runtime_metadata.started_at
+    if snapshot.first_log_at is not None:
+        return snapshot.first_log_at
+    return datetime.fromtimestamp(log_path.stat().st_mtime, tz=timezone.utc)
 
 
 def _tail_amend_time(lifecycle: PairLifecycle, index: int) -> datetime | None:
@@ -1505,13 +2848,88 @@ def _format_time(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%m-%d %H:%M")
 
 
-def _format_org_heading(value: datetime) -> str:
+def _format_org_heading(value: datetime, *, report_name: str | None = None) -> str:
     local_value = value.astimezone(timezone.utc)
     weekdays = ("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim.")
-    return (
+    heading = (
         f"* <{local_value:%Y-%m-%d} {weekdays[local_value.weekday()]} "
         f"{local_value:%H:%M}>"
     )
+    if report_name:
+        return f"{heading} {report_name}"
+    return heading
+
+
+def _format_report_provenance(identity: ReportIdentity) -> str:
+    return (
+        f"Run UTC: {identity.run_started_at:%Y-%m-%d %H:%M:%S} | "
+        f"Command: {identity.command_line}"
+    )
+
+
+def _runtime_report_name(metadata: RuntimeMetadata, log_path: Path) -> str:
+    seed = _runtime_seed(metadata, log_path)
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+    codename = _REPORT_CODENAMES[int(digest[:8], 16) % len(_REPORT_CODENAMES)]
+    return f"{codename}-{_runtime_token(metadata, log_path)}"
+
+
+def _runtime_seed(metadata: RuntimeMetadata, log_path: Path) -> str:
+    labels = ",".join(sorted(route.label for route in metadata.routes))
+    started = metadata.started_at.isoformat() if metadata.started_at else ""
+    return "|".join(
+        (
+            started,
+            metadata.environment or "",
+            labels,
+            log_path.stem if not labels else "",
+        )
+    )
+
+
+def _runtime_token(metadata: RuntimeMetadata, log_path: Path) -> str:
+    if not metadata.routes:
+        return _slug_token(log_path.stem) or "unknown"
+    groups: list[tuple[str, list[str]]] = []
+    group_index: dict[str, int] = {}
+    for route in metadata.routes:
+        platform = _platform_token(route)
+        if platform not in group_index:
+            group_index[platform] = len(groups)
+            groups.append((platform, []))
+        instruments = groups[group_index[platform]][1]
+        instrument = _instrument_token(route.symbol)
+        if instrument and instrument not in instruments:
+            instruments.append(instrument)
+    return "-".join(
+        "-".join((platform, *instruments)) if instruments else platform
+        for platform, instruments in groups
+    )
+
+
+def _platform_token(route: RuntimeRoute) -> str:
+    exchange = _EXCHANGE_CODES.get(route.exchange, _slug_token(route.exchange))
+    market = _MARKET_CODES.get(route.market_type, _slug_token(route.market_type))
+    return f"{exchange}{market}"
+
+
+def _instrument_token(symbol: str) -> str:
+    text = symbol.strip().upper()
+    if "/" in text:
+        base = text.split("/", 1)[0]
+    else:
+        base = re.sub(r"^[A-Z]{2}_", "", text)
+        base = re.sub(r"[^A-Z0-9]", "", base)
+        for suffix in _QUOTE_SUFFIXES:
+            if base.endswith(suffix) and len(base) > len(suffix):
+                base = base[: -len(suffix)]
+                break
+    base = _BASE_ALIASES.get(base, base)
+    return _slug_token(base)
+
+
+def _slug_token(value: str) -> str:
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", value.lower())).strip("-")
 
 
 def _format_optional_time(value: datetime | None) -> str:
@@ -1545,6 +2963,12 @@ def _format_optional_quantity(value: Decimal | None) -> str:
     return _format_quantity(value)
 
 
+def _format_optional_quantity_word(value: Decimal | None) -> str:
+    if value is None:
+        return "n/a"
+    return _format_quantity(value)
+
+
 def _format_decimal(value: Decimal, places: int) -> str:
     quant = Decimal("1").scaleb(-places)
     return f"{value.quantize(quant, rounding=ROUND_HALF_UP):.{places}f}"
@@ -1553,6 +2977,12 @@ def _format_decimal(value: Decimal, places: int) -> str:
 def _format_optional_decimal(value: Decimal | None, places: int) -> str:
     if value is None:
         return ""
+    return _format_decimal(value, places)
+
+
+def _format_optional_money_word(value: Decimal | None, places: int) -> str:
+    if value is None:
+        return "n/a"
     return _format_decimal(value, places)
 
 
@@ -1665,6 +3095,70 @@ def _render_optional_summary(
     )
 
 
+def _render_latent_gate_note(rows: Sequence[LatentRow]) -> str:
+    if not any(row.gate == NO_GATE_LOG for row in rows):
+        return ""
+    return (
+        f"Gate {NO_GATE_LOG} means HEAD_SENT was logged but no GATE_WAIT-* line "
+        "was present for that attempt."
+    )
+
+
+def _render_latent_deadline_note(rows: Sequence[LatentRow]) -> str:
+    if not any(_format_latent_deadline(row) == NO_DEADLINE_LOG for row in rows):
+        return ""
+    return (
+        f"Deadline {NO_DEADLINE_LOG} means HEAD_SENT was logged but no "
+        "LATENT_TIMEOUT_ARMED, HEAD_ACK, or HEAD_VISIBILITY_TIMEOUT_ARMED deadline "
+        "was present for that attempt."
+    )
+
+
+def _render_volume_market_note(rows: Sequence[VolumeRow]) -> str:
+    if not any(row.market_usd_volume is None for row in rows):
+        return ""
+    return (
+        "Market USD Vol n/a means no local public trade events were found for "
+        "that market inside the run window."
+    )
+
+
+def _render_sizing_note(
+    rows: Sequence[SizingRow],
+    notes: Sequence[str],
+) -> str:
+    rendered = [note for note in notes if note]
+    if _sizing_runtime_market_disagrees(rows):
+        rendered.append(
+            "Sizing note: runtime rows show the values that actually accepted or "
+            "rejected strategy quantities; market_db rows show cached instrument "
+            "rules."
+        )
+    return "\n".join(rendered)
+
+
+def _sizing_runtime_market_disagrees(rows: Sequence[SizingRow]) -> bool:
+    runtime_rows = [row for row in rows if row.source == "runtime"]
+    market_rows = {row.route: row for row in rows if row.source == "market_db"}
+    for runtime_row in runtime_rows:
+        market_row = market_rows.get(runtime_row.route)
+        if market_row is None:
+            continue
+        if (
+            runtime_row.min_quantity is not None
+            and market_row.min_quantity is not None
+            and runtime_row.min_quantity != market_row.min_quantity
+        ):
+            return True
+        if (
+            runtime_row.quantity_step is not None
+            and market_row.quantity_step is not None
+            and runtime_row.quantity_step != market_row.quantity_step
+        ):
+            return True
+    return False
+
+
 def _report_timestamp(
     terminated_rows: Sequence[ReportRow],
     living_rows: Sequence[LivingTailRow],
@@ -1769,6 +3263,62 @@ def _latent_status(attempt: LatentAttempt) -> str:
     if attempt.gate:
         return "gate_wait"
     return attempt.last_event.lower()
+
+
+def _latent_gate_display(attempt: LatentAttempt) -> str:
+    if attempt.gate:
+        return attempt.gate
+    if attempt.head_client_id:
+        return NO_GATE_LOG
+    return ""
+
+
+def _format_latent_deadline(row: LatentRow) -> str:
+    if row.deadline_at is not None:
+        return _format_optional_time(row.deadline_at)
+    if row.last_event in {
+        "HEAD_SENT",
+        "HEAD_ACK",
+        "HEAD_VISIBILITY_PENDING",
+        "HEAD_VISIBILITY_TIMEOUT",
+    }:
+        return NO_DEADLINE_LOG
+    return ""
+
+
+def _report_program_name(argv: Sequence[str] | None) -> str:
+    if os.environ.get("KOLABI_RUN_REPORT_COMMAND_NAME"):
+        return os.environ["KOLABI_RUN_REPORT_COMMAND_NAME"]
+    if argv is not None:
+        return "kolabi-run-report"
+    return sys.argv[0]
+
+
+def _format_command_line(program: str, argv: Sequence[str]) -> str:
+    return " ".join(
+        shlex.quote(part)
+        for part in (program, *_redact_command_args(argv))
+    )
+
+
+def _redact_command_args(argv: Sequence[str]) -> tuple[str, ...]:
+    redacted: list[str] = []
+    redact_next = False
+    for arg in argv:
+        if redact_next:
+            redacted.append(redact_url(arg))
+            redact_next = False
+            continue
+        if arg in {"--account-db-url", "--market-db-url"}:
+            redacted.append(arg)
+            redact_next = True
+            continue
+        if arg.startswith("--account-db-url=") or arg.startswith("--market-db-url="):
+            key, value = arg.split("=", 1)
+            redacted.append(f"{key}={redact_url(value)}")
+            continue
+        redacted.append(arg)
+    return tuple(redacted)
 
 
 def _load_env_file(path: Path, *, env: Mapping[str, str]) -> dict[str, str]:

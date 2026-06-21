@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+from datetime import datetime, timezone
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
@@ -23,10 +25,17 @@ from kolabi.bot.run_report import (
     render_living_tail_table,
     render_market_snapshot_table,
     render_org_table,
+    render_run_report,
     render_terminated_counts_line,
     render_terminated_summary_table,
 )
-from kolabi.shared.persistence import Base, ExchangeFill, ExchangeOrder
+from kolabi.shared.persistence import (
+    Base,
+    ExchangeFill,
+    ExchangeInstrument,
+    ExchangeOrder,
+    RawExchangeEvent,
+)
 
 
 SAMPLE_LOG = "\n".join(
@@ -49,6 +58,35 @@ SAMPLE_LOG = "\n".join(
         "2026-06-17 23:21:32,555 MainThread~20 /strategy_runtime.py@1@x/ "
         "UPDATE (MM_BUY#4): closed--closed 12.0 0.1669 0.1669 sell 12.00 "
         "0.1669 2026-06-17T23:21:31.902000+00:00",
+    )
+)
+
+
+ROUTED_SAMPLE_LOG = "\n".join(
+    (
+        "2026-06-17 23:04:59,000 MainThread~20 /service.py@729@_wait_until_ready/ "
+        "kraken runtime preflight routes=kraken:futures:PF_ADAUSD,"
+        "kraken:futures:PI_XBTUSD,binance:futures:BTCUSDT,"
+        "binance:futures:SOLUSDT env=live "
+        "market_db=postgresql+psycopg://kolabi:***@127.0.0.1:15433/kolabi_market "
+        "account_db=postgresql+psycopg://kolabi:***@127.0.0.1:15433/kolabi_account",
+        SAMPLE_LOG,
+    )
+)
+
+
+XBT_TOO_SMALL_LOG = "\n".join(
+    (
+        "2026-06-20 21:53:57,168 MainThread~20 /service.py@753@_wait_until_ready/ "
+        "kraken runtime preflight routes=kraken:futures:PF_XBTUSD env=live "
+        "market_db=postgresql+psycopg://kolabi:***@127.0.0.1:15433/kolabi_market "
+        "account_db=postgresql+psycopg://kolabi:***@127.0.0.1:15433/kolabi_account",
+        "2026-06-20 21:53:57,248 MainThread~20 /service.py@781@_wait_until_ready/ "
+        "kraken runtime ready routes=kraken:futures:PF_XBTUSD "
+        "public_ages=kraken:PF_XBTUSD:0.22s private_age=0.17s",
+        "ValueError: Strategy 'MM_SEL' qty U5.0 is not placeable at startup "
+        "for kraken:futures:PF_XBTUSD: QTY_USD_TOO_SMALL pair=MM_SEL "
+        "nominal_usd=5.0 mark=63955.73455760697 contract_size=1 step=1 resolved=0",
     )
 )
 
@@ -258,6 +296,251 @@ def test_fetch_fill_summaries_aggregates_local_db_rows(postgres_url_factory) -> 
     assert "| +0.001680 | +0.000279 | +0.0139 | +0.000279 |" in table
 
 
+def test_report_adds_volume_by_pair_and_market_from_local_dbs(
+    tmp_path: Path,
+    postgres_url_factory,
+) -> None:
+    account_db_url = postgres_url_factory("run-report-volume-account")
+    account_engine = create_engine(account_db_url)
+    Base.metadata.create_all(account_engine)
+    with Session(account_engine) as session:
+        head = ExchangeOrder(
+            local_uuid="volume-order-head",
+            exchange="kraken",
+            environment="live",
+            market_type="futures",
+            account_scope="default",
+            symbol="PF_ADAUSD",
+            exchange_order_id="head-order",
+            client_order_id="H4alpha",
+            side="buy",
+            order_type="limit",
+            status="filled",
+            price=0.1667,
+            quantity=12,
+            filled_quantity=12,
+        )
+        tail = ExchangeOrder(
+            local_uuid="volume-order-tail",
+            exchange="kraken",
+            environment="live",
+            market_type="futures",
+            account_scope="default",
+            symbol="PF_ADAUSD",
+            exchange_order_id="tail-order",
+            client_order_id="T4beta",
+            side="sell",
+            order_type="stop",
+            status="filled",
+            price=0.1669,
+            quantity=12,
+            filled_quantity=12,
+        )
+        session.add_all([head, tail])
+        session.flush()
+        session.add_all(
+            [
+                ExchangeFill(
+                    local_uuid="volume-fill-head",
+                    order_id=head.id,
+                    exchange="kraken",
+                    exchange_fill_id="head-fill",
+                    price=0.16671,
+                    quantity=12,
+                    fee=0.0006,
+                    fee_currency="USD",
+                    liquidity_role="maker",
+                ),
+                ExchangeFill(
+                    local_uuid="volume-fill-tail",
+                    order_id=tail.id,
+                    exchange="kraken",
+                    exchange_fill_id="tail-fill",
+                    price=0.16685,
+                    quantity=12,
+                    fee=0.000801,
+                    fee_currency="USD",
+                    liquidity_role="taker",
+                ),
+            ]
+        )
+        session.commit()
+    account_engine.dispose()
+
+    market_db_url = postgres_url_factory("run-report-volume-market")
+    market_engine = create_engine(market_db_url)
+    Base.metadata.create_all(market_engine)
+    with Session(market_engine) as session:
+        session.add(
+            ExchangeInstrument(
+                exchange="kraken",
+                environment="live",
+                market_type="futures",
+                symbol="PF_ADAUSD",
+                instrument_type="flexible_futures",
+                tradeable=True,
+                tick_size=0.0001,
+                contract_size=1,
+                min_quantity=1,
+                raw_payload={"quantityStep": "0.5"},
+                updated_at=datetime(2026, 6, 17, 23, 0, tzinfo=timezone.utc),
+            )
+        )
+        session.add_all(
+            [
+                RawExchangeEvent(
+                    exchange="kraken",
+                    environment="live",
+                    market_type="futures",
+                    account_scope="public",
+                    symbol="PF_ADAUSD",
+                    stream_kind="public_ws",
+                    event_type="trade",
+                    payload={"price": "0.166", "qty": "100"},
+                    received_at=datetime(2026, 6, 17, 23, 10, tzinfo=timezone.utc),
+                ),
+                RawExchangeEvent(
+                    exchange="kraken",
+                    environment="live",
+                    market_type="futures",
+                    account_scope="public",
+                    symbol="PF_ADAUSD",
+                    stream_kind="public_ws",
+                    event_type="trade",
+                    payload={"data": [{"price": "0.167", "qty": "50"}]},
+                    received_at=datetime(2026, 6, 17, 23, 12, tzinfo=timezone.utc),
+                ),
+            ]
+        )
+        session.commit()
+    market_engine.dispose()
+
+    log_path = tmp_path / "sample.log"
+    log_path.write_text(SAMPLE_LOG, encoding="utf-8")
+    report = build_report_table(
+        log_path,
+        db_url=account_db_url,
+        market_db_url=market_db_url,
+    )
+
+    assert "** Volume by pair/market" in report
+    volume_line = next(
+        line for line in report.splitlines() if line.startswith("| MM_BUY ")
+    )
+    assert [cell.strip() for cell in volume_line.strip("|").split("|")] == [
+        "MM_BUY",
+        "kraken:futures:PF_ADAUSD",
+        "2",
+        "24",
+        "4.002720",
+        "24.950000",
+        "1",
+        "0.166780",
+        "0.5",
+        "0.083390",
+    ]
+
+
+def test_report_renders_runtime_sizing_failure_without_fills(tmp_path: Path) -> None:
+    log_path = tmp_path / "krf_xbt.log"
+    log_path.write_text(XBT_TOO_SMALL_LOG, encoding="utf-8")
+
+    report = build_report_table(log_path, log_only=True)
+
+    assert "** Sizing diagnostics" in report
+    sizing_line = next(line for line in report.splitlines() if "too_small" in line)
+    assert [cell.strip() for cell in sizing_line.strip("|").split("|")] == [
+        "kraken:futures:PF_XBTUSD",
+        "MM_SEL",
+        "5.000000",
+        "n/a",
+        "n/a",
+        "63955.734558",
+        "1",
+        "n/a",
+        "1",
+        "n/a",
+        "63955.734558",
+        "0",
+        "0.000000",
+        "too_small",
+        "runtime",
+    ]
+    assert "** Volume by pair/market\nNo rows." in report
+
+
+def test_report_compares_runtime_sizing_with_cached_instrument_rules(
+    tmp_path: Path,
+    postgres_url_factory,
+) -> None:
+    log_path = tmp_path / "krf_xbt.log"
+    log_path.write_text(XBT_TOO_SMALL_LOG, encoding="utf-8")
+    market_db_url = postgres_url_factory("run-report-sizing-market")
+    market_engine = create_engine(market_db_url)
+    Base.metadata.create_all(market_engine)
+    with Session(market_engine) as session:
+        session.add(
+            ExchangeInstrument(
+                exchange="kraken",
+                environment="live",
+                market_type="futures",
+                symbol="PF_XBTUSD",
+                instrument_type="flexible_futures",
+                tradeable=True,
+                tick_size=0.5,
+                contract_size=1,
+                min_quantity=0.0001,
+                raw_payload={"quantityStep": "0.0001"},
+                updated_at=datetime(2026, 6, 20, 21, 50, tzinfo=timezone.utc),
+            )
+        )
+        session.commit()
+    market_engine.dispose()
+
+    report = build_report_table(
+        log_path,
+        db_url=postgres_url_factory("run-report-sizing-account"),
+        market_db_url=market_db_url,
+    )
+
+    market_line = next(
+        line for line in report.splitlines() if line.rstrip().endswith("| market_db |")
+    )
+    assert [cell.strip() for cell in market_line.strip("|").split("|")] == [
+        "kraken:futures:PF_XBTUSD",
+        "-",
+        "n/a",
+        "n/a",
+        "n/a",
+        "63955.734558",
+        "1",
+        "0.0001",
+        "0.0001",
+        "6.395573",
+        "6.395573",
+        "n/a",
+        "n/a",
+        "cached",
+        "market_db",
+    ]
+    assert "Sizing note: runtime rows show the values that actually accepted or rejected strategy quantities" in report
+
+
+def test_report_keeps_log_sizing_when_market_db_is_unavailable(tmp_path: Path) -> None:
+    log_path = tmp_path / "krf_xbt.log"
+    log_path.write_text(XBT_TOO_SMALL_LOG, encoding="utf-8")
+
+    report = build_report_table(
+        log_path,
+        db_url="sqlite://",
+        market_db_url=f"sqlite:///{tmp_path / 'empty-market.sqlite'}",
+    )
+
+    assert "** Sizing diagnostics" in report
+    assert "too_small" in report
+    assert "Market DB unavailable for sizing; showing runtime log values only." in report
+
+
 def test_living_tail_rows_include_latest_metrics_and_db_order_state(postgres_url_factory) -> None:
     log = "\n".join(
         (
@@ -382,6 +665,114 @@ def test_latest_latent_rows_exclude_failed_latest_attempts() -> None:
     assert "| 06-18 19:00 | RB_SEL #1 | chain_wait | chain_wait |" in table
 
 
+def test_latest_latent_rows_mark_missing_gate_wait_after_head_sent() -> None:
+    log = "\n".join(
+        (
+            "2026-06-18 19:00:21,362 MainThread~20 /strategy_runtime.py@1@x/ "
+            "REPEAT_READY (MM_SEL#6): waiting_for_price_gate 0.0..1440.0 -",
+            "2026-06-18 19:00:22,537 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (MM_SEL#6): H6myrtle sell L 11.00 0.1627 -",
+        )
+    )
+
+    snapshot = parse_run_log_text(log)
+    rows = build_latent_rows(snapshot.lifecycles, snapshot.latent_attempts)
+    table = render_latent_table(rows)
+
+    assert len(rows) == 1
+    assert rows[0].gate == "no_gate_log"
+    assert "| 06-18 19:00 | MM_SEL #6 | head_sent | no_gate_log |" in table
+    assert "no_deadline_log" in table
+
+
+def test_latest_latent_rows_preserve_logged_gate_after_head_sent() -> None:
+    log = "\n".join(
+        (
+            "2026-06-18 19:00:21,362 MainThread~20 /strategy_runtime.py@1@x/ "
+            "REPEAT_READY (MM_SEL#6): waiting_for_price_gate 0.0..1440.0 -",
+            "2026-06-18 19:00:21,387 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (MM_SEL#6): ready bid 0.1627 - 0.0000 "
+            "0.0000..1000000000.00 pA L 0.1627 6.0",
+            "2026-06-18 19:00:22,537 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (MM_SEL#6): H6myrtle sell L 11.00 0.1627 -",
+        )
+    )
+
+    snapshot = parse_run_log_text(log)
+    rows = build_latent_rows(snapshot.lifecycles, snapshot.latent_attempts)
+    report = render_run_report((), (), rows)
+
+    assert len(rows) == 1
+    assert rows[0].gate == "ready bid"
+    assert "no_gate_log" not in report
+    assert "| 06-18 19:00 | MM_SEL #6 | head_sent | ready bid |" in report
+
+
+def test_latest_latent_rows_use_head_ack_deadline() -> None:
+    log = "\n".join(
+        (
+            "2026-06-18 19:00:21,362 MainThread~20 /strategy_runtime.py@1@x/ "
+            "REPEAT_READY (MM_SEL#6): waiting_for_price_gate 0.0..1440.0 -",
+            "2026-06-18 19:00:22,537 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (MM_SEL#6): H6myrtle sell L 11.00 0.1627 -",
+            "2026-06-18 19:00:23,537 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_ACK (MM_SEL#6): H6myrtle OID-H6 2026-06-18T19:01:23.537000+00:00",
+        )
+    )
+
+    snapshot = parse_run_log_text(log)
+    rows = build_latent_rows(snapshot.lifecycles, snapshot.latent_attempts)
+    table = render_latent_table(rows)
+
+    assert len(rows) == 1
+    assert rows[0].deadline_at == datetime(2026, 6, 18, 19, 1, 23, 537000, tzinfo=timezone.utc)
+    assert "head_acked" in table
+    assert "06-18 19:01" in table
+    assert "no_deadline_log" not in table
+
+
+def test_latest_latent_rows_use_visibility_timeout_deadline() -> None:
+    log = "\n".join(
+        (
+            "2026-06-18 19:00:21,362 MainThread~20 /strategy_runtime.py@1@x/ "
+            "REPEAT_READY (MM_SEL#6): waiting_for_price_gate 0.0..1440.0 -",
+            "2026-06-18 19:00:22,537 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (MM_SEL#6): H6myrtle sell L 11.00 0.1627 -",
+            "2026-06-18 19:00:52,537 MainThread~30 /strategy_runtime.py@1@x/ "
+            "HEAD_VISIBILITY_TIMEOUT_ARMED (MM_SEL#6): "
+            "H6myrtle OID-H6 2026-06-18T19:01:22.537000+00:00",
+        )
+    )
+
+    snapshot = parse_run_log_text(log)
+    rows = build_latent_rows(snapshot.lifecycles, snapshot.latent_attempts)
+    table = render_latent_table(rows)
+
+    assert len(rows) == 1
+    assert rows[0].deadline_at == datetime(2026, 6, 18, 19, 1, 22, 537000, tzinfo=timezone.utc)
+    assert "head_visibility_timeout_armed" in table
+    assert "06-18 19:01" in table
+    assert "no_deadline_log" not in table
+
+
+def test_full_report_explains_missing_gate_wait_marker() -> None:
+    log = "\n".join(
+        (
+            "2026-06-18 19:00:21,362 MainThread~20 /strategy_runtime.py@1@x/ "
+            "REPEAT_READY (MM_SEL#6): waiting_for_price_gate 0.0..1440.0 -",
+            "2026-06-18 19:00:22,537 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (MM_SEL#6): H6myrtle sell L 11.00 0.1627 -",
+        )
+    )
+
+    snapshot = parse_run_log_text(log)
+    rows = build_latent_rows(snapshot.lifecycles, snapshot.latent_attempts)
+    report = render_run_report((), (), rows)
+
+    assert "Gate no_gate_log means HEAD_SENT was logged but no GATE_WAIT-* line was present for that attempt." in report
+    assert "Deadline no_deadline_log means HEAD_SENT was logged but no LATENT_TIMEOUT_ARMED, HEAD_ACK, or HEAD_VISIBILITY_TIMEOUT_ARMED deadline was present for that attempt." in report
+
+
 def test_full_report_renders_three_sections_in_log_only_mode(tmp_path: Path) -> None:
     log_path = tmp_path / "sample.log"
     log_path.write_text(SAMPLE_LOG, encoding="utf-8")
@@ -389,10 +780,12 @@ def test_full_report_renders_three_sections_in_log_only_mode(tmp_path: Path) -> 
     table = build_report_table(log_path, log_only=True)
 
     lines = table.splitlines()
-    assert lines[0] == "* <2026-06-17 mer. 23:21>"
-    assert lines[1].startswith("| Latest prices |")
-    assert lines[3].startswith("| unavailable")
-    assert lines[5] == "** Terminated pairs"
+    assert lines[0].startswith("* <2026-06-17 mer. 23:21> ")
+    assert lines[1].startswith("Run UTC: 2026-06-17 23:05:38 |")
+    assert "Command: kolabi-run-report " in lines[1]
+    assert lines[2].startswith("| Latest prices |")
+    assert lines[4].startswith("| unavailable")
+    assert lines[6] == "** Terminated pairs"
     assert "\n** Terminated pairs" in table
     assert table.count("Latest prices") == 1
     assert "Side: B/S=1 | Liq: -=1" in table
@@ -401,6 +794,76 @@ def test_full_report_renders_three_sections_in_log_only_mode(tmp_path: Path) -> 
     assert "** Terminated pairs" in table
     assert "** Living tail-flying pairs\nNo rows." in table
     assert "** Latest latent pairs\nNo rows." in table
+    assert "** Sizing diagnostics\nNo rows." in table
+    assert "** Volume by pair/market\nNo rows." in table
+
+
+def test_full_report_name_is_stable_for_same_runtime(tmp_path: Path) -> None:
+    log_path = tmp_path / "routed.log"
+    log_path.write_text(ROUTED_SAMPLE_LOG, encoding="utf-8")
+
+    first = build_report_table(
+        log_path,
+        log_only=True,
+        report_command="scripts/kolabi-run-report --log-only logs/routed.log",
+    )
+    second = build_report_table(
+        log_path,
+        log_only=True,
+        report_command="scripts/kolabi-run-report --log-only logs/routed.log",
+    )
+
+    first_name = first.splitlines()[0].split("> ", 1)[1]
+    second_name = second.splitlines()[0].split("> ", 1)[1]
+
+    assert first_name == second_name
+    assert "-krf-ada-xbt-binf-xbt-sol" in first_name
+    suffix = first_name.rsplit("-", 1)[-1]
+    assert len(suffix) != 6 or not all(char in "0123456789abcdef" for char in suffix)
+    assert first.splitlines()[1] == (
+        "Run UTC: 2026-06-17 23:04:59 | Command: "
+        "scripts/kolabi-run-report --log-only logs/routed.log"
+    )
+    assert second.splitlines()[1] == first.splitlines()[1]
+
+
+def test_full_report_run_time_falls_back_to_log_mtime(tmp_path: Path) -> None:
+    log_path = tmp_path / "unstructured.log"
+    log_path.write_text("no structured runtime lines\n", encoding="utf-8")
+    mtime = datetime(2026, 6, 20, 8, 0, 0, tzinfo=timezone.utc).timestamp()
+    os.utime(log_path, (mtime, mtime))
+
+    table = build_report_table(log_path, log_only=True)
+
+    assert table.splitlines()[1].startswith("Run UTC: 2026-06-20 08:00:00 |")
+
+
+def test_cli_provenance_redacts_account_db_url(tmp_path: Path) -> None:
+    log_path = tmp_path / "sample.log"
+    log_path.write_text(SAMPLE_LOG, encoding="utf-8")
+    out = StringIO()
+    err = StringIO()
+
+    result = main(
+        [
+            "--log-only",
+            "--account-db-url",
+            "postgresql+psycopg://kolabi:secret@127.0.0.1:15433/kolabi_account",
+            "--market-db-url",
+            "postgresql+psycopg://kolabi:other-secret@127.0.0.1:15433/kolabi_market",
+            str(log_path),
+        ],
+        stdout=out,
+        stderr=err,
+    )
+
+    assert result == 0
+    assert err.getvalue() == ""
+    provenance = out.getvalue().splitlines()[1]
+    assert "secret" not in provenance
+    assert "other-secret" not in provenance
+    assert "postgresql+psycopg://kolabi:***@127.0.0.1:15433/kolabi_account" in provenance
+    assert "postgresql+psycopg://kolabi:***@127.0.0.1:15433/kolabi_market" in provenance
 
 
 def test_cli_log_only_writes_stdout(tmp_path: Path) -> None:
@@ -413,7 +876,8 @@ def test_cli_log_only_writes_stdout(tmp_path: Path) -> None:
 
     assert result == 0
     assert err.getvalue() == ""
-    assert out.getvalue().startswith("* <2026-06-17 mer. 23:21>")
+    assert out.getvalue().startswith("* <2026-06-17 mer. 23:21> ")
+    assert "\nRun UTC: " in out.getvalue()
     assert "| 06-17 23:05 | 06-17 23:21 | 00:15:52 | MM_BUY #4 |" in out.getvalue()
 
 
@@ -435,7 +899,8 @@ def test_cli_output_prepends_report_without_erasing_existing_content(tmp_path: P
     assert out.getvalue() == ""
     assert err.getvalue() == ""
     text = output_path.read_text(encoding="utf-8")
-    assert text.startswith("* <2026-06-17 mer. 23:21>\n")
+    assert text.startswith("* <2026-06-17 mer. 23:21> ")
+    assert "\nRun UTC: " in text
     assert "\n\n* older report\nolder body\n" in text
 
 
