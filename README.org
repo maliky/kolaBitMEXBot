@@ -24,11 +24,13 @@ Each pair can be gated by:
 - a head timeout, =tOut=, for unfilled head orders;
 - a repeat count, =essais= / =-n=;
 - a pause between repetitions, =pause= / =-p=;
+- an extra successful-tail cooldown, =cool= / =--cool=;
 - a hook dependency, where a pair starts only after another pair reaches the required terminal condition.
 
 Important runtime semantics:
 - =tps_run= controls when a new pair attempt may start. Once an attempt starts, it is not stopped only because the entry window closes.
 - =tOut= is stricter: if the head is not filled before the timeout, the head is cancelled and the attempt may repeat according to its repeat policy.
+- =pause= applies to normal repeat scheduling. =cool= is added on top of =pause= only after the tail fills and the pair terminates successfully.
 - Tail stops are grounded on private fill/order evidence, not on a guessed public price.
 - Tail updates are no-widen by design: the pure reducer should not emit a tail amend that worsens the protected stop.
 
@@ -37,7 +39,7 @@ Important runtime semantics:
 The active Org strategy grammar puts the type prefix on each non-empty value:
 - =pGate= uses =D=, =%=, or =A= before its two bounds, for example =D- +=, =D- -5=, or =%0.20 0.30=.
 - =hPrice= uses =D=, =%=, or =A= before one value; it is forced lazily only when =pGate= opens and is relative to the gate-open reference unless absolute =A= is used.
-- =qty= uses =A= or =%=, for example =A3=.
+- =qty= uses =A=, =%=, or =U=, for example =A3= or =U15= for USD notional converted from mark price.
 - =tPrice= uses =D=, =%=, or =A=, for example =D20= or =%0.10=.
 - =hDelta= uses =D= or =%= for =SL= and =LT= head trigger-to-limit offsets; signed =D= values are accepted but materialised as positive distances.
 - =tDelta= uses =D= when present.
@@ -55,7 +57,7 @@ Strategy files live under =orders/=.
 The active Org table grammar is:
 
 #+begin_example
-| exchg | symbol | name | tps_run | essais | tOut | pause | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
+| exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
 #+end_example
 
 The =exchg= and =symbol= columns are optional. When =exchg= is omitted, the CLI =--exchange= and =--market-type= are used. When =symbol= is omitted, the effective CLI symbol is used. If CLI =--symbol= is also omitted, the route default is selected: =PI_XBTUSD= for Kraken futures, =XBT/USD= for Kraken spot/margin, =BTCUSDT= for Binance futures/spot/margin/isolated margin, =XBTUSD= for BitMEX futures, and =XBT_USDT= for BitMEX spot. When present, rows use platform-specific symbols directly, for example =PI_XBTUSD=, =BTCUSDT=, or =XBTUSD=. Blank Org cells keep their typed defaults where a default exists. A multi-route strategy run requires one shared market DB URL and public/private feeders for every active exchange, market type, account scope, and symbol.

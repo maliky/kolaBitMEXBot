@@ -145,7 +145,7 @@ These are runtime/operator log labels, not exchange feed labels. Each entry says
 - Finds an orphan order :: (ORPHAN_FOUND) Appears at service startup when an exchange order still looks open but is not owned by the fresh runtime state.
 - Ignores a stale head cancel acknowledgement :: (HEAD_CANCEL_ACK_STALE) Appears when an ACK belongs to an older head attempt and must not affect the current attempt.
 - Introduces the field order for a runtime label :: (LEGEND--KEYWORD) Appears once near runtime startup; it gives the field names used by later lines with the same keyword.
-- Makes a repeat ready :: (REPEAT_READY) Appears when the repeat pause has elapsed and the repeated pair is back at its gate/launch step.
+- Makes a repeat ready :: (REPEAT_READY) Appears when the repeat wait has elapsed and the repeated pair is back at its gate/launch step.
 - Marks a lease as awaiting cancel confirmation :: (CANCEL_PENDING) Appears after the runtime sends a cancel against a tracked lease and waits for private closure evidence.
 - Receives head admission :: (HEAD_ACK) Appears after the exchange adapter acknowledges the head placement; the runtime can then arm fill and visibility timers.
 - Records a state change :: (UPDATE) Appears when a pair, side, status, quantity, or stop value changes; it is the broad lifecycle trace.
@@ -155,7 +155,7 @@ These are runtime/operator log labels, not exchange feed labels. Each entry says
 - Reports a gate check error :: (GATE_WAIT-ERR) Appears when runtime cannot fetch or interpret market state for a gate check; the head remains latent.
 - Reports tail telemetry :: (METRICS) Appears while a tail is living, submitted, or hooked; it records values used to judge trailing and amend behaviour.
 - Retries a cancel :: (CANCEL_RETRY) Appears when a lease stayed open beyond the cancel retry window; the runtime sends another cancel request.
-- Schedules a repeat :: (REPEAT_WAIT) Appears after a completed pair is scheduled to restart after its pause.
+- Schedules a repeat :: (REPEAT_WAIT) Appears after a completed pair is scheduled to restart after its repeat wait. The wait is =pause=, plus =cool= only when the tail filled and closed the pair successfully.
 - Sends a cancel command :: (CANCEL_SENT) Appears when a cancel is sent for a reason other than the direct head-timeout path.
 - Sends a head order :: (HEAD_SENT) Appears when the runtime dispatches the head placement command to the exchange adapter.
 - Sends a head timeout cancel :: (HEAD_CANCEL_SENT) Appears when the runtime sends the cancel caused by =HEAD_TIMEOUT=.
@@ -165,12 +165,14 @@ These are runtime/operator log labels, not exchange feed labels. Each entry says
 - Suppresses a replace-cancel side effect :: (AMEND_REPLACE_CANCEL_SUPPRESSED) Appears during cancel-replace amend handling when the cancel half should not be treated as a real tail close.
 - Times out a latent head :: (LATENT_TIMEOUT) Appears when a latent head waited too long before becoming placeable; the runtime abandons or advances according to the pair rules.
 - Times out a live head :: (HEAD_TIMEOUT) Appears when a head exceeded its configured =tOut= window; the next expected action is cancellation.
+- Times out a head visibility gap :: (HEAD_VISIBILITY_TIMEOUT) Appears when a sent head never reached ACK or private visibility before the safety deadline; the next expected action is cancellation.
 - Tracks one known live order lease :: (LEASE_OPEN) Appears when the runtime opens or observes a live head or tail order identity; it means the runtime is responsible for tracking and eventually closing that lease.
 - Waits for head capacity :: (HEAD_WAIT) Appears when a head is otherwise ready but the maximum number of active heads is already reached.
 - Waits for tail amend confirmation :: (AMEND_PENDING) Appears when an amend did not confirm by the configured deadline.
 - Waits for tail visibility :: (TAIL_PENDING) Appears when a tail placement was sent but private visibility did not confirm the tail by the deadline.
 - Waits on a latent gate prerequisite :: (GATE_WAIT-1) Appears while a latent head is still blocked by its hook dependency or start-time window.
 - Warns that head visibility is pending :: (HEAD_VISIBILITY_PENDING) Appears when placement was acknowledged but private visibility did not arrive before the visibility timeout.
+- Arms a head visibility safety timeout :: (HEAD_VISIBILITY_TIMEOUT_ARMED) Appears when a sent head has enough identity evidence to arm a cancel path even though ACK or private visibility is still missing.
 
 ** Five-layer lists
 *** Layer 1 — Raw Kraken/order reasons classified
