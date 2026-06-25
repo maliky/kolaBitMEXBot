@@ -9,6 +9,7 @@ from pathlib import Path
 from kolabi.bot.run_report import (
     PairKey,
     ReportOptions,
+    VolumeRow,
     build_latent_rows,
     build_living_tail_rows,
     build_report_rows,
@@ -25,6 +26,7 @@ from kolabi.bot.run_report import (
     render_run_report,
     render_terminated_counts_line,
     render_terminated_summary_table,
+    render_volume_table,
 )
 from kolabi.shared.persistence import (
     AccountBalance,
@@ -794,6 +796,70 @@ def test_report_compares_runtime_sizing_with_cached_instrument_rules(
     assert "Sizing note: runtime rows show the values that actually accepted or rejected strategy quantities" in report
 
 
+def test_volume_table_orders_rows_by_roi_per_hour() -> None:
+    rows = (
+        VolumeRow(
+            pair_name="SLOW",
+            market="kraken:futures:PF_ADAUSD",
+            fills=2,
+            quantity=Decimal("10"),
+            bot_usd_volume=Decimal("2"),
+            average_life_seconds=Decimal("60"),
+            average_roi_percent=Decimal("0.1"),
+            average_roi_per_hour_percent=Decimal("6"),
+            market_base_volume=None,
+            market_usd_volume=None,
+            min_qty_base=None,
+            min_qty_usd=None,
+            tick_base=None,
+            tick_usd=None,
+        ),
+        VolumeRow(
+            pair_name="FAST",
+            market="kraken:futures:PF_ADAUSD",
+            fills=2,
+            quantity=Decimal("10"),
+            bot_usd_volume=Decimal("2"),
+            average_life_seconds=Decimal("30"),
+            average_roi_percent=Decimal("0.2"),
+            average_roi_per_hour_percent=Decimal("24"),
+            market_base_volume=None,
+            market_usd_volume=None,
+            min_qty_base=None,
+            min_qty_usd=None,
+            tick_base=None,
+            tick_usd=None,
+        ),
+        VolumeRow(
+            pair_name="UNKNOWN",
+            market="kraken:futures:PF_ADAUSD",
+            fills=2,
+            quantity=Decimal("10"),
+            bot_usd_volume=Decimal("2"),
+            average_life_seconds=None,
+            average_roi_percent=None,
+            average_roi_per_hour_percent=None,
+            market_base_volume=None,
+            market_usd_volume=None,
+            min_qty_base=None,
+            min_qty_usd=None,
+            tick_base=None,
+            tick_usd=None,
+        ),
+    )
+
+    table = render_volume_table(rows)
+    body = [
+        line
+        for line in table.splitlines()
+        if line.startswith("| kraken:futures:PF_ADAUSD ")
+    ]
+
+    assert ["FAST", "SLOW", "UNKNOWN"] == [
+        line.strip("|").split("|")[1].strip() for line in body
+    ]
+
+
 def test_report_keeps_log_sizing_when_market_db_is_unavailable(tmp_path: Path) -> None:
     log_path = tmp_path / "krf_xbt.log"
     log_path.write_text(XBT_TOO_SMALL_LOG, encoding="utf-8")
@@ -1153,13 +1219,25 @@ def test_cli_log_only_writes_stdout(tmp_path: Path) -> None:
 def test_cli_output_prepends_report_without_erasing_existing_content(tmp_path: Path) -> None:
     log_path = tmp_path / "sample.log"
     output_path = tmp_path / "JOURNAL.org"
+    strategy_path = tmp_path / "strategy.org"
     log_path.write_text(SAMPLE_LOG, encoding="utf-8")
+    strategy_path.write_text(
+        "| name | qty |\n|------+-----|\n| MM_BUY | A12 |\n",
+        encoding="utf-8",
+    )
     output_path.write_text("* older report\nolder body\n", encoding="utf-8")
     out = StringIO()
     err = StringIO()
 
     result = main(
-        ["--log-only", str(log_path), "--output", str(output_path)],
+        [
+            "--log-only",
+            str(log_path),
+            "--ouput",
+            str(output_path),
+            "--strategy",
+            str(strategy_path),
+        ],
         stdout=out,
         stderr=err,
     )
@@ -1170,6 +1248,9 @@ def test_cli_output_prepends_report_without_erasing_existing_content(tmp_path: P
     text = output_path.read_text(encoding="utf-8")
     assert text.startswith("* <2026-06-17 mer. 23:21> ")
     assert "\nRun UTC: " in text
+    assert "\n** Strategy\n" in text
+    assert f"Path: {strategy_path}\n" in text
+    assert "| MM_BUY | A12 |" in text
     assert "\n\n* older report\nolder body\n" in text
 
 

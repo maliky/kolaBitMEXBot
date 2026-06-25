@@ -152,6 +152,7 @@ class RuntimeMetadata:
 
     started_at: datetime | None = None
     environment: str | None = None
+    strategy_path: str | None = None
     routes: tuple[RuntimeRoute, ...] = ()
 
 
@@ -1548,13 +1549,20 @@ def render_volume_table(
             _format_optional_quantity_word(row.market_base_volume),
             _format_optional_money_word(row.market_usd_volume, options.money_places),
         )
-        for row in rows
+        for row in sorted(rows, key=_volume_row_sort_key)
     ]
     return _format_table(
         headers,
         body,
         align_right=set(headers) - {"Pair", "Market"},
     )
+
+
+def _volume_row_sort_key(row: VolumeRow) -> tuple[bool, Decimal, str, str]:
+    roi_per_hour = row.average_roi_per_hour_percent
+    if roi_per_hour is None:
+        return (True, Decimal("0"), row.market, row.pair_name)
+    return (False, -roi_per_hour, row.market, row.pair_name)
 
 
 def build_sizing_rows(
@@ -2096,8 +2104,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output",
+        "--ouput",
         "-o",
         help="Prepend the Org report to this file instead of stdout.",
+    )
+    parser.add_argument(
+        "--strategy",
+        help=(
+            "Strategy file to copy under the report entry when --output is used. "
+            "If omitted, the report tries runtime metadata, then orders/<log-stem>.org."
+        ),
     )
     parser.add_argument(
         "--price-dp",
@@ -2140,6 +2156,12 @@ def main(
             ),
         )
         if args.output:
+            strategy_path = _resolve_strategy_copy_path(
+                explicit_path=args.strategy,
+                log_path=Path(args.log_file),
+            )
+            if strategy_path is not None:
+                table = _append_strategy_copy(table, strategy_path)
             _prepend_output(Path(args.output), table)
         else:
             print(table, file=out)
@@ -2167,10 +2189,13 @@ def _parse_runtime_metadata_line(raw_line: str) -> RuntimeMetadata | None:
     if match is None:
         return None
     routes = _parse_runtime_routes(match.group("routes"))
-    environment = _parse_runtime_environment(match.group("body"))
+    body = match.group("body")
+    environment = _parse_runtime_environment(body)
+    strategy_path = _parse_runtime_strategy_path(body)
     return RuntimeMetadata(
         started_at=_parse_log_utc(match.group("log_ts")),
         environment=environment,
+        strategy_path=strategy_path,
         routes=routes,
     )
 
@@ -2195,8 +2220,17 @@ def _parse_runtime_routes(raw_routes: str) -> tuple[RuntimeRoute, ...]:
 
 
 def _parse_runtime_environment(body: str) -> str | None:
+    return _parse_runtime_token(body, "env")
+
+
+def _parse_runtime_strategy_path(body: str) -> str | None:
+    return _parse_runtime_token(body, "strategy")
+
+
+def _parse_runtime_token(body: str, key: str) -> str | None:
+    prefix = f"{key}="
     for token in body.split():
-        if token.startswith("env="):
+        if token.startswith(prefix):
             value = token.split("=", 1)[1].strip()
             return value or None
     return None
@@ -2214,6 +2248,7 @@ def _merge_runtime_metadata(
     return RuntimeMetadata(
         started_at=started_at,
         environment=current.environment or candidate.environment,
+        strategy_path=current.strategy_path or candidate.strategy_path,
         routes=current.routes or candidate.routes,
     )
 
@@ -4024,6 +4059,37 @@ def _load_env_file(path: Path, *, env: Mapping[str, str]) -> dict[str, str]:
 
 def _compact_error(exc: BaseException) -> str:
     return " ".join(str(exc).split())
+
+
+def _resolve_strategy_copy_path(
+    *,
+    explicit_path: str | None,
+    log_path: Path,
+) -> Path | None:
+    if explicit_path:
+        return Path(explicit_path)
+    metadata_path = parse_run_log_file(log_path).runtime_metadata.strategy_path
+    if metadata_path:
+        return Path(metadata_path)
+    fallback = Path("orders") / f"{log_path.stem}.org"
+    if fallback.exists():
+        return fallback
+    fallback = Path("orders") / f"{log_path.stem}.tsv"
+    if fallback.exists():
+        return fallback
+    return None
+
+
+def _append_strategy_copy(text: str, strategy_path: Path) -> str:
+    strategy_text = strategy_path.read_text(encoding="utf-8").rstrip()
+    return (
+        text.rstrip()
+        + "\n\n** Strategy\n"
+        + f"Path: {strategy_path}\n\n"
+        + "#+begin_src org\n"
+        + strategy_text
+        + "\n#+end_src\n"
+    )
 
 
 def _prepend_output(path: Path, text: str) -> None:
