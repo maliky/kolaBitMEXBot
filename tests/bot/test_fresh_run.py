@@ -3,7 +3,11 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from kolabi.bot.fresh_run import feeder_plan_for_strategy, route_lines, strategy_pair_count
+from kolabi.bot.fresh_run import (
+    feeder_plan_for_strategy,
+    route_lines,
+    strategy_pair_count,
+)
 
 SCRIPT = Path("scripts/kolabi-fresh-run")
 
@@ -44,7 +48,7 @@ def test_fresh_run_route_resolution_accepts_decimal_absolute_quantity(tmp_path: 
             [
                 "| exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |",
                 "|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|",
-                "| KRKF | PF_XBTUSD | DEC | 0 60 | 1 | 4 |  |  | buy | L |  | A.0001 | S |  | D- + | D.5 | %1 |  |  |  |",
+                "| KRKF | PF_XBTUSD | DEC | 0 60 | 1 | 4 |  |  | buy | L |  | A.0001 | S |  | D- + | D.5 | B99.50 |  |  |  |",
             ]
         )
         + "\n",
@@ -118,8 +122,8 @@ def test_fresh_run_validates_strategy_before_purging(tmp_path: Path) -> None:
             [
                 "| exchg | symbol | name | tps_run | essais | tOut | pause | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |",
                 "|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|",
-                "| KRKF | PF_ADAUSD | DUP | 0 60 | 1 | 4 |  | buy | L |  | A1 | S |  | D- + | D.0001 | %1 |  |  |  |",
-                "| KRKF | PF_ADAUSD | DUP | 0 60 | 1 | 4 |  | sell | L |  | A1 | S |  | D- + | D.0001 | %1 |  |  |  |",
+                "| KRKF | PF_ADAUSD | DUP | 0 60 | 1 | 4 |  | buy | L |  | A1 | S |  | D- + | D.0001 | B99.50 |  |  |  |",
+                "| KRKF | PF_ADAUSD | DUP | 0 60 | 1 | 4 |  | sell | L |  | A1 | S |  | D- + | D.0001 | B99.50 |  |  |  |",
             ]
         )
         + "\n",

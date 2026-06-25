@@ -22,7 +22,7 @@ def _pair(name: str = "pair-a") -> OrderPairSpec:
         head_quantity_type="q",
         tail=TailSpec(side=Side.SELL, order_type="S-"),
         tail_price_spec=1.5,
-        tail_price_spec_type="t%",
+        tail_price_spec_type="tB",
         amount_type="q",
     )
 

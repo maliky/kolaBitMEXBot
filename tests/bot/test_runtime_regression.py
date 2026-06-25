@@ -8,9 +8,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from sqlalchemy.exc import SQLAlchemyError
-
-from kolabi.bot.exchange_routes import ExchangeRoute
 from kolabi.bot.domain import (
     HeadSpec,
     HeadState,
@@ -23,6 +20,7 @@ from kolabi.bot.domain import (
     TailState,
     TimeWindow,
 )
+from kolabi.bot.exchange_routes import ExchangeRoute
 from kolabi.bot.indicators import DummyIndicatorClient
 from kolabi.bot.service import (
     AdapterExchangePort,
@@ -60,6 +58,7 @@ from kolabi.shared.runtime_state import (
 )
 from kolabi.tree.account import AccountStateStore, AccountStreamConfig
 from kolabi.tree.kraken import KrakenConfig, KrakenTree
+from sqlalchemy.exc import SQLAlchemyError
 
 
 def _ready_runtime_state(
@@ -137,8 +136,8 @@ def _xbt_sell_tail_pair() -> OrderPairSpec:
         head_quantity=1,
         head_quantity_type="qA",
         tail=TailSpec(side=Side.BUY, order_type="S-"),
-        tail_price_spec=0.5,
-        tail_price_spec_type="t%",
+        tail_price_spec=49.88,
+        tail_price_spec_type="tB",
         amount_type="qA",
         head_order_price_spec=1.0,
         head_order_price_spec_type="hD",
@@ -1143,7 +1142,7 @@ def test_kraken_run_strategy_rejects_too_small_usd_quantity_at_startup(monkeypat
         symbol="PF_XBTUSD",
         head_quantity=1.0,
         head_quantity_type="qU",
-        amount_type="qUt%pD",
+        amount_type="qUtBpD",
     )
     strategy = StrategySpec(name="usd-too-small", pairs=(pair,))
     service = BotService(
@@ -1200,7 +1199,7 @@ def test_kraken_run_strategy_rejects_too_small_percent_quantity_at_startup(monke
         symbol="PF_XBTUSD",
         head_quantity=Decimal("0.5"),
         head_quantity_type="q%",
-        amount_type="q%t%pD",
+        amount_type="q%tBpD",
     )
     strategy = StrategySpec(name="pct-too-small", pairs=(pair,))
     service = BotService(
@@ -1308,6 +1307,73 @@ def test_adapter_exchange_port_forwards_execinst_once(monkeypatch) -> None:
     ack = asyncio.run(port.place_head(command))
 
     assert ack.order_id == "OID-1"
+    assert adapter_holder["adapter"].calls == [
+        {
+            "side": "sell",
+            "orderQty": 11,
+            "price": 75000.0,
+            "type_": "Limit",
+            "clOrdID": "CID-1",
+            "execInst": "ParticipateDoNotInitiate",
+        }
+    ]
+
+
+def test_adapter_exchange_port_keeps_head_ack_when_open_order_enrichment_fails(
+    monkeypatch,
+    caplog,
+) -> None:
+    class FakeAdapter:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+            self.calls: list[dict[str, object]] = []
+
+        def place_order(self, side: str, orderQty: object, **params: object) -> OrderAck:
+            self.calls.append({"side": side, "orderQty": orderQty, **params})
+            return OrderAck(order_id="OID-SPARSE", status="New")
+
+        def live_open_orders(self) -> list[dict[str, object]]:
+            raise TimeoutError("openorders lag")
+
+    adapter_holder: dict[str, FakeAdapter] = {}
+
+    def build_adapter(**kwargs) -> FakeAdapter:
+        adapter = FakeAdapter(**kwargs)
+        adapter_holder["adapter"] = adapter
+        return adapter
+
+    monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda _: build_adapter)
+    port = AdapterExchangePort(
+        exchange="kraken",
+        exchange_config=ExchangeConfig(
+            api_key="k",
+            api_secret="s",
+            base_url="https://demo-futures.kraken.com",
+            symbol="PI_XBTUSD",
+            adapter_kwargs={},
+        ),
+    )
+    command = PlaceHeadCommand(
+        kind=RuntimeCommandKind.PLACE,
+        symbol=Symbol("PI_XBTUSD"),
+        pair_name="pair-a",
+        request=PlaceOrderCommandRequest(
+            pair_name="pair-a",
+            side="sell",
+            ordType="Limit",
+            orderQty=11,
+            price=75000.0,
+            execInst="ParticipateDoNotInitiate",
+            clOrdID="CID-1",
+        ),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="kola"):
+        ack = asyncio.run(port.place_head(command))
+
+    assert ack.order_id == "OID-SPARSE"
+    assert ack.status == "New"
+    assert "HEAD_OPEN_ENRICH_SKIPPED (pair-a)" in caplog.text
     assert adapter_holder["adapter"].calls == [
         {
             "side": "sell",

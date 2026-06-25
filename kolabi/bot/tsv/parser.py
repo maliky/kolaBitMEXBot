@@ -19,7 +19,7 @@ from kolabi.bot.exchange_routes import parse_exchange_code
 from kolabi.bot.order_codes import parse_order_code, validate_order_code
 
 NumberPair = tuple[float, float]
-PERCENT_OPEN_BOUND = 90.0
+LOG_BPS_OPEN_BOUND = 100_000.0
 DIFFERENTIAL_OPEN_BOUND = 1_000_000.0
 ABSOLUTE_PRICE_OPEN_MAX = 1_000_000_000.0
 ORG_PLACEHOLDER_RE = re.compile(r"<[^>]+>")
@@ -241,28 +241,28 @@ def normalize_typed_strategy_row(row: Mapping[str, object]) -> _TypedStrategyRow
         _row_value(row, "tPrice"),
         field="tPrice",
         token_prefix="t",
-        allowed_suffixes={"A", "D", "%"},
+        allowed_suffixes={"A", "B", "D"},
         default_type="tD",
     )
     p_gate, head_price_type = _parse_optional_typed_interval(
         _row_value(row, "pGate"),
         field="pGate",
         token_prefix="p",
-        allowed_suffixes={"A", "D", "%"},
+        allowed_suffixes={"A", "B", "D"},
         default_type="pD",
     )
     h_price, head_order_price_type = _parse_optional_typed_number(
         _row_value(row, "hPrice"),
         field="hPrice",
         token_prefix="h",
-        allowed_suffixes={"A", "D", "%"},
+        allowed_suffixes={"A", "B", "D"},
         default_type="hD",
     )
     h_delta, head_delta_type = _parse_optional_typed_number(
         _row_value(row, "hDelta"),
         field="hDelta",
         token_prefix="o",
-        allowed_suffixes={"D", "%"},
+        allowed_suffixes={"B", "D"},
         default_type="oD",
     )
     t_delta = _parse_optional_tail_delta(_row_value(row, "tDelta"))
@@ -621,7 +621,7 @@ def _parse_optional_tail_unblock(value: object) -> tuple[float | None, str]:
         value,
         field="tUblk",
         token_prefix="u",
-        allowed_suffixes={"D", "%"},
+        allowed_suffixes={"B", "D"},
         default_type="uD",
     )
     if parsed is not None and parsed < 0:
@@ -668,10 +668,10 @@ def _open_interval_for_suffix(suffix: str) -> NumberPair:
 
 
 def _bounds_for_suffix(suffix: str, low: str, high: str) -> tuple[str, str]:
-    if suffix == "%":
+    if suffix == "B":
         return (
-            str(-PERCENT_OPEN_BOUND) if low == "-" else low,
-            str(PERCENT_OPEN_BOUND) if high == "+" else high,
+            str(-LOG_BPS_OPEN_BOUND) if low == "-" else low,
+            str(LOG_BPS_OPEN_BOUND) if high == "+" else high,
         )
     if suffix == "D":
         return (

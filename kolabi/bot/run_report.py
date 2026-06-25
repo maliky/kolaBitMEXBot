@@ -17,7 +17,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence, TextIO
 
@@ -25,7 +25,9 @@ from sqlalchemy import create_engine, or_, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from kolabi.bot.price_units import signed_logbps_move
 from kolabi.shared.persistence import (
+    AccountBalance,
     ExchangeFill,
     ExchangeInstrument,
     ExchangeOrder,
@@ -33,9 +35,14 @@ from kolabi.shared.persistence import (
 )
 from kolabi.shared.redaction import redact_url
 
-
 NO_GATE_LOG = "no_gate_log"
 NO_DEADLINE_LOG = "no_deadline_log"
+EVIDENCE_FILL_DB = "fill_db"
+EVIDENCE_ORDER_DB = "order_db"
+EVIDENCE_LOG = "log"
+DEFAULT_MAKER_FEE_RATE = Decimal("0.0002")
+DEFAULT_TAKER_FEE_RATE = Decimal("0.0005")
+MISSING_FILL_NOTE_LIMIT = 12
 
 
 class ReportError(RuntimeError):
@@ -66,7 +73,9 @@ class PairLifecycle:
 
     key: PairKey
     head_client_id: str | None = None
+    head_exchange_order_id: str | None = None
     tail_client_id: str | None = None
+    tail_exchange_order_id: str | None = None
     head_fill: FillLeg | None = None
     tail_fill: FillLeg | None = None
     tail_placed_at: datetime | None = None
@@ -174,6 +183,7 @@ class DbFillSummary:
     """DB-derived fill summary for one client order id."""
 
     client_order_id: str
+    exchange_order_id: str | None
     exchange: str
     environment: str
     market_type: str
@@ -192,11 +202,28 @@ class DbOrderSummary:
     """DB-derived latest order state for one client order id."""
 
     client_order_id: str
+    exchange_order_id: str | None
     side: str
     status: str
     price: Decimal | None
     quantity: Decimal
     filled_quantity: Decimal
+
+
+@dataclass(frozen=True)
+class OrderLegEvidence:
+    """Resolved report evidence for one head or tail leg."""
+
+    role: str
+    client_order_id: str | None
+    exchange_order_id: str | None
+    side: str
+    price: Decimal
+    quantity: Decimal
+    fee: Decimal | None
+    fee_currency: str | None
+    liquidity_role: str | None
+    source: str
 
 
 @dataclass(frozen=True)
@@ -213,6 +240,14 @@ class InstrumentSummary:
 
 
 @dataclass(frozen=True)
+class MarketVolumeSummary:
+    """Local public trade volume observed for one route during the run."""
+
+    base_volume: Decimal
+    usd_volume: Decimal
+
+
+@dataclass(frozen=True)
 class VolumeRow:
     """Aggregated run volume attributed to one strategy pair and market route."""
 
@@ -221,6 +256,10 @@ class VolumeRow:
     fills: int
     quantity: Decimal
     bot_usd_volume: Decimal
+    average_life_seconds: Decimal | None
+    average_roi_percent: Decimal | None
+    average_roi_per_hour_percent: Decimal | None
+    market_base_volume: Decimal | None
     market_usd_volume: Decimal | None
     min_qty_base: Decimal | None
     min_qty_usd: Decimal | None
@@ -264,6 +303,8 @@ class SizingRow:
     step_usd: Decimal | None
     resolved_quantity: Decimal | None
     resolved_usd: Decimal | None
+    market_base_volume: Decimal | None
+    market_usd_volume: Decimal | None
     status: str
     source: str
 
@@ -272,8 +313,8 @@ class SizingRow:
 class ReportRow:
     """One rendered terminated-pair row.
 
-    `amend_diff` is a price difference in quote units per base unit, for
-    example USD per ADA on PF_ADAUSD.  Gross and net are quote-currency amounts.
+    `amend_logbps` is the signed log basis point move from the initial tail
+    stop to the latest amended tail stop. Gross and net are quote-currency amounts.
     """
 
     key: PairKey
@@ -286,13 +327,17 @@ class ReportRow:
     tail_price: Decimal
     quantity: Decimal
     liquidity: str
+    head_source: str
+    tail_source: str
     amend_count: int
     tail_amend_1_at: datetime | None
     tail_amend_2_at: datetime | None
-    amend_diff: Decimal | None
+    amend_logbps: Decimal | None
     gross_usd: Decimal
     net_usd: Decimal | None
+    net_estimated: bool
     roi_percent: Decimal | None
+    roi_per_hour_percent: Decimal | None
     cumulative_net: Decimal | None
 
 
@@ -309,7 +354,7 @@ class LivingTailRow:
     head_liquidity: str
     tail_stop: Decimal | None
     reference_price: Decimal | None
-    current_distance: Decimal | None
+    current_distance_logbps: Decimal | None
     tail_status: str
     tail_filled_quantity: Decimal | None
 
@@ -338,11 +383,15 @@ class ReportOptions:
     diff_places: int = 5
     money_places: int = 6
     pct_places: int = 4
+    estimate_fees: bool = True
+    maker_fee_rate: Decimal = DEFAULT_MAKER_FEE_RATE
+    taker_fee_rate: Decimal = DEFAULT_TAKER_FEE_RATE
 
 
 @dataclass
 class _FillAccumulator:
     client_order_id: str
+    exchange_order_id: str | None
     exchange: str
     environment: str
     market_type: str
@@ -392,6 +441,7 @@ class _FillAccumulator:
             fee_currency = "mixed"
         return DbFillSummary(
             client_order_id=self.client_order_id,
+            exchange_order_id=self.exchange_order_id,
             exchange=self.exchange,
             environment=self.environment,
             market_type=self.market_type,
@@ -414,6 +464,9 @@ class _VolumeAccumulator:
     quantity: Decimal = Decimal("0")
     weighted_price: Decimal = Decimal("0")
     bot_usd_volume: Decimal = Decimal("0")
+    life_seconds: list[Decimal] = field(default_factory=list)
+    roi_percentages: list[Decimal] = field(default_factory=list)
+    roi_per_hour_percentages: list[Decimal] = field(default_factory=list)
 
     def add_fill(
         self,
@@ -435,6 +488,25 @@ class _VolumeAccumulator:
         if self.quantity <= 0:
             return None
         return self.weighted_price / self.quantity
+
+    def add_report_row(self, row: ReportRow) -> None:
+        self.life_seconds.append(Decimal(row.life_seconds))
+        if row.roi_percent is not None:
+            self.roi_percentages.append(row.roi_percent)
+        if row.roi_per_hour_percent is not None:
+            self.roi_per_hour_percentages.append(row.roi_per_hour_percent)
+
+    @property
+    def average_life_seconds(self) -> Decimal | None:
+        return _average(self.life_seconds)
+
+    @property
+    def average_roi_percent(self) -> Decimal | None:
+        return _average(self.roi_percentages)
+
+    @property
+    def average_roi_per_hour_percent(self) -> Decimal | None:
+        return _average(self.roi_per_hour_percentages)
 
 
 _EVENT_RE = re.compile(
@@ -584,6 +656,7 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
             _parse_head_sent(lifecycle, body)
             _parse_latent_head_sent(latent_attempts, key, body, log_time)
         elif event == "HEAD_ACK":
+            _parse_head_ack(lifecycle, body)
             _parse_latent_head_ack(latent_attempts, key, body, log_time)
         elif event == "UPDATE":
             _parse_update(lifecycle, body)
@@ -635,8 +708,9 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
 def fetch_fill_summaries(
     db_url: str,
     client_order_ids: Iterable[str],
+    exchange_order_ids: Iterable[str] = (),
 ) -> dict[str, DbFillSummary]:
-    """Fetch exact fill facts for the requested client order ids.
+    """Fetch exact fill facts for the requested order identities.
 
     Multiple fills for the same order are combined with a quantity-weighted
     average price and summed fees.  Liquidity is summarised as taker if any fill
@@ -644,15 +718,23 @@ def fetch_fill_summaries(
     """
 
     ids = sorted({client_id for client_id in client_order_ids if client_id})
-    if not ids:
+    exchange_ids = sorted(
+        {exchange_id for exchange_id in exchange_order_ids if exchange_id}
+    )
+    if not ids and not exchange_ids:
         return {}
+    predicates = []
+    if ids:
+        predicates.append(ExchangeOrder.client_order_id.in_(ids))
+    if exchange_ids:
+        predicates.append(ExchangeOrder.exchange_order_id.in_(exchange_ids))
     engine = create_engine(db_url, echo=False, future=True)
     try:
         with Session(engine) as session:
             rows = session.execute(
                 select(ExchangeOrder, ExchangeFill)
                 .join(ExchangeFill, ExchangeFill.order_id == ExchangeOrder.id)
-                .where(ExchangeOrder.client_order_id.in_(ids))
+                .where(or_(*predicates))
                 .order_by(ExchangeFill.local_timestamp, ExchangeFill.id)
             ).all()
     except SQLAlchemyError as exc:
@@ -660,15 +742,18 @@ def fetch_fill_summaries(
     finally:
         engine.dispose()
 
-    accumulators: dict[str, _FillAccumulator] = {}
+    accumulators: dict[tuple[str, str], _FillAccumulator] = {}
     for order, fill in rows:
-        client_id = order.client_order_id
-        if not client_id:
+        client_id = order.client_order_id or ""
+        exchange_id = order.exchange_order_id or ""
+        if not client_id and not exchange_id:
             continue
+        key = (client_id, exchange_id)
         accumulator = accumulators.setdefault(
-            client_id,
+            key,
             _FillAccumulator(
                 client_order_id=client_id,
+                exchange_order_id=exchange_id or None,
                 exchange=order.exchange,
                 environment=order.environment,
                 market_type=order.market_type,
@@ -684,42 +769,57 @@ def fetch_fill_summaries(
             fee_currency=fill.fee_currency,
             liquidity_role=fill.liquidity_role,
         )
-    return {
-        client_id: accumulator.summary()
-        for client_id, accumulator in accumulators.items()
-    }
+    summaries: dict[str, DbFillSummary] = {}
+    for accumulator in accumulators.values():
+        summary = accumulator.summary()
+        for identity in _summary_identity_keys(summary):
+            summaries[identity] = summary
+    return summaries
 
 
 def fetch_order_summaries(
     db_url: str,
     client_order_ids: Iterable[str],
+    exchange_order_ids: Iterable[str] = (),
 ) -> dict[str, DbOrderSummary]:
-    """Fetch latest local order state for requested client order ids."""
+    """Fetch latest local order state for requested order identities."""
 
     ids = sorted({client_id for client_id in client_order_ids if client_id})
-    if not ids:
+    exchange_ids = sorted(
+        {exchange_id for exchange_id in exchange_order_ids if exchange_id}
+    )
+    if not ids and not exchange_ids:
         return {}
+    predicates = []
+    if ids:
+        predicates.append(ExchangeOrder.client_order_id.in_(ids))
+    if exchange_ids:
+        predicates.append(ExchangeOrder.exchange_order_id.in_(exchange_ids))
     engine = create_engine(db_url, echo=False, future=True)
     try:
         with Session(engine) as session:
             rows = session.execute(
                 select(ExchangeOrder)
-                .where(ExchangeOrder.client_order_id.in_(ids))
+                .where(or_(*predicates))
                 .order_by(ExchangeOrder.local_timestamp, ExchangeOrder.id)
             ).scalars()
             summaries: dict[str, DbOrderSummary] = {}
             for order in rows:
-                client_id = order.client_order_id
-                if not client_id:
+                client_id = order.client_order_id or ""
+                exchange_id = order.exchange_order_id or ""
+                if not client_id and not exchange_id:
                     continue
-                summaries[client_id] = DbOrderSummary(
+                summary = DbOrderSummary(
                     client_order_id=client_id,
+                    exchange_order_id=exchange_id or None,
                     side=order.side,
                     status=order.status,
                     price=_optional_decimal(order.price),
                     quantity=_decimal(order.quantity),
                     filled_quantity=_decimal(order.filled_quantity),
                 )
+                for identity in _summary_identity_keys(summary):
+                    summaries[identity] = summary
     except SQLAlchemyError as exc:
         raise ReportError(f"could not read local account DB: {_compact_error(exc)}") from exc
     finally:
@@ -778,7 +878,7 @@ def fetch_instrument_summaries(
     return summaries
 
 
-def fetch_market_usd_volumes(
+def fetch_market_volumes(
     db_url: str,
     routes: Iterable[RuntimeRoute],
     *,
@@ -786,8 +886,8 @@ def fetch_market_usd_volumes(
     ended_at: datetime,
     environment: str | None = None,
     instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] | None = None,
-) -> dict[RuntimeRoute, Decimal]:
-    """Aggregate local public trade volume in USD for each route.
+) -> dict[RuntimeRoute, MarketVolumeSummary]:
+    """Aggregate local public trade volume for each route.
 
     The market DB is an optional local witness.  Only raw public trade events
     that already exist on disk inside the run window are counted.
@@ -804,7 +904,7 @@ def fetch_market_usd_volumes(
         for route in wanted
     }
     instrument_summaries = instrument_summaries or {}
-    totals: dict[RuntimeRoute, Decimal] = {}
+    totals: dict[RuntimeRoute, MarketVolumeSummary] = {}
     engine = create_engine(db_url, echo=False, future=True)
     try:
         with Session(engine) as session:
@@ -838,10 +938,21 @@ def fetch_market_usd_volumes(
                     continue
                 instrument = instrument_summaries.get(route)
                 for price, quantity in _raw_trade_price_quantities(event.payload):
-                    totals[route] = totals.get(route, Decimal("0")) + _usd_notional(
+                    previous = totals.get(
+                        route,
+                        MarketVolumeSummary(
+                            base_volume=Decimal("0"),
+                            usd_volume=Decimal("0"),
+                        ),
+                    )
+                    totals[route] = MarketVolumeSummary(
+                        base_volume=previous.base_volume + quantity,
+                        usd_volume=previous.usd_volume
+                        + _usd_notional(
                         price,
                         quantity,
                         instrument,
+                        ),
                     )
     except SQLAlchemyError as exc:
         raise ReportError(f"could not read local market DB: {_compact_error(exc)}") from exc
@@ -850,15 +961,58 @@ def fetch_market_usd_volumes(
     return totals
 
 
+def fetch_account_available_usd(
+    db_url: str,
+    routes: Iterable[RuntimeRoute],
+    *,
+    environment: str | None = None,
+) -> dict[RuntimeRoute, Decimal]:
+    """Fetch latest locally persisted USD availability for each route exchange."""
+
+    wanted = tuple(sorted(set(routes)))
+    if not wanted:
+        return {}
+    exchanges = tuple(sorted({route.exchange for route in wanted}))
+    latest_by_exchange: dict[str, Decimal] = {}
+    engine = create_engine(db_url, echo=False, future=True)
+    try:
+        with Session(engine) as session:
+            statement = (
+                select(AccountBalance)
+                .where(
+                    AccountBalance.exchange.in_(exchanges),
+                    AccountBalance.asset.in_(("USD", "USDT", "ZFUSD", "ZUSD")),
+                )
+                .order_by(AccountBalance.local_timestamp, AccountBalance.id)
+            )
+            if environment:
+                statement = statement.where(AccountBalance.environment == environment)
+            for balance in session.execute(statement).scalars():
+                latest_by_exchange[balance.exchange.lower()] = _decimal(balance.available)
+    except SQLAlchemyError as exc:
+        raise ReportError(f"could not read local account balances: {_compact_error(exc)}") from exc
+    finally:
+        engine.dispose()
+    return {
+        route: available
+        for route in wanted
+        if (available := latest_by_exchange.get(route.exchange.lower())) is not None
+    }
+
+
 def build_report_rows(
     lifecycles: Mapping[PairKey, PairLifecycle],
     *,
     fill_summaries: Mapping[str, DbFillSummary] | None = None,
+    order_summaries: Mapping[str, DbOrderSummary] | None = None,
     require_db: bool = False,
+    options: ReportOptions | None = None,
 ) -> tuple[ReportRow, ...]:
     """Build sorted report rows and a running cumulative net value."""
 
+    options = options or ReportOptions()
     fill_summaries = fill_summaries or {}
+    order_summaries = order_summaries or {}
     rows: list[ReportRow] = []
     cumulative_net: Decimal | None = Decimal("0")
     for lifecycle in sorted(
@@ -869,7 +1023,13 @@ def build_report_rows(
             else datetime.max.replace(tzinfo=timezone.utc)
         ),
     ):
-        row = _build_report_row(lifecycle, fill_summaries, require_db=require_db)
+        row = _build_report_row(
+            lifecycle,
+            fill_summaries,
+            order_summaries,
+            require_db=require_db,
+            options=options,
+        )
         if row.net_usd is None:
             cumulative = None
             cumulative_net = None
@@ -890,13 +1050,17 @@ def build_report_rows(
                 tail_price=row.tail_price,
                 quantity=row.quantity,
                 liquidity=row.liquidity,
+                head_source=row.head_source,
+                tail_source=row.tail_source,
                 amend_count=row.amend_count,
                 tail_amend_1_at=row.tail_amend_1_at,
                 tail_amend_2_at=row.tail_amend_2_at,
-                amend_diff=row.amend_diff,
+                amend_logbps=row.amend_logbps,
                 gross_usd=row.gross_usd,
                 net_usd=row.net_usd,
+                net_estimated=row.net_estimated,
                 roi_percent=row.roi_percent,
+                roi_per_hour_percent=row.roi_per_hour_percent,
                 cumulative_net=cumulative,
             )
         )
@@ -911,6 +1075,7 @@ def render_org_table(
     """Render report rows as an aligned Org table."""
 
     options = options or ReportOptions()
+    cumulative_header = "Cum est net" if any(row.net_estimated for row in rows) else "Cum net"
     headers = (
         "H fill UTC",
         "T fill UTC",
@@ -924,11 +1089,12 @@ def render_org_table(
         "A#",
         "Tamend1 UTC",
         "Tamend2 UTC",
-        "Amd Diff",
+        "Amd logbps",
         "Gross USD",
         "Net USD",
         "ROI %",
-        "Cum net",
+        "ROI/h %",
+        cumulative_header,
     )
     pair_name_width = max((len(row.key.name) for row in rows), default=4)
     pair_attempt_width = max((len(f"#{row.key.attempt}") for row in rows), default=2)
@@ -946,10 +1112,11 @@ def render_org_table(
             str(row.amend_count),
             _format_optional_time(row.tail_amend_1_at),
             _format_optional_time(row.tail_amend_2_at),
-            _format_signed_optional(row.amend_diff, options.diff_places),
+            _format_logbps_optional(row.amend_logbps),
             _format_signed(row.gross_usd, options.money_places),
             _format_signed_optional(row.net_usd, options.money_places),
             _format_signed_optional(row.roi_percent, options.pct_places),
+            _format_signed_optional(row.roi_per_hour_percent, options.pct_places),
             _format_signed_optional(row.cumulative_net, options.money_places),
         )
         for row in rows
@@ -959,11 +1126,12 @@ def render_org_table(
         "Tfill",
         "Qty",
         "A#",
-        "Amd Diff",
+        "Amd logbps",
         "Gross USD",
         "Net USD",
         "ROI %",
-        "Cum net",
+        "ROI/h %",
+        cumulative_header,
     }
     return _format_table(headers, body, align_right=align_right)
 
@@ -982,12 +1150,14 @@ def render_terminated_summary_table(
         "Hfill",
         "Tfill",
         "Qty",
+        "Position",
         "A#",
         "AmendLife",
-        "amendDif",
+        "amendLogbps",
         "Gross USD",
         "Net USD",
         "ROI %",
+        "ROI/h %",
     )
     stats = ("min", "max", "median", "mode", "average")
     body = [
@@ -1007,14 +1177,16 @@ def render_terminated_summary_table(
                 options.diff_places,
             ),
             _format_stat_decimal(
+                _stat_value(_position_values(rows), stat),
+                options.diff_places,
+            ),
+            _format_stat_decimal(
                 _stat_value((Decimal(row.amend_count) for row in rows), stat),
                 2,
             ),
             _format_stat_life(_stat_value(_row_amend_phase_values(rows), stat)),
-            _format_stat_decimal(
-                _stat_value(_optional_values(row.amend_diff for row in rows), stat),
-                options.diff_places,
-                signed=True,
+            _format_logbps_optional(
+                _stat_value(_optional_values(row.amend_logbps for row in rows), stat)
             ),
             _format_stat_decimal(
                 _stat_value((row.gross_usd for row in rows), stat),
@@ -1028,6 +1200,14 @@ def render_terminated_summary_table(
             ),
             _format_stat_decimal(
                 _stat_value(_optional_values(row.roi_percent for row in rows), stat),
+                options.pct_places,
+                signed=True,
+            ),
+            _format_stat_decimal(
+                _stat_value(
+                    _optional_values(row.roi_per_hour_percent for row in rows),
+                    stat,
+                ),
                 options.pct_places,
                 signed=True,
             ),
@@ -1061,8 +1241,16 @@ def build_living_tail_rows(
         ),
         key=lambda item: item.head_fill.filled_at if item.head_fill else datetime.min,
     ):
-        head_summary = _fill_summary_for(lifecycle.head_client_id, fill_summaries)
-        tail_order = _order_summary_for(lifecycle.tail_client_id, order_summaries)
+        head_summary = _fill_summary_for(
+            lifecycle.head_client_id,
+            lifecycle.head_exchange_order_id,
+            fill_summaries,
+        )
+        tail_order = _order_summary_for(
+            lifecycle.tail_client_id,
+            lifecycle.tail_exchange_order_id,
+            order_summaries,
+        )
         telemetry = tail_telemetry.get(lifecycle.key)
         head_fill = lifecycle.head_fill
         if head_fill is None:
@@ -1097,7 +1285,11 @@ def build_living_tail_rows(
                 ),
                 tail_stop=tail_stop,
                 reference_price=telemetry.reference_price if telemetry else None,
-                current_distance=telemetry.current_distance if telemetry else None,
+                current_distance_logbps=(
+                    _signed_logbps_or_none(telemetry.reference_price, tail_stop)
+                    if telemetry is not None
+                    else None
+                ),
                 tail_status=tail_order.status if tail_order is not None else "",
                 tail_filled_quantity=(
                     tail_order.filled_quantity if tail_order is not None else None
@@ -1124,7 +1316,7 @@ def render_living_tail_table(
         "Qty",
         "Hliq",
         "Tstop",
-        "Dist",
+        "Dist logbps",
         "T status",
         "T filled",
     )
@@ -1140,7 +1332,7 @@ def render_living_tail_table(
             _format_quantity(row.quantity),
             row.head_liquidity,
             _format_optional_decimal(row.tail_stop, options.price_places),
-            _format_optional_decimal(row.current_distance, options.diff_places),
+            _format_logbps_optional(row.current_distance_logbps),
             row.tail_status,
             _format_optional_quantity(row.tail_filled_quantity),
         )
@@ -1149,7 +1341,7 @@ def render_living_tail_table(
     return _format_table(
         headers,
         body,
-        align_right={"Hfill", "Qty", "Tstop", "Dist", "T filled"},
+        align_right={"Hfill", "Qty", "Tstop", "Dist logbps", "T filled"},
     )
 
 
@@ -1236,17 +1428,25 @@ def build_volume_rows(
     *,
     fill_summaries: Mapping[str, DbFillSummary] | None = None,
     instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] | None = None,
-    market_usd_volumes: Mapping[RuntimeRoute, Decimal] | None = None,
+    market_volumes: Mapping[RuntimeRoute, MarketVolumeSummary] | None = None,
+    report_rows: Sequence[ReportRow] = (),
 ) -> tuple[VolumeRow, ...]:
     """Aggregate bot and market volume by strategy pair and route."""
 
     fill_summaries = fill_summaries or {}
     instrument_summaries = instrument_summaries or {}
-    market_usd_volumes = market_usd_volumes or {}
+    market_volumes = market_volumes or {}
     accumulators: dict[tuple[str, RuntimeRoute], _VolumeAccumulator] = {}
     for lifecycle in sorted(lifecycles.values(), key=lambda item: item.key):
-        for client_id in (lifecycle.head_client_id, lifecycle.tail_client_id):
-            summary = _fill_summary_for(client_id, fill_summaries)
+        for client_id, exchange_order_id in (
+            (lifecycle.head_client_id, lifecycle.head_exchange_order_id),
+            (lifecycle.tail_client_id, lifecycle.tail_exchange_order_id),
+        ):
+            summary = _fill_summary_for(
+                client_id,
+                exchange_order_id,
+                fill_summaries,
+            )
             if summary is None:
                 continue
             route = _fill_summary_route(summary)
@@ -1258,15 +1458,27 @@ def build_volume_rows(
             )
             accumulator.add_fill(summary, instrument=instrument)
 
+    for row in report_rows:
+        lifecycle = lifecycles.get(row.key)
+        if lifecycle is None:
+            continue
+        route = _route_for_lifecycle_fills(lifecycle, fill_summaries)
+        if route is None:
+            continue
+        accumulator = accumulators.get((row.key.name, route))
+        if accumulator is not None:
+            accumulator.add_report_row(row)
+
     rows: list[VolumeRow] = []
     for accumulator in sorted(
         accumulators.values(),
-        key=lambda item: (item.pair_name, item.route.label),
+        key=lambda item: (item.route.label, item.pair_name),
     ):
         instrument = instrument_summaries.get(accumulator.route)
         reference_price = accumulator.reference_price
         min_qty_base = instrument.min_quantity if instrument is not None else None
         tick_base = _instrument_quantity_tick(instrument)
+        market_volume = market_volumes.get(accumulator.route)
         rows.append(
             VolumeRow(
                 pair_name=accumulator.pair_name,
@@ -1274,7 +1486,15 @@ def build_volume_rows(
                 fills=accumulator.fills,
                 quantity=accumulator.quantity,
                 bot_usd_volume=accumulator.bot_usd_volume,
-                market_usd_volume=market_usd_volumes.get(accumulator.route),
+                average_life_seconds=accumulator.average_life_seconds,
+                average_roi_percent=accumulator.average_roi_percent,
+                average_roi_per_hour_percent=accumulator.average_roi_per_hour_percent,
+                market_base_volume=(
+                    market_volume.base_volume if market_volume is not None else None
+                ),
+                market_usd_volume=(
+                    market_volume.usd_volume if market_volume is not None else None
+                ),
                 min_qty_base=min_qty_base,
                 min_qty_usd=_quantity_usd_value(
                     min_qty_base,
@@ -1301,29 +1521,32 @@ def render_volume_table(
 
     options = options or ReportOptions()
     headers = (
-        "Pair",
         "Market",
+        "Pair",
         "Fills",
         "Qty",
         "Bot USD Vol",
-        "Market USD Vol",
-        "Min Qty Base",
-        "Min Qty USD",
-        "Tick Base",
-        "Tick USD",
+        "Avg Life",
+        "Avg ROI %",
+        "Avg ROI/h %",
+        "Mkt Base Vol",
+        "Mkt USD Vol",
     )
     body = [
         (
-            row.pair_name,
             row.market,
+            row.pair_name,
             str(row.fills),
             _format_quantity(row.quantity),
             _format_decimal(row.bot_usd_volume, options.money_places),
+            _format_optional_life(row.average_life_seconds),
+            _format_signed_optional(row.average_roi_percent, options.pct_places),
+            _format_signed_optional(
+                row.average_roi_per_hour_percent,
+                options.pct_places,
+            ),
+            _format_optional_quantity_word(row.market_base_volume),
             _format_optional_money_word(row.market_usd_volume, options.money_places),
-            _format_optional_quantity(row.min_qty_base),
-            _format_optional_money_word(row.min_qty_usd, options.money_places),
-            _format_optional_quantity(row.tick_base),
-            _format_optional_money_word(row.tick_usd, options.money_places),
         )
         for row in rows
     ]
@@ -1340,14 +1563,23 @@ def build_sizing_rows(
     quantity_diagnostics: Sequence[QuantityDiagnostic] = (),
     instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] | None = None,
     market_snapshot: MarketSnapshot | None = None,
+    market_volumes: Mapping[RuntimeRoute, MarketVolumeSummary] | None = None,
+    account_available_usd: Mapping[RuntimeRoute, Decimal] | None = None,
 ) -> tuple[SizingRow, ...]:
     """Build operator sizing rows from runtime logs and cached instruments."""
 
     instrument_summaries = instrument_summaries or {}
+    market_volumes = market_volumes or {}
+    account_available_usd = account_available_usd or {}
     rows: list[SizingRow] = []
     for diagnostic in quantity_diagnostics:
         instrument = (
             instrument_summaries.get(diagnostic.route)
+            if diagnostic.route is not None
+            else None
+        )
+        market_volume = (
+            market_volumes.get(diagnostic.route)
             if diagnostic.route is not None
             else None
         )
@@ -1360,7 +1592,10 @@ def build_sizing_rows(
                 pair_name=diagnostic.pair_name or "-",
                 nominal_usd=diagnostic.nominal_usd,
                 percent=diagnostic.percent,
-                available_usd=diagnostic.available_usd,
+                available_usd=_diagnostic_available_usd(
+                    diagnostic,
+                    account_available_usd,
+                ),
                 mark_price=diagnostic.mark_price,
                 contract_size=contract_size,
                 min_quantity=diagnostic.min_quantity,
@@ -1382,6 +1617,12 @@ def build_sizing_rows(
                     mark_price=diagnostic.mark_price,
                     contract_size=contract_size,
                 ),
+                market_base_volume=(
+                    market_volume.base_volume if market_volume is not None else None
+                ),
+                market_usd_volume=(
+                    market_volume.usd_volume if market_volume is not None else None
+                ),
                 status=diagnostic.status,
                 source=diagnostic.source,
             )
@@ -1390,39 +1631,47 @@ def build_sizing_rows(
     diagnostic_marks = _diagnostic_marks_by_route(quantity_diagnostics)
     route_set = set(routes)
     route_set.update(instrument_summaries)
+    route_set.update(account_available_usd)
+    route_set.update(market_volumes)
     for route in sorted(route_set):
         instrument = instrument_summaries.get(route)
-        if instrument is None:
-            continue
+        market_volume = market_volumes.get(route)
         mark_price = (
             diagnostic_marks.get(route)
             or _market_snapshot_reference_price(market_snapshot)
         )
-        min_quantity = instrument.min_quantity
+        min_quantity = instrument.min_quantity if instrument is not None else None
         quantity_step = _instrument_quantity_tick(instrument)
+        contract_size = instrument.contract_size if instrument is not None else None
         rows.append(
             SizingRow(
                 route=route.label,
                 pair_name="-",
                 nominal_usd=None,
                 percent=None,
-                available_usd=None,
+                available_usd=account_available_usd.get(route),
                 mark_price=mark_price,
-                contract_size=instrument.contract_size,
+                contract_size=contract_size,
                 min_quantity=min_quantity,
                 quantity_step=quantity_step,
                 min_usd=_sizing_usd(
                     min_quantity,
                     mark_price=mark_price,
-                    contract_size=instrument.contract_size,
+                    contract_size=contract_size,
                 ),
                 step_usd=_sizing_usd(
                     quantity_step,
                     mark_price=mark_price,
-                    contract_size=instrument.contract_size,
+                    contract_size=contract_size,
                 ),
                 resolved_quantity=None,
                 resolved_usd=None,
+                market_base_volume=(
+                    market_volume.base_volume if market_volume is not None else None
+                ),
+                market_usd_volume=(
+                    market_volume.usd_volume if market_volume is not None else None
+                ),
                 status="cached",
                 source="market_db",
             )
@@ -1440,9 +1689,6 @@ def render_sizing_table(
     options = options or ReportOptions()
     headers = (
         "Route",
-        "Pair",
-        "Nom USD",
-        "Pct",
         "Avail USD",
         "Mark",
         "Contract",
@@ -1450,17 +1696,12 @@ def render_sizing_table(
         "Step Qty",
         "Min USD",
         "Step USD",
-        "Resolved Qty",
-        "Resolved USD",
-        "Status",
-        "Src",
+        "Mkt Base Vol",
+        "Mkt USD Vol",
     )
     body = [
         (
             row.route,
-            row.pair_name,
-            _format_optional_money_word(row.nominal_usd, options.money_places),
-            _format_optional_quantity_word(row.percent),
             _format_optional_money_word(row.available_usd, options.money_places),
             _format_optional_money_word(row.mark_price, options.money_places),
             _format_optional_quantity_word(row.contract_size),
@@ -1468,17 +1709,15 @@ def render_sizing_table(
             _format_optional_quantity_word(row.quantity_step),
             _format_optional_money_word(row.min_usd, options.money_places),
             _format_optional_money_word(row.step_usd, options.money_places),
-            _format_optional_quantity_word(row.resolved_quantity),
-            _format_optional_money_word(row.resolved_usd, options.money_places),
-            row.status,
-            row.source,
+            _format_optional_quantity_word(row.market_base_volume),
+            _format_optional_money_word(row.market_usd_volume, options.money_places),
         )
         for row in rows
     ]
     return _format_table(
         headers,
         body,
-        align_right=set(headers) - {"Route", "Pair", "Status", "Src"},
+        align_right=set(headers) - {"Route"},
     )
 
 
@@ -1536,6 +1775,7 @@ def render_run_report(
     *,
     sizing_rows: Sequence[SizingRow] = (),
     sizing_notes: Sequence[str] = (),
+    report_notes: Sequence[str] = (),
     market_snapshot: MarketSnapshot | None = None,
     report_at: datetime | None = None,
     identity: ReportIdentity | None = None,
@@ -1553,46 +1793,47 @@ def render_run_report(
     )
     sections = [
         _format_org_heading(timestamp, report_name=identity.name if identity else None),
+        "** Overview",
         render_market_snapshot_table(market_snapshot, options=options),
-        "",
-        "** Terminated pairs",
-        render_terminated_counts_line(terminated_rows),
-        "",
-        _render_section_table(render_org_table, terminated_rows, options=options),
         _render_optional_summary(terminated_rows, options=options),
         "",
-        "** Living tail-flying pairs",
-        _render_section_table(render_living_tail_table, living_rows, options=options),
-        "",
-        "** Latest latent pairs",
-        _render_section_table(render_latent_table, latent_rows, options=options),
+        "*** Volume by market/pair",
+        _render_section_table(render_volume_table, volume_rows, options=options),
     ]
-    latent_gate_note = _render_latent_gate_note(latent_rows)
-    if latent_gate_note:
-        sections.append(latent_gate_note)
-    latent_deadline_note = _render_latent_deadline_note(latent_rows)
-    if latent_deadline_note:
-        sections.append(latent_deadline_note)
     sections.extend(
         (
             "",
-            "** Sizing diagnostics",
+            "*** Sizing diagnostics",
             _render_section_table(render_sizing_table, sizing_rows, options=options),
         )
     )
     sizing_note = _render_sizing_note(sizing_rows, sizing_notes)
     if sizing_note:
         sections.append(sizing_note)
+    rendered_report_notes = _render_report_notes(report_notes)
+    if rendered_report_notes:
+        sections.append(rendered_report_notes)
     sections.extend(
         (
             "",
-            "** Volume by pair/market",
-            _render_section_table(render_volume_table, volume_rows, options=options),
+            "** Terminated pairs",
+            render_terminated_counts_line(terminated_rows),
+            "",
+            _render_section_table(render_org_table, terminated_rows, options=options),
+            "",
+            "** Living tail-flying pairs",
+            _render_section_table(render_living_tail_table, living_rows, options=options),
+            "",
+            "** Latest latent pairs",
+            _render_section_table(render_latent_table, latent_rows, options=options),
         )
     )
-    volume_market_note = _render_volume_market_note(volume_rows)
-    if volume_market_note:
-        sections.append(volume_market_note)
+    latent_gate_note = _render_latent_gate_note(latent_rows)
+    if latent_gate_note:
+        sections.append(latent_gate_note)
+    latent_deadline_note = _render_latent_deadline_note(latent_rows)
+    if latent_deadline_note:
+        sections.append(latent_deadline_note)
     if identity is not None:
         sections.insert(1, _format_report_provenance(identity))
     return "\n".join(sections)
@@ -1610,6 +1851,7 @@ def build_report_table(
 ) -> str:
     """Build the full report table from a runtime log and optional DB URL."""
 
+    options = options or ReportOptions()
     log_path = Path(log_path)
     snapshot = parse_run_log_file(log_path)
     resolved_run_started_at = run_started_at or _report_run_started_at(snapshot, log_path)
@@ -1622,22 +1864,45 @@ def build_report_table(
     fill_summaries: Mapping[str, DbFillSummary] = {}
     order_summaries: Mapping[str, DbOrderSummary] = {}
     instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] = {}
-    market_usd_volumes: Mapping[RuntimeRoute, Decimal] = {}
+    market_volumes: Mapping[RuntimeRoute, MarketVolumeSummary] = {}
+    account_available_usd: Mapping[RuntimeRoute, Decimal] = {}
     sizing_notes: list[str] = []
+    report_notes: list[str] = []
     if not log_only:
         if not db_url:
             raise ReportError(
                 "account DB URL is required for exact reports; pass --account-db-url "
                 "or --log-only"
             )
-        client_ids = _client_ids(snapshot.lifecycles.values())
-        fill_summaries = fetch_fill_summaries(db_url, client_ids)
-        order_summaries = fetch_order_summaries(db_url, client_ids)
+        client_ids, exchange_order_ids = _order_identity_ids(
+            snapshot.lifecycles.values()
+        )
+        fill_summaries = fetch_fill_summaries(
+            db_url,
+            client_ids,
+            exchange_order_ids,
+        )
+        order_summaries = fetch_order_summaries(
+            db_url,
+            client_ids,
+            exchange_order_ids,
+        )
     routes = _routes_for_report(
         snapshot.runtime_metadata.routes,
         fill_summaries=fill_summaries.values(),
         quantity_diagnostics=snapshot.quantity_diagnostics,
     )
+    if not log_only and db_url and routes:
+        try:
+            account_available_usd = fetch_account_available_usd(
+                db_url,
+                routes,
+                environment=snapshot.runtime_metadata.environment,
+            )
+        except ReportError:
+            sizing_notes.append(
+                "Account DB unavailable for available USD; showing runtime log values only."
+            )
     if market_db_url and routes:
         try:
             instrument_summaries = fetch_instrument_summaries(
@@ -1651,7 +1916,7 @@ def build_report_table(
             )
         else:
             try:
-                market_usd_volumes = fetch_market_usd_volumes(
+                market_volumes = fetch_market_volumes(
                     market_db_url,
                     routes,
                     started_at=resolved_run_started_at,
@@ -1661,13 +1926,24 @@ def build_report_table(
                 )
             except ReportError:
                 sizing_notes.append(
-                    "Market DB unavailable for market volume; Market USD Vol may be n/a."
+                    "Market DB unavailable for market volume; Mkt Base Vol and Mkt USD Vol may be n/a."
                 )
     terminated_rows = build_report_rows(
         snapshot.lifecycles,
         fill_summaries=fill_summaries,
+        order_summaries=order_summaries,
         require_db=not log_only,
+        options=options,
     )
+    if not log_only:
+        report_notes.extend(
+            _fill_fallback_report_notes(
+                snapshot.lifecycles.values(),
+                fill_summaries,
+                order_summaries,
+                options=options,
+            )
+        )
     living_rows = build_living_tail_rows(
         snapshot.lifecycles,
         fill_summaries=fill_summaries,
@@ -1681,12 +1957,15 @@ def build_report_table(
         quantity_diagnostics=snapshot.quantity_diagnostics,
         instrument_summaries=instrument_summaries,
         market_snapshot=snapshot.market_snapshot,
+        market_volumes=market_volumes,
+        account_available_usd=account_available_usd,
     )
     volume_rows = build_volume_rows(
         snapshot.lifecycles,
         fill_summaries=fill_summaries,
         instrument_summaries=instrument_summaries,
-        market_usd_volumes=market_usd_volumes,
+        market_volumes=market_volumes,
+        report_rows=terminated_rows,
     )
     return render_run_report(
         terminated_rows,
@@ -1695,6 +1974,7 @@ def build_report_table(
         volume_rows,
         sizing_rows=sizing_rows,
         sizing_notes=sizing_notes,
+        report_notes=report_notes,
         market_snapshot=snapshot.market_snapshot,
         report_at=snapshot.market_snapshot.recorded_at
         if snapshot.market_snapshot is not None
@@ -1802,6 +2082,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use only log data. DB-only columns are left blank where needed.",
     )
     parser.add_argument(
+        "--estimate-fees",
+        dest="estimate_fees",
+        action="store_true",
+        default=True,
+        help="Estimate fees for order-only or log-only legs.",
+    )
+    parser.add_argument(
+        "--no-estimate-fees",
+        dest="estimate_fees",
+        action="store_false",
+        help="Leave net and cumulative net blank when exact USD fees are missing.",
+    )
+    parser.add_argument(
         "--output",
         "-o",
         help="Prepend the Org report to this file instead of stdout.",
@@ -1841,7 +2134,10 @@ def main(
             market_db_url=market_db_url,
             log_only=args.log_only,
             report_command=command_line,
-            options=ReportOptions(price_places=args.price_dp),
+            options=ReportOptions(
+                price_places=args.price_dp,
+                estimate_fees=args.estimate_fees,
+            ),
         )
         if args.output:
             _prepend_output(Path(args.output), table)
@@ -1899,9 +2195,9 @@ def _parse_runtime_routes(raw_routes: str) -> tuple[RuntimeRoute, ...]:
 
 
 def _parse_runtime_environment(body: str) -> str | None:
-    for field in body.split():
-        if field.startswith("env="):
-            value = field.split("=", 1)[1].strip()
+    for token in body.split():
+        if token.startswith("env="):
+            value = token.split("=", 1)[1].strip()
             return value or None
     return None
 
@@ -2083,6 +2379,14 @@ def _parse_head_sent(lifecycle: PairLifecycle, body: str) -> None:
         lifecycle.head_client_id = fields[0]
 
 
+def _parse_head_ack(lifecycle: PairLifecycle, body: str) -> None:
+    fields = body.split()
+    if fields:
+        lifecycle.head_client_id = fields[0]
+    if len(fields) >= 2:
+        lifecycle.head_exchange_order_id = fields[1]
+
+
 def _parse_update(lifecycle: PairLifecycle, body: str) -> None:
     fields = body.split()
     if not fields:
@@ -2108,6 +2412,7 @@ def _parse_update(lifecycle: PairLifecycle, body: str) -> None:
         if lifecycle.tail_placed_at is None:
             lifecycle.tail_placed_at = _parse_iso_utc(fields[6])
         lifecycle.tail_client_id = fields[4]
+        lifecycle.tail_exchange_order_id = fields[5]
     elif state == "closed--closed" and len(fields) >= 8:
         if lifecycle.tail_fill is None:
             lifecycle.tail_fill = FillLeg(
@@ -2133,6 +2438,7 @@ def _parse_amend_sent(
     lifecycle.tail_amend_times.append(log_time)
     lifecycle.latest_tail_stop = _decimal(fields[1])
     lifecycle.tail_client_id = fields[4]
+    lifecycle.tail_exchange_order_id = fields[5]
 
 
 def _parse_tail_metrics(
@@ -2356,99 +2662,231 @@ def _latent_attempt(
 def _build_report_row(
     lifecycle: PairLifecycle,
     fill_summaries: Mapping[str, DbFillSummary],
+    order_summaries: Mapping[str, DbOrderSummary],
     *,
     require_db: bool,
+    options: ReportOptions,
 ) -> ReportRow:
+    del require_db
     if lifecycle.head_fill is None or lifecycle.tail_fill is None:
         raise ReportError(f"pair {lifecycle.key} is not terminated")
-    head_summary = _fill_summary_for(lifecycle.head_client_id, fill_summaries)
-    tail_summary = _fill_summary_for(lifecycle.tail_client_id, fill_summaries)
-    if require_db and (head_summary is None or tail_summary is None):
-        missing = []
-        if lifecycle.head_client_id and head_summary is None:
-            missing.append(lifecycle.head_client_id)
-        if lifecycle.tail_client_id and tail_summary is None:
-            missing.append(lifecycle.tail_client_id)
-        if not lifecycle.head_client_id:
-            missing.append(f"{lifecycle.key.name}#{lifecycle.key.attempt}:head")
-        if not lifecycle.tail_client_id:
-            missing.append(f"{lifecycle.key.name}#{lifecycle.key.attempt}:tail")
-        raise ReportError("missing local DB fill rows for " + ", ".join(missing))
-
-    head_price = head_summary.price if head_summary is not None else lifecycle.head_fill.price
-    tail_price = tail_summary.price if tail_summary is not None else lifecycle.tail_fill.price
-    quantity = (
-        tail_summary.quantity
-        if tail_summary is not None and tail_summary.quantity
-        else lifecycle.tail_fill.quantity
+    head_summary = _fill_summary_for(
+        lifecycle.head_client_id,
+        lifecycle.head_exchange_order_id,
+        fill_summaries,
     )
-    side = _side_abbrev(lifecycle.head_fill.side, lifecycle.tail_fill.side)
-    gross = _gross_usd(lifecycle.head_fill.side, head_price, tail_price, quantity)
-    net = None
-    if head_summary is not None and tail_summary is not None:
-        net = _net_usd(gross, head_summary, tail_summary)
-    roi = _roi_percent(net if net is not None else gross, head_price, quantity)
-    amend_diff = None
+    tail_summary = _fill_summary_for(
+        lifecycle.tail_client_id,
+        lifecycle.tail_exchange_order_id,
+        fill_summaries,
+    )
+    head_order = _order_summary_for(
+        lifecycle.head_client_id,
+        lifecycle.head_exchange_order_id,
+        order_summaries,
+    )
+    tail_order = _order_summary_for(
+        lifecycle.tail_client_id,
+        lifecycle.tail_exchange_order_id,
+        order_summaries,
+    )
+    head_leg = _resolve_leg_evidence(
+        role="head",
+        client_id=lifecycle.head_client_id,
+        exchange_order_id=lifecycle.head_exchange_order_id,
+        fill_summary=head_summary,
+        order_summary=head_order,
+        log_fill=lifecycle.head_fill,
+    )
+    tail_leg = _resolve_leg_evidence(
+        role="tail",
+        client_id=lifecycle.tail_client_id,
+        exchange_order_id=lifecycle.tail_exchange_order_id,
+        fill_summary=tail_summary,
+        order_summary=tail_order,
+        log_fill=lifecycle.tail_fill,
+    )
+    quantity = (
+        tail_leg.quantity
+        if tail_leg.quantity
+        else head_leg.quantity
+    )
+    side = _side_abbrev(head_leg.side, tail_leg.side)
+    gross = _gross_usd(head_leg.side, head_leg.price, tail_leg.price, quantity)
+    net, net_estimated = _net_usd_from_evidence(
+        gross,
+        head_leg,
+        tail_leg,
+        options=options,
+    )
+    roi = _roi_percent(net if net is not None else gross, head_leg.price, quantity)
+    amend_logbps = None
     if (
         lifecycle.amend_count > 0
         and lifecycle.initial_tail_stop is not None
         and lifecycle.latest_tail_stop is not None
     ):
-        amend_diff = lifecycle.latest_tail_stop - lifecycle.initial_tail_stop
+        amend_logbps = _signed_logbps_or_none(
+            lifecycle.latest_tail_stop,
+            lifecycle.initial_tail_stop,
+        )
+    life_seconds = int(
+        (
+            lifecycle.tail_fill.filled_at.replace(microsecond=0)
+            - lifecycle.head_fill.filled_at.replace(microsecond=0)
+        ).total_seconds()
+    )
 
     return ReportRow(
         key=lifecycle.key,
         head_fill_at=lifecycle.head_fill.filled_at,
         tail_fill_at=lifecycle.tail_fill.filled_at,
         tail_placed_at=lifecycle.tail_placed_at,
-        life_seconds=int(
-            (
-                lifecycle.tail_fill.filled_at.replace(microsecond=0)
-                - lifecycle.head_fill.filled_at.replace(microsecond=0)
-            ).total_seconds()
-        ),
+        life_seconds=life_seconds,
         side=side,
-        head_price=head_price,
-        tail_price=tail_price,
+        head_price=head_leg.price,
+        tail_price=tail_leg.price,
         quantity=quantity,
-        liquidity=_liquidity_pair(head_summary, tail_summary),
+        liquidity=_liquidity_pair_from_evidence(head_leg, tail_leg),
+        head_source=head_leg.source,
+        tail_source=tail_leg.source,
         amend_count=lifecycle.amend_count,
         tail_amend_1_at=_tail_amend_time(lifecycle, 0),
         tail_amend_2_at=_tail_amend_time(lifecycle, 1),
-        amend_diff=amend_diff,
+        amend_logbps=amend_logbps,
         gross_usd=gross,
         net_usd=net,
+        net_estimated=net_estimated,
         roi_percent=roi,
+        roi_per_hour_percent=_roi_per_hour_percent(roi, life_seconds),
         cumulative_net=None,
     )
 
 
-def _client_ids(lifecycles: Iterable[PairLifecycle]) -> tuple[str, ...]:
-    ids: set[str] = set()
+def _resolve_leg_evidence(
+    *,
+    role: str,
+    client_id: str | None,
+    exchange_order_id: str | None,
+    fill_summary: DbFillSummary | None,
+    order_summary: DbOrderSummary | None,
+    log_fill: FillLeg,
+) -> OrderLegEvidence:
+    if fill_summary is not None:
+        quantity = fill_summary.quantity if fill_summary.quantity else log_fill.quantity
+        return OrderLegEvidence(
+            role=role,
+            client_order_id=fill_summary.client_order_id or client_id,
+            exchange_order_id=fill_summary.exchange_order_id or exchange_order_id,
+            side=fill_summary.side or log_fill.side,
+            price=fill_summary.price if fill_summary.price else log_fill.price,
+            quantity=quantity,
+            fee=fill_summary.fee,
+            fee_currency=fill_summary.fee_currency,
+            liquidity_role=fill_summary.liquidity_role,
+            source=EVIDENCE_FILL_DB,
+        )
+    if order_summary is not None and (
+        order_summary.price is not None or order_summary.filled_quantity
+    ):
+        return OrderLegEvidence(
+            role=role,
+            client_order_id=order_summary.client_order_id or client_id,
+            exchange_order_id=order_summary.exchange_order_id or exchange_order_id,
+            side=order_summary.side or log_fill.side,
+            price=order_summary.price if order_summary.price is not None else log_fill.price,
+            quantity=(
+                order_summary.filled_quantity
+                if order_summary.filled_quantity
+                else log_fill.quantity
+            ),
+            fee=None,
+            fee_currency=None,
+            liquidity_role=None,
+            source=EVIDENCE_ORDER_DB,
+        )
+    return OrderLegEvidence(
+        role=role,
+        client_order_id=client_id,
+        exchange_order_id=exchange_order_id,
+        side=log_fill.side,
+        price=log_fill.price,
+        quantity=log_fill.quantity,
+        fee=None,
+        fee_currency=None,
+        liquidity_role=None,
+        source=EVIDENCE_LOG,
+    )
+
+
+def _order_identity_ids(
+    lifecycles: Iterable[PairLifecycle],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    client_ids: set[str] = set()
+    exchange_order_ids: set[str] = set()
     for lifecycle in lifecycles:
         if lifecycle.head_client_id:
-            ids.add(lifecycle.head_client_id)
+            client_ids.add(lifecycle.head_client_id)
         if lifecycle.tail_client_id:
-            ids.add(lifecycle.tail_client_id)
-    return tuple(sorted(ids))
+            client_ids.add(lifecycle.tail_client_id)
+        if lifecycle.head_exchange_order_id:
+            exchange_order_ids.add(lifecycle.head_exchange_order_id)
+        if lifecycle.tail_exchange_order_id:
+            exchange_order_ids.add(lifecycle.tail_exchange_order_id)
+    return tuple(sorted(client_ids)), tuple(sorted(exchange_order_ids))
 
 
 def _fill_summary_for(
     client_id: str | None,
+    exchange_order_id: str | None,
     fill_summaries: Mapping[str, DbFillSummary],
 ) -> DbFillSummary | None:
-    if not client_id:
-        return None
-    return fill_summaries.get(client_id)
+    for identity in _identity_keys(client_id, exchange_order_id):
+        summary = fill_summaries.get(identity)
+        if summary is not None:
+            return summary
+    return None
 
 
 def _order_summary_for(
     client_id: str | None,
+    exchange_order_id: str | None,
     order_summaries: Mapping[str, DbOrderSummary],
 ) -> DbOrderSummary | None:
-    if not client_id:
-        return None
-    return order_summaries.get(client_id)
+    for identity in _identity_keys(client_id, exchange_order_id):
+        summary = order_summaries.get(identity)
+        if summary is not None:
+            return summary
+    return None
+
+
+def _identity_keys(
+    client_id: str | None,
+    exchange_order_id: str | None,
+) -> tuple[str, ...]:
+    return tuple(
+        identity
+        for identity in (client_id, exchange_order_id)
+        if identity is not None and identity
+    )
+
+
+def _summary_identity_keys(
+    summary: DbFillSummary | DbOrderSummary,
+) -> tuple[str, ...]:
+    return _identity_keys(summary.client_order_id, summary.exchange_order_id)
+
+
+def _format_missing_identity(
+    key: PairKey,
+    role: str,
+    client_id: str | None,
+    exchange_order_id: str | None,
+) -> str:
+    identities = _identity_keys(client_id, exchange_order_id)
+    if identities:
+        return "/".join(identities)
+    return f"{key.name}#{key.attempt}:{role}"
 
 
 def _fill_summary_route(summary: DbFillSummary) -> RuntimeRoute:
@@ -2457,6 +2895,24 @@ def _fill_summary_route(summary: DbFillSummary) -> RuntimeRoute:
         market_type=summary.market_type.lower(),
         symbol=summary.symbol,
     )
+
+
+def _route_for_lifecycle_fills(
+    lifecycle: PairLifecycle,
+    fill_summaries: Mapping[str, DbFillSummary],
+) -> RuntimeRoute | None:
+    for client_id, exchange_order_id in (
+        (lifecycle.head_client_id, lifecycle.head_exchange_order_id),
+        (lifecycle.tail_client_id, lifecycle.tail_exchange_order_id),
+    ):
+        summary = _fill_summary_for(
+            client_id,
+            exchange_order_id,
+            fill_summaries,
+        )
+        if summary is not None:
+            return _fill_summary_route(summary)
+    return None
 
 
 def _routes_from_fill_summaries(
@@ -2546,6 +3002,17 @@ def _quantity_usd_value(
     return _usd_notional(reference_price, quantity, instrument)
 
 
+def _diagnostic_available_usd(
+    diagnostic: QuantityDiagnostic,
+    account_available_usd: Mapping[RuntimeRoute, Decimal],
+) -> Decimal | None:
+    if diagnostic.route is not None:
+        account_available = account_available_usd.get(diagnostic.route)
+        if account_available is not None:
+            return account_available
+    return diagnostic.available_usd
+
+
 def _sizing_usd(
     quantity: Decimal | None,
     *,
@@ -2588,6 +3055,12 @@ def _usd_notional(
     if contract_size <= 0:
         contract_size = Decimal("1")
     return price * quantity * contract_size
+
+
+def _average(values: Sequence[Decimal]) -> Decimal | None:
+    if not values:
+        return None
+    return sum(values, Decimal("0")) / Decimal(len(values))
 
 
 def _raw_event_is_public_trade(event: RawExchangeEvent) -> bool:
@@ -2796,6 +3269,45 @@ def _net_usd(
     return gross - head_summary.fee - tail_summary.fee
 
 
+def _net_usd_from_evidence(
+    gross: Decimal,
+    head_leg: OrderLegEvidence,
+    tail_leg: OrderLegEvidence,
+    *,
+    options: ReportOptions,
+) -> tuple[Decimal | None, bool]:
+    head_fee, head_estimated = _leg_fee_usd(head_leg, options=options)
+    tail_fee, tail_estimated = _leg_fee_usd(tail_leg, options=options)
+    if head_fee is None or tail_fee is None:
+        return None, False
+    return gross - head_fee - tail_fee, head_estimated or tail_estimated
+
+
+def _leg_fee_usd(
+    leg: OrderLegEvidence,
+    *,
+    options: ReportOptions,
+) -> tuple[Decimal | None, bool]:
+    if leg.fee is not None and _fee_is_usd(leg.fee_currency):
+        return leg.fee, False
+    if not options.estimate_fees:
+        return None, False
+    rate = _estimated_fee_rate(leg, options=options)
+    return leg.price * leg.quantity * rate, True
+
+
+def _estimated_fee_rate(
+    leg: OrderLegEvidence,
+    *,
+    options: ReportOptions,
+) -> Decimal:
+    return (
+        options.maker_fee_rate
+        if _liquidity_abbrev(leg.liquidity_role) == "M"
+        else options.taker_fee_rate
+    )
+
+
 def _roi_percent(
     basis: Decimal | None,
     head_price: Decimal,
@@ -2807,6 +3319,27 @@ def _roi_percent(
     if notional == 0:
         return None
     return basis / notional * Decimal("100")
+
+
+def _roi_per_hour_percent(
+    roi_percent: Decimal | None,
+    life_seconds: int,
+) -> Decimal | None:
+    if roi_percent is None or life_seconds <= 0:
+        return None
+    return roi_percent * Decimal("3600") / Decimal(life_seconds)
+
+
+def _signed_logbps_or_none(
+    current_price: Decimal | None,
+    baseline_price: Decimal | None,
+) -> Decimal | None:
+    if current_price is None or baseline_price is None:
+        return None
+    try:
+        return signed_logbps_move(current_price, baseline_price)
+    except ValueError:
+        return None
 
 
 def _fee_is_usd(currency: str | None) -> bool:
@@ -2822,6 +3355,18 @@ def _liquidity_pair(
     if not head and not tail:
         return ""
     return f"{head}/{tail}"
+
+
+def _liquidity_pair_from_evidence(
+    head_leg: OrderLegEvidence,
+    tail_leg: OrderLegEvidence,
+) -> str:
+    return f"{_leg_liquidity_abbrev(head_leg)}/{_leg_liquidity_abbrev(tail_leg)}"
+
+
+def _leg_liquidity_abbrev(leg: OrderLegEvidence) -> str:
+    value = _liquidity_abbrev(leg.liquidity_role)
+    return value or "?"
 
 
 def _summarise_liquidity(roles: Sequence[str]) -> str | None:
@@ -2986,6 +3531,12 @@ def _format_optional_money_word(value: Decimal | None, places: int) -> str:
     return _format_decimal(value, places)
 
 
+def _format_optional_life(value: Decimal | None) -> str:
+    if value is None:
+        return "n/a"
+    return _format_life(int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)))
+
+
 def _format_optional_price_word(value: Decimal | None, places: int) -> str:
     if value is None:
         return "-"
@@ -3032,6 +3583,16 @@ def _format_signed_optional(value: Decimal | None, places: int) -> str:
     if value is None:
         return ""
     return _format_signed(value, places)
+
+
+def _format_logbps_optional(value: Decimal | None) -> str:
+    if value is None:
+        return ""
+    rounded = value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    if rounded == 0:
+        return "0"
+    formatted = str(int(rounded))
+    return formatted if rounded < 0 else f"+{formatted}"
 
 
 def _format_table(
@@ -3114,15 +3675,6 @@ def _render_latent_deadline_note(rows: Sequence[LatentRow]) -> str:
     )
 
 
-def _render_volume_market_note(rows: Sequence[VolumeRow]) -> str:
-    if not any(row.market_usd_volume is None for row in rows):
-        return ""
-    return (
-        "Market USD Vol n/a means no local public trade events were found for "
-        "that market inside the run window."
-    )
-
-
 def _render_sizing_note(
     rows: Sequence[SizingRow],
     notes: Sequence[str],
@@ -3135,6 +3687,119 @@ def _render_sizing_note(
             "rules."
         )
     return "\n".join(rendered)
+
+
+def _render_report_notes(notes: Sequence[str]) -> str:
+    return "\n".join(note for note in notes if note)
+
+
+def _fill_fallback_report_notes(
+    lifecycles: Iterable[PairLifecycle],
+    fill_summaries: Mapping[str, DbFillSummary],
+    order_summaries: Mapping[str, DbOrderSummary],
+    *,
+    options: ReportOptions,
+) -> tuple[str, ...]:
+    missing: list[str] = []
+    seen: set[str] = set()
+    total_legs = 0
+    exact_legs = 0
+    order_only_legs = 0
+    log_only_legs = 0
+    unknown_liquidity_legs = 0
+    for lifecycle in lifecycles:
+        if not lifecycle.terminated:
+            continue
+        head_summary = _fill_summary_for(
+            lifecycle.head_client_id,
+            lifecycle.head_exchange_order_id,
+            fill_summaries,
+        )
+        tail_summary = _fill_summary_for(
+            lifecycle.tail_client_id,
+            lifecycle.tail_exchange_order_id,
+            fill_summaries,
+        )
+        head_order = _order_summary_for(
+            lifecycle.head_client_id,
+            lifecycle.head_exchange_order_id,
+            order_summaries,
+        )
+        tail_order = _order_summary_for(
+            lifecycle.tail_client_id,
+            lifecycle.tail_exchange_order_id,
+            order_summaries,
+        )
+        for role, fill_summary, order_summary, client_id, exchange_order_id in (
+            (
+                "head",
+                head_summary,
+                head_order,
+                lifecycle.head_client_id,
+                lifecycle.head_exchange_order_id,
+            ),
+            (
+                "tail",
+                tail_summary,
+                tail_order,
+                lifecycle.tail_client_id,
+                lifecycle.tail_exchange_order_id,
+            ),
+        ):
+            total_legs += 1
+            if fill_summary is not None:
+                exact_legs += 1
+                if not _liquidity_abbrev(fill_summary.liquidity_role):
+                    unknown_liquidity_legs += 1
+                continue
+            if order_summary is not None:
+                order_only_legs += 1
+            else:
+                log_only_legs += 1
+            unknown_liquidity_legs += 1
+            label = _format_missing_identity(
+                lifecycle.key,
+                role,
+                client_id,
+                exchange_order_id,
+            )
+            if label not in seen:
+                seen.add(label)
+                missing.append(label)
+    if not missing and unknown_liquidity_legs == 0:
+        return ()
+    notes = [
+        "Evidence note: "
+        f"exact DB fills {exact_legs}/{total_legs} legs; "
+        f"order-only {order_only_legs}; log-only {log_only_legs}; "
+        f"unknown liquidity {unknown_liquidity_legs}. "
+        "Missing fill rows affect exact fees/liquidity, not log-observed trades."
+    ]
+    if options.estimate_fees and (order_only_legs or log_only_legs or unknown_liquidity_legs):
+        notes.append(
+            "Estimated net uses "
+            f"maker={_format_fee_rate(options.maker_fee_rate)} and "
+            f"taker/unknown={_format_fee_rate(options.taker_fee_rate)} "
+            "when exact USD fees are missing."
+        )
+    if missing:
+        notes.append(
+            "Missing fill rows: "
+            f"{_format_capped_identities(missing, limit=MISSING_FILL_NOTE_LIMIT)}."
+        )
+    return tuple(notes)
+
+
+def _format_capped_identities(values: Sequence[str], *, limit: int) -> str:
+    visible = list(values[:limit])
+    hidden = len(values) - len(visible)
+    if hidden > 0:
+        visible.append(f"... +{hidden} more")
+    return ", ".join(visible)
+
+
+def _format_fee_rate(rate: Decimal) -> str:
+    return f"{(rate * Decimal('100')).normalize()}%"
 
 
 def _sizing_runtime_market_disagrees(rows: Sequence[SizingRow]) -> bool:
@@ -3237,6 +3902,22 @@ def _optional_values(values: Iterable[Decimal | None]) -> tuple[Decimal, ...]:
 
 def _row_life_values(rows: Sequence[ReportRow]) -> tuple[Decimal, ...]:
     return tuple(Decimal(row.life_seconds) for row in rows)
+
+
+def _position_values(rows: Sequence[ReportRow]) -> tuple[Decimal, ...]:
+    position = Decimal("0")
+    values: list[Decimal] = []
+    events: list[tuple[datetime, int, Decimal]] = []
+    for row in rows:
+        head_delta = row.quantity if row.side.startswith("B/") else -row.quantity
+        events.append((row.head_fill_at, 0, head_delta))
+        events.append((row.tail_fill_at, 1, -head_delta))
+    for _, _, delta in sorted(events):
+        position += delta
+        engaged = abs(position)
+        if engaged:
+            values.append(engaged)
+    return tuple(values)
 
 
 def _row_amend_phase_values(rows: Sequence[ReportRow]) -> tuple[Decimal, ...]:

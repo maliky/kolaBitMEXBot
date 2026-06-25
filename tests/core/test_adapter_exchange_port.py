@@ -12,6 +12,7 @@ from kolabi.shared.core.runtime_types import (
     AmendHeadCommand,
     AmendOrderCommandRequest,
     AmendTailCommand,
+    PlaceHeadCommand,
     PlaceOrderCommandRequest,
     PlaceTailCommand,
     RuntimeCommandKind,
@@ -53,6 +54,27 @@ class _TailAdapter:
 
     def live_trigger_orders_db(self) -> list[dict[str, Any]]:
         return type(self).db_trigger_orders
+
+    def amend_order(self, order_id: str, **params: Any) -> OrderAck:
+        raise AssertionError("not used")
+
+    def cancel_order(self, order_id: str) -> OrderAck:
+        raise AssertionError("not used")
+
+
+class _HeadAdapter:
+    placed: tuple[tuple[Any, ...], dict[str, Any]] | None = None
+    open_orders: list[dict[str, Any]] = []
+
+    def __init__(self, **_kwargs: Any) -> None:
+        type(self).placed = None
+
+    def place_order(self, *args: Any, **kwargs: Any) -> OrderAck:
+        type(self).placed = (args, kwargs)
+        return OrderAck(order_id="", status="New", orig_qty=1.0, side="buy")
+
+    def live_open_orders(self) -> list[dict[str, Any]]:
+        return type(self).open_orders
 
     def amend_order(self, order_id: str, **params: Any) -> OrderAck:
         raise AssertionError("not used")
@@ -183,6 +205,72 @@ def test_amend_head_keeps_new_price_as_limit_price(monkeypatch) -> None:
     )
 
     assert _FakeAdapter.last == ("OID-H", {"price": 100.5})
+
+
+def test_place_head_enriches_ack_from_visible_open_order(monkeypatch) -> None:
+    _HeadAdapter.open_orders = [
+        {
+            "order_id": "OID-H",
+            "client_order_id": "CID-H",
+            "symbol": "PI_XBTUSD",
+            "side": "buy",
+            "qty": 1.0,
+            "price": 100.0,
+            "status": "open",
+        }
+    ]
+    monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda _exchange: _HeadAdapter)
+    port = AdapterExchangePort(exchange="kraken", exchange_config=_config())
+
+    ack = asyncio.run(
+        port.place_head(
+            PlaceHeadCommand(
+                kind=RuntimeCommandKind.PLACE,
+                symbol=Symbol("PI_XBTUSD"),
+                pair_name="pair-a",
+                request=PlaceOrderCommandRequest(
+                    pair_name="pair-a",
+                    side="buy",
+                    ordType="Limit",
+                    orderQty=1.0,
+                    price=100.0,
+                    clOrdID="CID-H",
+                ),
+            )
+        )
+    )
+
+    assert ack.order_id == "OID-H"
+    assert ack.client_order_id == "CID-H"
+    assert ack.status == "open"
+
+
+def test_place_head_keeps_rest_ack_when_open_order_is_not_visible(monkeypatch) -> None:
+    _HeadAdapter.open_orders = []
+    monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda _exchange: _HeadAdapter)
+    port = AdapterExchangePort(exchange="kraken", exchange_config=_config())
+
+    ack = asyncio.run(
+        port.place_head(
+            PlaceHeadCommand(
+                kind=RuntimeCommandKind.PLACE,
+                symbol=Symbol("PI_XBTUSD"),
+                pair_name="pair-a",
+                request=PlaceOrderCommandRequest(
+                    pair_name="pair-a",
+                    side="buy",
+                    ordType="Limit",
+                    orderQty=1.0,
+                    price=100.0,
+                    clOrdID="CID-H",
+                ),
+            )
+        )
+    )
+
+    assert ack.order_id == ""
+    assert ack.client_order_id is None
+    assert ack.status == "New"
 
 
 def test_place_tail_requires_matching_live_trigger_order(monkeypatch) -> None:

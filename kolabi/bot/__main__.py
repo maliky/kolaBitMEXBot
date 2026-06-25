@@ -7,8 +7,8 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from kolabi.bot.exchange_routes import default_symbol_for_route
 from kolabi.bot.domain import StrategySpec
+from kolabi.bot.exchange_routes import default_symbol_for_route
 from kolabi.bot.service import BotConfig, BotService
 from kolabi.bot.tsv import (
     read_strategy_file,
@@ -244,8 +244,8 @@ def add_single_order_options(parser: argparse.ArgumentParser) -> None:
         type=str,
         default="D- +",
         help=(
-            "Typed activation gate interval as one string. Use D, %%, or A before two bounds, "
-            "for example --pGate 'D- +' or --pGate '%%-1 1'."
+            "Typed activation gate interval as one string. Use D, B, or A before two bounds, "
+            "for example --pGate 'D- +' or --pGate 'B-100 100'."
         ),
     )
     parser.add_argument(
@@ -254,8 +254,8 @@ def add_single_order_options(parser: argparse.ArgumentParser) -> None:
         type=str,
         default=None,
         help=(
-            "Typed lazy head order price. Use D, %%, or A before one value, "
-            "for example --hPrice D10 or --hPrice '%%0.2'."
+            "Typed lazy head order price. Use D, B, or A before one value, "
+            "for example --hPrice D10 or --hPrice B20."
         ),
     )
     parser.add_argument(
@@ -272,14 +272,14 @@ def add_single_order_options(parser: argparse.ArgumentParser) -> None:
         dest="tPrice",
         type=str,
         default=None,
-        help="Typed tail distance, for example D20, %%1.2, or A0.25.",
+        help="Typed tail distance, for example D20, B120, or A0.25.",
     )
     parser.add_argument(
         "--hDelta",
         dest="hDelta",
         type=str,
         default=None,
-        help="Typed SL/LT trigger-to-limit offset, for example D6 or %%0.20.",
+        help="Typed SL/LT trigger-to-limit offset, for example D6 or B20.",
     )
     parser.add_argument(
         "--tDelta",
@@ -293,7 +293,7 @@ def add_single_order_options(parser: argparse.ArgumentParser) -> None:
         default=None,
         help=(
             "Tail first-unblock favourable movement. Use D for nominal distance "
-            "or %% for percent of the head-fill reference, for example D5 or %%0.2."
+            "or B for log basis points of the head-fill reference, for example D5 or B20."
         ),
     )
     parser.add_argument(
@@ -441,10 +441,10 @@ def build_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  Differential around current reference:\n"
             "    python -m kolabi.bot run-once --symbol PI_XBTUSD --environment demo "
-            "-m XSellTail -t 0 1440 -O 60 -x 'D1 2' --hPrice D1 --qty A1 --tPrice %0.5 -o L -y S- -c sell --dry-run\n"
-            "  Percent around current reference:\n"
+            "-m XSellTail -t 0 1440 -O 60 -x 'D1 2' --hPrice D1 --qty A1 --tPrice B50 -o L -y S- -c sell --dry-run\n"
+            "  Logbps around current reference:\n"
             "    python -m kolabi.bot run-once --symbol PI_XBTUSD --environment demo "
-            "-m XPct -t 0 60 -x '%-1 1' --hPrice %0.5 --qty A1 --tPrice %0.5 -o L -y S- -c buy --dry-run\n"
+            "-m XLog -t 0 60 -x 'B-100 100' --hPrice B50 --qty A1 --tPrice B50 -o L -y S- -c buy --dry-run\n"
             "  Absolute interval:\n"
             "    python -m kolabi.bot run-once --symbol PI_XBTUSD --environment demo "
             "-m XAbs -t 0 60 -x 'A79320 79340' --hPrice A79350 --qty A1 --tPrice D0.5 -o L -y S- -c sell --dry-run"

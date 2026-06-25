@@ -51,6 +51,7 @@ from kolabi.bot.dragon import (
 )
 from kolabi.bot.exchange_routes import ExchangeRoute, pair_route
 from kolabi.bot.ids import head_client_order_id, tail_client_order_id
+from kolabi.bot.price_units import signed_logbps_move
 from kolabi.bot.pricing import (
     executable_head_reference_price,
     pair_window_has_ended,
@@ -68,16 +69,20 @@ from kolabi.bot.quantity import (
 )
 from kolabi.bot.runtime_policy import (
     CommandSlot as _CommandSlot,
+)
+from kolabi.bot.runtime_policy import (
     active_pair_count,
     active_pair_names,
     append_pending_command,
     command_slot,
     command_slot_still_live,
     head_capacity_available,
+)
+from kolabi.bot.runtime_policy import (
     pair_runtime_complete as _policy_pair_runtime_complete,
 )
-from kolabi.bot.telemetry import TailTelemetryRow
 from kolabi.bot.tail_tracking import tail_first_jump_guard_width, tail_unblock_requirement
+from kolabi.bot.telemetry import TailTelemetryRow
 from kolabi.shared.core.models import OrderAck
 from kolabi.shared.core.runtime_types import (
     AmendHeadCommand,
@@ -102,6 +107,7 @@ _DEFAULT_HEAD_FILL_REFERENCE_GRACE_SECONDS = 20.0
 _DEFAULT_PRIVATE_PENDING_RECORD_TTL_SECONDS = 120.0
 _DEFAULT_PRIVATE_PENDING_RECORD_LIMIT = 512
 _DEFAULT_PRIVATE_SUPPRESSED_EVENT_ID_LIMIT = 2048
+_MAX_HEAD_CANCEL_RETRIES = 3
 _LEGEND_GAP = "    "
 
 
@@ -311,6 +317,7 @@ class _OrderLease:
     created_at: datetime
     last_seen_at: datetime | None = None
     cancel_sent_at: datetime | None = None
+    cancel_retry_count: int = 0
     visibility_warned_at: datetime | None = None
     exchange: str | None = None
     market_type: str | None = None
@@ -2037,6 +2044,7 @@ class StrategyRuntime:
                 lease,
                 status=_LEASE_CANCEL_REQUESTED,
                 cancel_sent_at=now,
+                cancel_retry_count=lease.cancel_retry_count + 1,
             )
             _LOGGER.info(
                 "CANCEL_PENDING (%s#%s): %s",
@@ -2045,6 +2053,64 @@ class StrategyRuntime:
                 _runtime_fields(lease.role, cancel_id, command.reason),
             )
             return
+
+    def _record_cancel_ack(self, command: CancelCommand, ack: OrderAck) -> None:
+        if self.simulate:
+            return
+        cancel_id = command.request.clOrdID
+        slot, lease = self._lease_for_cancel(command, cancel_id)
+        if lease is None or slot is None:
+            return
+        terminal_notfound = command.reason == "head_timeout" and _ack_is_zero_fill_notfound_cancel(
+            ack
+        )
+        status = _LEASE_CLOSED if terminal_notfound else lease.status
+        self._order_leases[slot] = replace(
+            lease,
+            status=status,
+            last_seen_at=datetime.now(timezone.utc),
+        )
+        if terminal_notfound:
+            self._head_fill_deadlines.pop(slot, None)
+        label = "HEAD_CANCEL_NOT_FOUND" if terminal_notfound else "HEAD_CANCEL_ACK"
+        _LOGGER.info(
+            "%s (%s#%s): %s",
+            label,
+            lease.pair_name,
+            lease.attempt_index,
+            _runtime_fields(
+                ack.status or "-",
+                cancel_id,
+                f"retry={lease.cancel_retry_count}",
+                _fmt_compact_price(ack.executed_qty),
+                ack.reason or "-",
+            ),
+        )
+
+    def _lease_for_cancel(
+        self,
+        command: CancelCommand,
+        cancel_id: str,
+    ) -> tuple[_CommandSlot | None, _OrderLease | None]:
+        for slot, lease in tuple(self._order_leases.items()):
+            if lease.status == _LEASE_CLOSED:
+                continue
+            if lease.pair_name != command.pair_name:
+                continue
+            if not _command_route_matches_lease(
+                command,
+                lease,
+                self.exchange,
+                self.market_type,
+            ):
+                continue
+            if _lease_matches_identity(
+                lease,
+                client_order_id=cancel_id,
+                exchange_order_id=cancel_id,
+            ):
+                return slot, lease
+        return None, None
 
     def _check_order_lease_deadlines(self, now: datetime) -> None:
         if self.simulate:
@@ -2119,7 +2185,64 @@ class StrategyRuntime:
                 now - _as_utc_aware(lease.cancel_sent_at)
             ).total_seconds() < self._head_cancel_retry_seconds():
                 continue
+            if (
+                lease.role == "head"
+                and lease.cancel_retry_count >= _MAX_HEAD_CANCEL_RETRIES
+            ):
+                self._terminate_unconfirmed_head_cancel(lease, now)
+                continue
             self._dispatch_lease_cancel(lease, reason="cancel_retry", now=now)
+
+    def _terminate_unconfirmed_head_cancel(
+        self,
+        lease: _OrderLease,
+        now: datetime,
+    ) -> None:
+        pair_state = self.state.pairs.get(lease.pair_name)
+        if pair_state is None or pair_state.attempt_index != lease.attempt_index:
+            return
+        cancel_id = lease.exchange_order_id or lease.client_order_id
+        if not cancel_id:
+            return
+        command = _head_timeout_cancel_command(
+            pair_state,
+            _pair_symbol(pair_state, self.symbol),
+            cancel_id,
+        )
+        ack = OrderAck(
+            order_id=cancel_id,
+            status="NotFound",
+            executed_qty=0.0,
+            reason="head_unconfirmed_timeout",
+        )
+        event = _head_timeout_cancel_event_from_ack(
+            command,
+            ack,
+            symbol=lease.symbol,
+            pair_state=pair_state,
+            attempt_index=lease.attempt_index,
+            runtime_reason="head_unconfirmed_timeout",
+        )
+        if event is None:
+            return
+        slot = _CommandSlot(lease.pair_name, lease.attempt_index, lease.role)
+        self._order_leases[slot] = replace(
+            lease,
+            status=_LEASE_CLOSED,
+            last_seen_at=now,
+        )
+        self._head_fill_deadlines.pop(slot, None)
+        _LOGGER.warning(
+            "HEAD_CANCEL_GAVE_UP (%s#%s): %s",
+            lease.pair_name,
+            lease.attempt_index,
+            _runtime_fields(
+                cancel_id,
+                f"retry={lease.cancel_retry_count}",
+                "head_unconfirmed_timeout",
+            ),
+        )
+        self.event_queue.put_nowait(event)
 
     def _dispatch_lease_cancel(
         self,
@@ -2169,6 +2292,7 @@ class StrategyRuntime:
             current,
             status=_LEASE_CANCEL_REQUESTED,
             cancel_sent_at=now,
+            cancel_retry_count=current.cancel_retry_count + 1,
         )
 
     def _arm_head_fill_deadline_from_visibility(
@@ -2583,6 +2707,7 @@ class StrategyRuntime:
             )
             return
         if isinstance(command, CancelCommand):
+            self._record_cancel_ack(command, ack)
             return
         if isinstance(command, AmendTailCommand) and _ack_is_rejected(ack):
             pair_state = self.state.pairs.get(command.pair_name)
@@ -2758,7 +2883,12 @@ class StrategyRuntime:
             return True
         if is_latent_timeout:
             return pair_state.head_state != HeadState.LATENT
-        return pair_state.head_state not in {HeadState.NEW, HeadState.LIVING}
+        return pair_state.head_state not in {
+            HeadState.HOOKED,
+            HeadState.SUBMITTED,
+            HeadState.NEW,
+            HeadState.LIVING,
+        }
 
     def _sync_head_fill_deadline(self, move: EggMove) -> None:
         if move.role != OrderRole.HEAD:
@@ -3163,11 +3293,11 @@ class StrategyRuntime:
                     symbol=str(command.symbol),
                 ),
             )
-        if not self.simulate and isinstance(command, CancelCommand):
-            # Live/demo lifecycle is DB-grounded; cancel ACKs are intent
-            # correlation only. A private DB row must close the order.
-            return ()
         if isinstance(command, CancelCommand) and command.reason == "head_timeout":
+            if not self.simulate and not _ack_is_zero_fill_notfound_cancel(ack):
+                # Live/demo lifecycle is DB-grounded; ordinary cancel ACKs are
+                # intent correlation only. A private DB row must close the order.
+                return ()
             pair_state = self.state.pairs.get(command.pair_name)
             expected_attempt = (
                 slot.attempt_index
@@ -3194,6 +3324,10 @@ class StrategyRuntime:
             )
             if timeout_cancel is not None:
                 return (timeout_cancel,)
+        if not self.simulate and isinstance(command, CancelCommand):
+            # Live/demo lifecycle is DB-grounded; cancel ACKs are intent
+            # correlation only. A private DB row must close the order.
+            return ()
         if not self.simulate:
             # Live/demo lifecycle is DB-grounded; adapter ACKs are correlation only.
             return ()
@@ -3431,7 +3565,7 @@ def _is_head_timeout_cancel_event(event: EggMove) -> bool:
     if event.event_id is not None and event.event_id.startswith("head-timeout-cancel:"):
         return True
     reply = event.reply or {}
-    return reply.get("runtime_reason") == "head_timeout"
+    return reply.get("runtime_reason") in {"head_timeout", "head_unconfirmed_timeout"}
 
 
 def _runtime_cancel_attempt_index(event: EggMove) -> int | None:
@@ -3596,6 +3730,7 @@ def _head_timeout_cancel_event_from_ack(
     symbol: str,
     pair_state: PairCycleState | None,
     attempt_index: int,
+    runtime_reason: str = "head_timeout",
 ) -> EggMove | None:
     if not _ack_is_zero_fill_cancel(ack):
         return None
@@ -3611,7 +3746,7 @@ def _head_timeout_cancel_event_from_ack(
     reply: dict[str, object] = {
         "ordStatus": "Canceled",
         "execType": "Canceled",
-        "runtime_reason": "head_timeout",
+        "runtime_reason": runtime_reason,
         "attempt_index": attempt_index,
         "cumQty": 0.0,
     }
@@ -3715,6 +3850,15 @@ def _ack_is_zero_fill_cancel(ack: OrderAck) -> bool:
     if ack.executed_qty is None:
         return status in {"canceled", "cancelled"}
     if status not in {"canceled", "cancelled", "notfound", "notfoundcancelled"}:
+        return False
+    return to_decimal(ack.executed_qty) == Decimal("0")
+
+
+def _ack_is_zero_fill_notfound_cancel(ack: OrderAck) -> bool:
+    status = ack.status.replace(" ", "").replace("_", "").replace("-", "").lower()
+    if status not in {"notfound", "notfoundcancelled"}:
+        return False
+    if ack.executed_qty is None:
         return False
     return to_decimal(ack.executed_qty) == Decimal("0")
 
@@ -3999,7 +4143,7 @@ def _tail_signed_distance(
 def _pair_uses_relative_tail(pair_state: PairCycleState) -> bool:
     tail_type = (pair_state.pair.tail_price_spec_type or "").lower()
     amount_type = pair_state.pair.amount_type.lower()
-    return "t%" in tail_type or "td" in tail_type or "t%" in amount_type or "td" in amount_type
+    return "tb" in tail_type or "td" in tail_type or "tb" in amount_type or "td" in amount_type
 
 
 def _runtime_sources_should_stop(runtime: RuntimeQueueLike) -> bool:
@@ -4049,8 +4193,8 @@ def _head_gate_unit(pair_state: PairCycleState) -> str:
     amount_type = pair.amount_type.lower()
     if "pa" in price_type or "pa" in amount_type:
         return "pA"
-    if "p%" in price_type or "p%" in amount_type:
-        return "p%"
+    if "pb" in price_type or "pb" in amount_type:
+        return "pB"
     return "pD"
 
 
@@ -4064,8 +4208,10 @@ def _head_gate_measure(
     baseline = pair_state.head_trigger_reference_price
     if baseline is None or baseline <= 0:
         return None
-    if unit == "p%":
-        return (current - baseline) * Decimal("100") / baseline
+    if current <= 0:
+        return None
+    if unit == "pB":
+        return signed_logbps_move(current, baseline)
     return current - baseline
 
 

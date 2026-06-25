@@ -105,9 +105,9 @@ def test_org_strategy_table_parses_and_ignores_surrounding_text(tmp_path: Path) 
                 tps_run="0 1440",
                 tOut="6",
                 side="sell",
-                hPrice="%0.20",
+                hPrice="B19.98",
                 qty="A1",
-                tPrice="%0.10",
+                tPrice="B10",
                 hook="XBTC_SEL-head-filled",
             ),
         ],
@@ -131,10 +131,10 @@ def test_org_strategy_table_parses_and_ignores_surrounding_text(tmp_path: Path) 
     assert strategy.pairs[0].head_quantity_type == "qA"
     assert strategy.pairs[0].tail_price_spec == 20.0
     assert strategy.pairs[0].tail_price_spec_type == "tD"
-    assert strategy.pairs[1].head_order_price_spec == 0.2
-    assert strategy.pairs[1].head_order_price_spec_type == "h%"
-    assert strategy.pairs[1].tail_price_spec == 0.1
-    assert strategy.pairs[1].tail_price_spec_type == "t%"
+    assert strategy.pairs[1].head_order_price_spec == 19.98
+    assert strategy.pairs[1].head_order_price_spec_type == "hB"
+    assert strategy.pairs[1].tail_price_spec == 10.0
+    assert strategy.pairs[1].tail_price_spec_type == "tB"
 
 
 def test_org_strategy_table_accepts_usd_notional_quantity(tmp_path: Path) -> None:
@@ -347,7 +347,7 @@ def test_cool_field_parses_minutes_and_defaults_blank(tmp_path: Path) -> None:
         tmp_path / "cool.tsv",
         [
             _base_row(name="COOL", side="sell", hPrice="D6", qty="A1", tPrice="D20", cool="2.5"),
-            _base_row(name="NCOOL", side="buy", hPrice="%0.20", qty="A1", tPrice="%0.10", hook="COOL-tail-closed"),
+            _base_row(name="NCOOL", side="buy", hPrice="B19.98", qty="A1", tPrice="B10", hook="COOL-tail-closed"),
         ],
     )
 
@@ -372,12 +372,12 @@ def test_uppercase_cool_column_is_rejected(tmp_path: Path) -> None:
         read_strategy_file(_write_strategy(path, [_base_row()], columns=columns))
 
 
-def test_tublk_typed_field_parses_distance_and_percent(tmp_path: Path) -> None:
+def test_tublk_typed_field_parses_distance_and_logbps(tmp_path: Path) -> None:
     path = _write_strategy(
         tmp_path / "tublk.tsv",
         [
             _base_row(name="DIST", tps_run="0 1440", tOut="6", side="sell", hPrice="D6", qty="A1", tPrice="D20", tUblk="D5"),
-            _base_row(name="PCT", tps_run="0 1440", tOut="6", side="buy", hPrice="%0.20", qty="A1", tPrice="%0.10", tUblk="%0.2", hook="DIST-tail-closed"),
+            _base_row(name="LOG", tps_run="0 1440", tOut="6", side="buy", hPrice="B19.98", qty="A1", tPrice="B10", tUblk="B19.98", hook="DIST-tail-closed"),
         ],
     )
 
@@ -385,8 +385,8 @@ def test_tublk_typed_field_parses_distance_and_percent(tmp_path: Path) -> None:
 
     assert strategy.pairs[0].tail_unblock_spec == 5.0
     assert strategy.pairs[0].tail_unblock_spec_type == "uD"
-    assert strategy.pairs[1].tail_unblock_spec == 0.2
-    assert strategy.pairs[1].tail_unblock_spec_type == "u%"
+    assert strategy.pairs[1].tail_unblock_spec == 19.98
+    assert strategy.pairs[1].tail_unblock_spec_type == "uB"
     assert strategy.pairs[0].tail_second_update_wait_seconds == 360.0
     assert strategy.pairs[1].tail_second_update_wait_seconds == 360.0
 
@@ -396,7 +396,7 @@ def test_wublk_typed_field_parses_minutes_and_defaults_blank(tmp_path: Path) -> 
         tmp_path / "wublk.tsv",
         [
             _base_row(name="WAIT", side="sell", hPrice="D6", qty="A1", tPrice="D20", tUblk="D5", wUblk="2.5"),
-            _base_row(name="NOWAIT", side="buy", hPrice="%0.20", qty="A1", tPrice="%0.10", tUblk="%0.2", hook="WAIT-tail-closed"),
+            _base_row(name="NOWAIT", side="buy", hPrice="B19.98", qty="A1", tPrice="B10", tUblk="B19.98", hook="WAIT-tail-closed"),
         ],
     )
 
@@ -430,14 +430,21 @@ def test_head_limit_price_suffix_is_valid(tmp_path: Path) -> None:
     assert strategy.pairs[0].head.delta_type == "oD"
 
 
-def test_head_percent_price_type_is_valid(tmp_path: Path) -> None:
+def test_head_logbps_price_type_is_valid(tmp_path: Path) -> None:
     strategy = read_strategy_file(
-        _write_strategy(tmp_path / "valid.tsv", [_base_row(name="BUY_LM", oType="Lm!", hPrice="%1.5")])
+        _write_strategy(tmp_path / "valid.tsv", [_base_row(name="BUY_LM", oType="Lm!", hPrice="B148.89")])
     )
 
     assert strategy.pairs[0].head.order_type == "Lm!"
-    assert strategy.pairs[0].head_order_price_spec == 1.5
-    assert strategy.pairs[0].head_order_price_spec_type == "h%"
+    assert strategy.pairs[0].head_order_price_spec == 148.89
+    assert strategy.pairs[0].head_order_price_spec_type == "hB"
+
+
+def test_percent_price_distance_syntax_is_rejected(tmp_path: Path) -> None:
+    path = _write_strategy(tmp_path / "old-price-percent.org", [_base_row(tPrice="%0.5")])
+
+    with pytest.raises(ValueError, match="tPrice value '%0.5' must start"):
+        read_strategy_file(path)
 
 
 def test_invalid_head_offset_type_fails_clearly(tmp_path: Path) -> None:

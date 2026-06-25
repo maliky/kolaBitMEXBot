@@ -1,6 +1,38 @@
 #+TITLE: kolaBiBot
 #+OPTIONS: toc:2 num:nil
 
+* <2026-06-22 lun. 10:48> Gates
+P1 Finding (2026-06-22): executable_head_reference_price and head_price_reference_price now default unsuffixed head references to last for all markets. When last is unavailable (and mark also unavailable), they silently drop to mid (price_from_source), replacing the old side-aware book behavior (ask for BUY, bid for SELL). That can mis-score GATE_WAIT for relative gates (pD/pB) and keep latent heads from reaching ready.
+
+Remediation plan:
+- Preserve explicit order-type suffixes as-is (last/mark/index on Lm/Sl/Mm etc.).
+- For unsuffixed heads, resolve reference source as:
+  - `last` when available and positive,
+  - else `mark` when available and positive,
+  - else side-aware book (`ask` for BUY, `bid` for SELL), with normal mid fallback.
+- Apply this path in both `executable_head_reference_price` and `head_price_reference_price` via a single helper.
+- Add regression tests in `tests/bot/test_pricing.py` for unsuffixed source fallback order (`last`, `mark`, `ask`/`bid`).
+
+* <2026-06-22 lun. 19:05> Run report sparse fill evidence
+Finding: `scripts/kolabi-run-report logs/krf_ada.log` can reach the account DB but still abort when a terminated log pair has no joined `ExchangeFill` row, e.g. `T1determined-260622120100/a2157088-e990-4c9c-b2d8-a4185c9abccc`. The runtime log already contains enough terminated-pair evidence to render gross/log-derived rows, while the DB fill rows are only required for exact fees and maker/taker roles.
+
+Remediation implemented:
+- Parse exchange order ids from `HEAD_ACK`, `closed--living`, and `AMEND_SENT` report log lines.
+- Resolve each head/tail leg through typed evidence, preferring exact fill rows, then local order rows, then log-only facts.
+- Keep exact DB fills as the preferred source for price, fee, and liquidity.
+- When fill rows are sparse, render the terminated row with `?` liquidity where the maker/taker role is unknown and estimate missing fees with maker 0.02% or taker/unknown 0.05%, marking the cumulative column as `Cum est net`.
+- Replace the hard abort and long exact-note failure with compact evidence counts plus a capped missing-fill identity list.
+- Cover exact fills, exchange-id lookup, order-only fallback, log-only fallback, no-estimate mode, and capped missing-fill notes in `tests/bot/test_run_report.py`.
+
+* <2026-06-22 lun. 19:24> krf_ada post-only head rejects
+Finding: `logs/krf_ada.log` contains repeated `COMMAND_FAILED ... rejected postWouldExecute` for `L!` market-making heads, especially `MM_BUY*`. The pA market-making gates do reach `GATE_WAIT-2 ... ready last`, so the last/mark default is not blocking readiness in this run. The many `LATENT_TIMEOUT ... price_gate` entries on `UP_BUY*` and `DW_SEL*` are attempts whose pB thresholds did not become true inside short `tOut` windows; they are strategy timing outcomes, not a report crash.
+
+Remediation implemented:
+- Keep unsuffixed gate references on `last`, then `mark`, then side-aware book fallback, so `GATE_WAIT` still uses the execution-like reference requested for readiness.
+- When a plain head limit is post-only (`L!`), clamp the materialised limit price to the passive book side: buy prices no higher than best bid, sell prices no lower than best ask, with a one-tick fallback when only the opposite side is available.
+- Leave non-probe post-only rejection lifecycle semantics unchanged: if the exchange still rejects, the live rejected ACK is converted to a failed head attempt rather than opening a tail.
+- Cover buy/sell passive clamps in `tests/bot/test_pricing.py`; keep the log-bps hPrice tests non-post-only so they continue to check distance materialisation independently from post-only passivity.
+
 * <2026-06y-16 mar. 19:40> market-making adjustment
 In order to have market makers, even in a simple state, we need a way to adjust orders to their fill frequency.
 

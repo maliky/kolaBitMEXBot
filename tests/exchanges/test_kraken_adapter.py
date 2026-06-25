@@ -1496,6 +1496,75 @@ def test_cancel_sparse_response_maps_to_canceled_status(postgres_url_factory):
     assert ack.status == "Canceled"
 
 
+def test_cancel_runtime_client_id_resolves_futures_order_id(postgres_url_factory):
+    session = DummySession(
+        [
+            {
+                "result": "success",
+                "openOrders": [
+                    {
+                        "orderId": "OID-H",
+                        "cliOrdId": "H1visible-260621000000",
+                        "symbol": "PI_XBTUSD",
+                        "side": "buy",
+                        "orderType": "lmt",
+                        "unfilledSize": 1,
+                    }
+                ],
+            },
+            {
+                "result": "success",
+                "cancelStatus": {
+                    "order_id": "OID-H",
+                    "cli_ord_id": "H1visible-260621000000",
+                    "status": "cancelled",
+                    "filled": 0,
+                    "qty": 1,
+                },
+            },
+        ]
+    )
+    adapter = KrakenFuturesAdapter(
+        api_key="k",
+        api_secret="c2VjcmV0",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PI_XBTUSD",
+        environment="demo",
+        account_db_url=postgres_url_factory("prv"),
+        session=cast(Any, session),
+    )
+
+    ack = adapter.cancel_order("H1visible-260621000000")
+
+    assert ack.order_id == "OID-H"
+    assert ack.client_order_id == "H1visible-260621000000"
+    assert ack.status == "Canceled"
+    assert session.calls[1]["data"] == [("order_id", "OID-H")]
+
+
+def test_cancel_runtime_client_id_absent_maps_to_notfound(postgres_url_factory):
+    session = DummySession([{"result": "success", "openOrders": []}])
+    adapter = KrakenFuturesAdapter(
+        api_key="k",
+        api_secret="c2VjcmV0",
+        base_url="https://demo-futures.kraken.com",
+        symbol="PI_XBTUSD",
+        environment="demo",
+        account_db_url=postgres_url_factory("prv"),
+        session=cast(Any, session),
+    )
+
+    ack = adapter.cancel_order("H1missing-260621000000")
+
+    assert ack.order_id == "H1missing-260621000000"
+    assert ack.client_order_id == "H1missing-260621000000"
+    assert ack.status == "NotFound"
+    assert ack.executed_qty is None
+    assert ack.reason == "client_order_id_not_visible"
+    assert len(session.calls) == 1
+    assert session.calls[0]["url"].endswith("/openorders")
+
+
 def test_live_order_normalization_reads_camel_case_price_and_quantity(postgres_url_factory):
     session = DummySession(
         [

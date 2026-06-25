@@ -14,12 +14,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from kolabi.bot.domain import OrderIdentity, OrderPairSpec, StrategySpec
 from kolabi.bot.exchange_routes import (
     DEFAULT_MARKET_TYPE,
-    ExchangeRoute,
     SUPPORTED_MARKET_TYPES,
+    ExchangeRoute,
     exchange_supports_market_type,
     normalise_exchange_name,
-    pair_route as resolve_pair_route,
     unsupported_market_message,
+)
+from kolabi.bot.exchange_routes import (
+    pair_route as resolve_pair_route,
 )
 from kolabi.bot.indicators import (
     DummyIndicatorClient,
@@ -1800,7 +1802,8 @@ class AdapterExchangePort(ExchangePort):
         self.verify_tail_on_place = verify_tail_on_place
 
     async def place_head(self, command: PlaceHeadCommand) -> OrderAck:
-        return await self._call_blocking(self._place, command.request)
+        ack = await self._call_blocking(self._place, command.request)
+        return await self._verify_head_open_order(command.request, ack)
 
     async def place_tail(self, command: PlaceTailCommand) -> OrderAck:
         ack = await self._call_blocking(self._place, command.request)
@@ -1918,6 +1921,41 @@ class AdapterExchangePort(ExchangePort):
                     f"live_seen={len(last_live_orders)} db_seen={len(last_db_orders)}"
                 )
             await asyncio.sleep(self.verify_poll_seconds)
+
+    async def _verify_head_open_order(
+        self,
+        request: PlaceOrderCommandRequest,
+        ack: OrderAck,
+    ) -> OrderAck:
+        if request.stopPx is not None or request.price is None or request.orderQty is None:
+            return ack
+        if not hasattr(self.adapter, "live_open_orders"):
+            return ack
+        reader = cast(OpenOrderReader, self.adapter)
+        try:
+            live_orders = await self._call_blocking(reader.live_open_orders)
+        except Exception as exc:
+            _LOGGER.warning(
+                "HEAD_OPEN_ENRICH_SKIPPED (%s): clOrdID=%s orderID=%s error=%s",
+                request.pair_name,
+                request.clOrdID or "-",
+                ack.order_id,
+                _compact_admin_error(exc),
+            )
+            return ack
+        match = _matching_head_open_order(live_orders, request, ack)
+        if match is None:
+            return ack
+        order_id = _order_value(match, "order_id", "orderID", "orderId", "id")
+        client_id = _order_value(match, "client_order_id", "clOrdID", "cliOrdId", "cli_ord_id")
+        return replace(
+            ack,
+            order_id=order_id or ack.order_id,
+            client_order_id=client_id or ack.client_order_id or request.clOrdID,
+            status=str(match.get("status") or ack.status),
+            price=_decimal_or_none(match.get("price")) or ack.price,
+            orig_qty=_decimal_or_none(match.get("qty")) or ack.orig_qty,
+        )
 
     def _amend_head(self, request: AmendOrderCommandRequest) -> OrderAck:
         params: dict[str, Any] = {}
@@ -2070,6 +2108,36 @@ def _matching_tail_trigger_order(
             continue
         return order
     return None
+
+
+def _matching_head_open_order(
+    orders: list[dict[str, Any]],
+    request: PlaceOrderCommandRequest,
+    ack: OrderAck,
+) -> dict[str, Any] | None:
+    for order in orders:
+        client_id = _order_value(order, "client_order_id", "clOrdID", "cliOrdId", "cli_ord_id")
+        order_id = _order_value(order, "order_id", "orderID", "orderId", "id")
+        clordid_match = bool(request.clOrdID) and client_id == request.clOrdID
+        orderid_match = bool(ack.order_id) and order_id == str(ack.order_id)
+        if not (clordid_match or orderid_match):
+            continue
+        if request.side and not _matches_text(order.get("side"), request.side):
+            continue
+        if not _matches_quantity(order.get("qty"), request.orderQty):
+            continue
+        if not clordid_match and not _matches_price(order.get("price"), request.price):
+            continue
+        return order
+    return None
+
+
+def _order_value(order: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = order.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return ""
 
 
 def _match_trigger_evidence(

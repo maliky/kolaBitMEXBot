@@ -49,7 +49,7 @@ def sample_pair(name: str) -> OrderPairSpec:
     )
 
 
-def percent_tail_pair(name: str) -> OrderPairSpec:
+def logbps_tail_pair(name: str) -> OrderPairSpec:
     pair = sample_pair(name)
     return OrderPairSpec(
         name=pair.name,
@@ -59,13 +59,13 @@ def percent_tail_pair(name: str) -> OrderPairSpec:
         timeout=pair.timeout,
         head=pair.head,
         head_price=pair.head_price,
-        head_price_type="p%",
+        head_price_type="pB",
         head_quantity=3,
         head_quantity_type=pair.head_quantity_type,
         tail=pair.tail,
-        tail_price_spec=1.5,
-        tail_price_spec_type="t%",
-        amount_type="qAt%p%",
+        tail_price_spec=148.89,
+        tail_price_spec_type="tB",
+        amount_type="qAtBpB",
     )
 
 
@@ -221,7 +221,7 @@ def test_private_order_poller_waits_for_private_fill_reference_price() -> None:
                 strategy_id="demo",
                 pairs={
                     "pair-a": PairCycleState(
-                        pair=percent_tail_pair("pair-a"),
+                        pair=logbps_tail_pair("pair-a"),
                         head_identity=OrderIdentity(
                             pair_name="pair-a",
                             role="head",

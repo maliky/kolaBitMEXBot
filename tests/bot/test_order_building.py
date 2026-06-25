@@ -10,7 +10,6 @@ from kolabi.bot.tail_tracking import initial_tail_trail
 from kolabi.bot.tsv.parser import read_strategy_file
 from kolabi.shared.core.runtime_types import RuntimeCommandKind, Symbol
 
-
 DEFAULT_COLUMNS = (
     "name",
     "symbol",
@@ -115,7 +114,7 @@ def test_trigger_limit_head_command_materialises_signed_delta_as_distance(tmp_pa
             "tType": "SLm",
             "pGate": "D- +",
             "hPrice": "D0",
-            "tPrice": "%1.3",
+            "tPrice": "B129.16",
             "exchg": "KRKF",
         },
     )
@@ -147,10 +146,10 @@ def test_dw_sel2_probe_head_materialises_post_only_touch_price(tmp_path: Path) -
                 "hPrice": "D.0",
                 "tType": "S",
                 "qty": "A15",
-                "tPrice": "%2.5",
-                "tUblk": "%.9",
+                "tPrice": "B246.93",
+                "tUblk": "B89.60",
                 "wUblk": ".5",
-                "pGate": "%- -1.6",
+                "pGate": "B- -161.29",
                 "exchg": "KRKF",
             },
         )
@@ -168,11 +167,11 @@ def test_dw_sel2_probe_head_materialises_post_only_touch_price(tmp_path: Path) -
         kind=RuntimeCommandKind.PLACE,
     )
 
-    assert pair.head_price == (-90.0, -1.6)
+    assert pair.head_price == (-100000.0, -161.29)
     assert pair.head.delta is None
     assert pair.head_order_price_spec == 0.0
     assert pair.head_order_price_spec_type == "hD"
-    assert pair.tail_unblock_spec == 0.9
+    assert pair.tail_unblock_spec == 89.6
     assert pair.tail_second_update_wait_seconds == 30.0
     assert command.request.ordType == "LT"
     assert command.request.side == "sell"

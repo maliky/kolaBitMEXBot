@@ -710,17 +710,17 @@ The second line records run provenance, for example =Run UTC: 2026-06-20 07:45:3
 
 The terminated-pair columns are:
 
-- A compact line under =Terminated pairs= counts =Side= types and =Liq= types before the detailed table. A short =Stat= table after the detailed rows summarizes =Life=, prices, =Qty=, =A#=, =AmendLife=, =amendDif=, =Gross USD=, =Net USD=, and =ROI %= with min, max, median, mode, and average. =AmendLife= is the elapsed time from first tail placement to tail fill.
+- A compact line under =Terminated pairs= counts =Side= types and =Liq= types before the detailed table. A short =Stat= table after the detailed rows summarizes =Life=, prices, =Qty=, =A#=, =AmendLife=, =amendLogbps=, =Gross USD=, =Net USD=, and =ROI %= with min, max, median, mode, and average. =AmendLife= is the elapsed time from first tail placement to tail fill.
 - =H fill UTC= and =T fill UTC=: head and tail fill times in UTC, formatted as =MM-DD HH:MM=.
 - =Life=: elapsed time from head fill to tail fill.
 - =Pair=: pair name plus right-aligned attempt count.
 - =Side=: abbreviated head/tail sides, for example =S/B= or =B/S=.
 - =Hfill=, =Tfill=, and =Qty=: DB-backed fill price and quantity when DB rows are available.
 - =Liq=: maker/taker roles, abbreviated =M= or =T=. The compact =Liq:= summary line counts terminated rows by this head/tail liquidity pair, for example =M/T= means maker head and taker tail. In =--log-only= mode these roles are usually unknown because they come from DB fill rows, so unknown rows are counted as =-=.
-- =A#=, =Tamend1 UTC=, =Tamend2 UTC=, and =Amd Diff=: tail amendment count, first two amend times, and final amended stop minus initial tail stop. =Amd Diff= is a quote-price difference per base unit, for example USD/ADA on =PF_ADAUSD=; it is not multiplied by =Qty=. Terminal =0.0000= stop placeholders in close updates are ignored so they do not erase the last real amend price.
+- =A#=, =Tamend1 UTC=, =Tamend2 UTC=, and =Amd logbps=: tail amendment count, first two amend times, and signed log basis point move from initial tail stop to latest amended tail stop, computed as =ln(latest_stop / initial_stop) * 10000= and rendered to the nearest whole logbps. Terminal =0.0000= stop placeholders in close updates are ignored so they do not erase the last real amend price.
 - =Gross USD=, =Net USD=, =ROI %=, and =Cum net=: gross before fees, net after DB fees when fee rows are in USD-like currency, return on notional, and running cumulative net. ROI uses =Net USD / (Hfill * Qty) * 100= when DB fees are available, otherwise =Gross USD / (Hfill * Qty) * 100= in =--log-only= mode.
 
-The living tail-flying section shows head-filled pairs whose tail has not filled. =Age= is measured from head fill to the latest parsed log timestamp. =Tstop= and =Dist= come from latest tail lifecycle/telemetry. =T status= and =T filled= come from the local account DB when available.
+The living tail-flying section shows head-filled pairs whose tail has not filled. =Age= is measured from head fill to the latest parsed log timestamp. =Tstop= comes from latest tail lifecycle/telemetry, and =Dist logbps= is the signed log basis point move from current reference price to tail stop, rendered to the nearest whole logbps. =T status= and =T filled= come from the local account DB when available.
 
 The latest latent section shows one latest active not-yet-filled attempt per pair name. Attempts already ended by =HEAD_CANCELLED=, =COMMAND_FAILED=, =HEAD_TIMEOUT=, or a filled head are excluded. The section is meant to surface current pending gate/head state, not the full history of failed repeats. A compact =Latest prices= table at the start of the report prints the latest parsed mark, last, current spread, max observed spread guard used for tail placement, and market prices from runtime telemetry.
 

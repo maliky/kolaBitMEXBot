@@ -17,6 +17,7 @@ from typing import Any, Protocol
 
 from kolabi.bot.domain import OrderPairSpec, PairCycleState, Side
 from kolabi.bot.order_codes import order_price_source, parse_order_code
+from kolabi.bot.price_units import logbps_price_distance, signed_logbps_move
 from kolabi.shared.core.runtime_types import decimal_to_float, to_decimal
 
 
@@ -98,7 +99,10 @@ def resolve_head_order_prices(
     if reference <= 0:
         return None, None
     if code.base_key == "L":
-        return decimal_to_float(_plain_limit_head_price(pair, reference, market)), None
+        price = _plain_limit_head_price(pair, reference, market)
+        if code.post_only:
+            price = _post_only_passive_limit_head_price(pair, price, market)
+        return decimal_to_float(price), None
     if code.base_key == "S":
         return None, decimal_to_float(_stop_head_price(pair, reference, market))
     if code.base_key in {"SL", "LT"}:
@@ -131,6 +135,58 @@ def _plain_limit_head_price(
     if pair.head.side == Side.BUY:
         return reference - value.distance
     return reference + value.distance
+
+
+def _post_only_passive_limit_head_price(
+    pair: OrderPairSpec,
+    price: Decimal,
+    market: MarketLike,
+) -> Decimal:
+    if pair.head.side == Side.BUY:
+        passive_ceiling = _positive_decimal(market.best_bid)
+        if passive_ceiling is None:
+            passive_ceiling = _one_tick_inside(
+                _positive_decimal(market.best_ask),
+                -1,
+                market,
+            )
+        if passive_ceiling is None:
+            return price
+        return min(price, passive_ceiling)
+
+    passive_floor = _positive_decimal(market.best_ask)
+    if passive_floor is None:
+        passive_floor = _one_tick_inside(
+            _positive_decimal(market.best_bid),
+            1,
+            market,
+        )
+    if passive_floor is None:
+        return price
+    return max(price, passive_floor)
+
+
+def _one_tick_inside(
+    reference: Decimal | None,
+    direction: int,
+    market: MarketLike,
+) -> Decimal | None:
+    tick = _tick_size_from_market(market)
+    if reference is None or tick is None:
+        return None
+    value = reference + (tick if direction > 0 else -tick)
+    if value <= 0:
+        return None
+    return value
+
+
+def _positive_decimal(value: Decimal | int | float | str | None) -> Decimal | None:
+    if value is None:
+        return None
+    parsed = to_decimal(value)
+    if parsed <= 0:
+        return None
+    return parsed
 
 
 def _stop_head_price(
@@ -204,8 +260,8 @@ def _head_order_price_value(
     if price_type == "ha":
         return _HeadOrderPriceValue(distance=Decimal("0"), absolute=value)
     distance = abs(value)
-    if price_type == "h%":
-        distance = reference * distance / Decimal("100")
+    if price_type == "hb":
+        distance = logbps_price_distance(reference, distance)
     return _HeadOrderPriceValue(distance=distance)
 
 
@@ -213,8 +269,8 @@ def _head_limit_offset_distance(pair: OrderPairSpec, reference: Decimal) -> Deci
     if pair.head.delta is None:
         return Decimal("0")
     delta = abs(to_decimal(pair.head.delta or 0))
-    if pair.head.delta_type.lower() == "o%":
-        return reference * delta / Decimal("100")
+    if pair.head.delta_type.lower() == "ob":
+        return logbps_price_distance(reference, delta)
     return delta
 
 
@@ -233,12 +289,8 @@ def executable_head_reference_price(
     market: MarketLike,
 ) -> tuple[str, float]:
     """Return the executable public reference for head placement conditions."""
-    source = order_price_source(pair.head.order_type)
-    if source is not None:
-        return source, price_from_source(source, market)
-    if pair.head.side == Side.BUY:
-        return "ask", _price_or_fallback(market.best_ask, market.mid_price)
-    return "bid", _price_or_fallback(market.best_bid, market.mid_price)
+    source = _head_reference_source(pair, market)
+    return source, price_from_source(source, market)
 
 
 def head_price_reference_price(
@@ -246,10 +298,26 @@ def head_price_reference_price(
     market: MarketLike,
 ) -> tuple[str, float]:
     """Return the public reference used to materialise a non-market head price."""
-    source = order_price_source(pair.head.order_type)
-    if source is not None:
-        return source, price_from_source(source, market)
-    return "book", reference_price(pair.head.side, market)
+    source = _head_reference_source(pair, market)
+    return source, price_from_source(source, market)
+
+
+def _head_reference_source(pair: OrderPairSpec, market: MarketLike) -> str:
+    explicit_source = order_price_source(pair.head.order_type)
+    if explicit_source is not None:
+        return explicit_source
+    market_any = market_as_any(market)
+    if _is_positive_price(getattr(market_any, "last_price", None)):
+        return "last"
+    if _is_positive_price(getattr(market_any, "mark_price", None)):
+        return "mark"
+    if pair.head.side == Side.BUY:
+        return "ask"
+    return "bid"
+
+
+def _is_positive_price(value: Any) -> bool:
+    return value is not None and value > 0
 
 
 def head_price_condition_satisfied(
@@ -268,8 +336,10 @@ def head_price_condition_satisfied(
     baseline = pair_state.head_trigger_reference_price
     if baseline is None or baseline <= 0:
         return False
-    if "p%" in price_type or "p%" in amount_type:
-        value = (current - baseline) * Decimal("100") / baseline
+    if current <= 0:
+        return False
+    if "pb" in price_type or "pb" in amount_type:
+        value = signed_logbps_move(current, baseline)
     else:
         value = current - baseline
     return low <= value <= high

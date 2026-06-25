@@ -929,10 +929,32 @@ class KrakenFuturesAdapter(ExchangeABC):
         return _ack_from_legacy(response)
 
     def cancel_order(self, order_id: str) -> OrderAck:
-        response = self.cancel(order_id)
+        resolved_order_id = self._resolve_futures_cancel_order_id(order_id)
+        if resolved_order_id is None:
+            return OrderAck(
+                order_id=order_id,
+                status="NotFound",
+                executed_qty=None,
+                client_order_id=order_id,
+                reason="client_order_id_not_visible",
+            )
+        response = self.cancel(resolved_order_id)
         if isinstance(response, list):
             response = response[0]
         return _ack_from_legacy(response)
+
+    def _resolve_futures_cancel_order_id(self, order_id: str) -> str | None:
+        if not _looks_like_runtime_client_order_id(order_id):
+            return order_id
+        for order in self.http_open_orders():
+            if not _matches_symbol(order, self.symbol):
+                continue
+            normalized = _normalize_live_order(order)
+            if normalized.get("client_order_id") != order_id:
+                continue
+            resolved_order_id = str(normalized.get("order_id") or "")
+            return resolved_order_id or None
+        return None
 
     def get_position(self) -> Position:
         position = self.position(self.symbol)
@@ -2241,6 +2263,11 @@ def _spot_status_to_legacy(value: object) -> str:
 def _looks_like_client_order_id(value: object) -> bool:
     text = str(value or "")
     return text.startswith(("H", "T")) or "-" in text and not text.startswith("O")
+
+
+def _looks_like_runtime_client_order_id(value: object) -> bool:
+    text = str(value or "")
+    return text.startswith(("H", "T"))
 
 
 def _replacement_spot_client_id(previous: str | None) -> str:

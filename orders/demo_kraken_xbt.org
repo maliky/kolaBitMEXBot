@@ -32,9 +32,9 @@
 |  |  | TAIL_LT_LAST | 0 60 | 1 | 4 |  |  | sell | L |  | A30 | LTl- | D0.5 | D5 + |  | D8 |  |  |  |
 |  |  | TAIL_LT_MARK | 0 60 | 1 | 4 |  |  | sell | L |  | A32 | LTm- | D0.5 | D5 + |  | D8 |  |  |  |
 |  |  | TAIL_LT_INDEX | 0 60 | 1 | 4 |  |  | sell | L |  | A36 | LTi- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | AT_QA_TD_PCT | 0 60 | 1 | 4 |  |  | buy | L |  | A45 | S- |  | %- -0.05 |  | D8 |  |  |  |
+|  |  | AT_QA_TD_PCT | 0 60 | 1 | 4 |  |  | buy | L |  | A45 | S- |  | B- -5.00 |  | D8 |  |  |  |
 |  |  | AT_QA_TD_PA | 0 60 | 1 | 4 |  |  | buy | L |  | A47 | S- |  | A- + |  | D8 |  |  |  |
-|  |  | AT_QA_TP_PD | 0 60 | 1 | 4 |  |  | buy | L |  | A49 | S- |  | D- -5 |  | %0.02 |  |  |  |
+|  |  | AT_QA_TP_PD | 0 60 | 1 | 4 |  |  | buy | L |  | A49 | S- |  | D- -5 |  | B2.00 |  |  |  |
 |  |  | AT_QA_TA_PD | 0 60 | 1 | 4 |  |  | buy | L |  | A51 | S- |  | D- -5 |  | A73855 |  |  |  |
 |  |  | AT_QP_TD_PD | 0 60 | 1 | 4 |  |  | sell | L |  | %38 | S- |  | D5 + |  | D8 |  |  |  |
 |  |  | NOW_MARKET | 0 60 | 1 | 4 |  |  | buy | M |  | A53 | S- |  | D- -2 |  | D6 |  |  |  |

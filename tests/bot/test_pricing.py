@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-
 from kolabi.bot.domain import (
     HeadSpec,
     OrderPairSpec,
@@ -69,44 +68,141 @@ def test_head_limit_mark_suffix_uses_mark_reference() -> None:
     assert reference == 120.0
 
 
-def test_sell_limit_percent_hprice_materialises_above_mark_reference() -> None:
-    pair = replace(
-        _pair("Lm!"),
-        head=HeadSpec(
-            side=Side.SELL,
-            order_type="Lm!",
-        ),
-        head_order_price_spec=1.5,
-        head_order_price_spec_type="h%",
-        head_price=(-1_000_000.0, 1_000_000.0),
-        amount_type="qAtDpDh%",
-    )
-
-    price, stop_price = resolve_head_order_prices(
-        pair,
+def test_head_limit_without_suffix_uses_last_reference() -> None:
+    source, reference = executable_head_reference_price(
+        _pair("L"),
         _Market(
             best_bid=99.0,
             best_ask=101.0,
             mid_price=100.0,
-            mark_price=1000.0,
+            last_price=120.0,
         ),
     )
 
-    assert price == 1015.0
+    assert source == "last"
+    assert reference == 120.0
+
+
+def test_head_limit_without_suffix_prefers_last_before_mark() -> None:
+    source, reference = executable_head_reference_price(
+        _pair("L"),
+        _Market(
+            best_bid=99.0,
+            best_ask=101.0,
+            mid_price=100.0,
+            last_price=121.0,
+            mark_price=120.0,
+        ),
+    )
+
+    assert source == "last"
+    assert reference == 121.0
+
+
+def test_head_limit_without_suffix_falls_back_to_mark_reference() -> None:
+    source, reference = executable_head_reference_price(
+        _pair("L"),
+        _Market(
+            best_bid=99.0,
+            best_ask=101.0,
+            mid_price=100.0,
+            mark_price=120.0,
+        ),
+    )
+
+    assert source == "mark"
+    assert reference == 120.0
+
+
+def test_head_limit_without_suffix_falls_back_to_bid_for_sell() -> None:
+    source, reference = executable_head_reference_price(
+        replace(
+            _pair("L"),
+            head=HeadSpec(side=Side.SELL, order_type="L"),
+        ),
+        _Market(
+            best_bid=99.0,
+            best_ask=101.0,
+            mid_price=100.0,
+        ),
+    )
+
+    assert source == "bid"
+    assert reference == 99.0
+
+
+def test_head_limit_without_suffix_falls_back_to_ask_for_buy() -> None:
+    source, reference = executable_head_reference_price(
+        _pair("L"),
+        _Market(
+            best_bid=99.0,
+            best_ask=101.0,
+            mid_price=100.0,
+        ),
+    )
+
+    assert source == "ask"
+    assert reference == 101.0
+
+
+def test_post_only_buy_limit_keeps_last_gate_reference_but_clamps_to_bid() -> None:
+    pair = replace(
+        _pair("L!"),
+        head_order_price_spec=0.0001,
+        head_order_price_spec_type="hD",
+    )
+    market = _Market(
+        best_bid=0.1614,
+        best_ask=0.1615,
+        mid_price=0.16145,
+        last_price=0.1616,
+        tick_size=0.0001,
+    )
+
+    source, reference = executable_head_reference_price(pair, market)
+    price, stop_price = resolve_head_order_prices(pair, market)
+
+    assert source == "last"
+    assert reference == 0.1616
+    assert price == pytest.approx(0.1614)
     assert stop_price is None
 
 
-def test_buy_limit_percent_hprice_materialises_below_mark_reference() -> None:
+def test_post_only_sell_limit_keeps_last_gate_reference_but_clamps_to_ask() -> None:
     pair = replace(
-        _pair("Lm!"),
+        _pair("L!"),
+        head=HeadSpec(side=Side.SELL, order_type="L!"),
+        head_order_price_spec=0.0001,
+        head_order_price_spec_type="hD",
+    )
+    market = _Market(
+        best_bid=0.1617,
+        best_ask=0.1618,
+        mid_price=0.16175,
+        last_price=0.1616,
+        tick_size=0.0001,
+    )
+
+    source, reference = executable_head_reference_price(pair, market)
+    price, stop_price = resolve_head_order_prices(pair, market)
+
+    assert source == "last"
+    assert reference == 0.1616
+    assert price == pytest.approx(0.1618)
+    assert stop_price is None
+
+
+def test_sell_limit_logbps_hprice_materialises_above_mark_reference() -> None:
+    pair = replace(
+        _pair("Lm"),
         head=HeadSpec(
-            side=Side.BUY,
-            order_type="Lm!",
+            side=Side.SELL,
+            order_type="Lm",
         ),
-        head_order_price_spec=1.5,
-        head_order_price_spec_type="h%",
+        head_order_price_spec=148.89,
+        head_order_price_spec_type="hB",
         head_price=(-1_000_000.0, 1_000_000.0),
-        amount_type="qAtDpDh%",
+        amount_type="qAtDpDhB",
     )
 
     price, stop_price = resolve_head_order_prices(
@@ -119,7 +215,34 @@ def test_buy_limit_percent_hprice_materialises_below_mark_reference() -> None:
         ),
     )
 
-    assert price == 985.0
+    assert price == pytest.approx(1015.0, abs=0.001)
+    assert stop_price is None
+
+
+def test_buy_limit_logbps_hprice_materialises_below_mark_reference() -> None:
+    pair = replace(
+        _pair("Lm"),
+        head=HeadSpec(
+            side=Side.BUY,
+            order_type="Lm",
+        ),
+        head_order_price_spec=148.89,
+        head_order_price_spec_type="hB",
+        head_price=(-1_000_000.0, 1_000_000.0),
+        amount_type="qAtDpDhB",
+    )
+
+    price, stop_price = resolve_head_order_prices(
+        pair,
+        _Market(
+            best_bid=99.0,
+            best_ask=101.0,
+            mid_price=100.0,
+            mark_price=1000.0,
+        ),
+    )
+
+    assert price == pytest.approx(985.0, abs=0.001)
     assert stop_price is None
 
 
@@ -230,6 +353,7 @@ def test_head_limit_hook_carries_materialised_order_price() -> None:
             best_bid=95.0,
             best_ask=96.0,
             mid_price=95.5,
+            last_price=95.5,
             tick_size=0.5,
             occurred_at=now,
         ),
@@ -237,15 +361,16 @@ def test_head_limit_hook_carries_materialised_order_price() -> None:
 
     assert move is not None
     assert move.reply is not None
-    assert move.reply["head_order_price"] == 95.5
+    assert move.reply["reference_source"] == "last"
+    assert move.reply["head_order_price"] == 95.0
 
 
 def test_sell_limit_hprice_is_lazy_relative_to_gate_open_reference() -> None:
     pair = replace(
         _pair("L"),
         head=HeadSpec(side=Side.SELL, order_type="L"),
-        head_price=(-90.0, -2.0),
-        head_price_type="p%",
+        head_price=(-1000.0, -200.0),
+        head_price_type="pB",
         head_order_price_spec=10.0,
         head_order_price_spec_type="hD",
     )
@@ -258,9 +383,10 @@ def test_sell_limit_hprice_is_lazy_relative_to_gate_open_reference() -> None:
         launched_at=now,
         snapshot=MarketSnapshotFact(
             symbol="PI_XBTUSD",
-            best_bid=97.9,
+            best_bid=95.0,
             best_ask=98.1,
-            mid_price=98.0,
+            mid_price=96.5,
+            last_price=97.9,
             tick_size=0.1,
             occurred_at=now,
         ),
@@ -269,6 +395,7 @@ def test_sell_limit_hprice_is_lazy_relative_to_gate_open_reference() -> None:
     assert move is not None
     assert move.reply is not None
     assert move.reply["reference_price"] == 97.9
+    assert move.reply["reference_source"] == "last"
     assert move.reply["head_order_price"] == 107.9
 
 

@@ -107,7 +107,7 @@ def _head_exchange_offset(pair: OrderPairSpec) -> PriceOffset | None:
         return None
     if pair.head.delta is None:
         return None
-    if pair.head.delta_type.lower() == "o%":
+    if pair.head.delta_type.lower() == "ob":
         return None
     return _distance_offset(pair.head.delta)
 
@@ -340,7 +340,7 @@ def tail_stop_price(state: PairCycleState) -> Decimal | float | None:
         return state.tail_trail.current_stop_price
     tail_type = (state.pair.tail_price_spec_type or "").lower()
     amount_type = state.pair.amount_type.lower()
-    if "t%" in tail_type or "t%" in amount_type or "td" in tail_type or "td" in amount_type:
+    if "tb" in tail_type or "tb" in amount_type or "td" in tail_type or "td" in amount_type:
         raise ValueError(
             f"Order pair '{state.pair.name}' needs an initialised tail trail "
             "before placing or amending a relative tail"
@@ -395,4 +395,4 @@ def _is_zero_relative_tail(pair: OrderPairSpec) -> bool:
         return False
     tail_type = (pair.tail_price_spec_type or "").lower()
     amount_type = pair.amount_type.lower()
-    return "t%" in tail_type or "t%" in amount_type or "td" in tail_type or "td" in amount_type
+    return "tb" in tail_type or "tb" in amount_type or "td" in tail_type or "td" in amount_type

@@ -2,7 +2,7 @@
 | exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
 |---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
 | BTX | XBTUSD | XBTC_SEL | 0 1440 | 1 | 6 |  |  | sell | L |  | A1 | S- |  | D- + | D6 | D20 |  |  |  |
-| KRKF | PI_ADAUSD | KADA_SEL | 0 1440 | 1 | 6 |  |  | sell | L |  | A1 | S- |  | D- + | %0.20 | %0.10 |  |  | XBTC_SEL-head-filled |
+| KRKF | PI_ADAUSD | KADA_SEL | 0 1440 | 1 | 6 |  |  | sell | L |  | A1 | S- |  | D- + | B19.98 | B10 |  |  | XBTC_SEL-head-filled |
 | BINS | ADAUSDT | NADA_BUY | 0 1440 | 1 | 6 |  |  | buy | M |  | A3 | L! |  | D- + |  | D0 |  |  | KADA_SEL-tail-closed |
 
 # Notes from the previous strategy fixture:

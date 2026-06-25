@@ -5,8 +5,8 @@ from decimal import Decimal
 
 import pytest
 from kolabi.bot.__main__ import (
-    build_service,
     build_parser,
+    build_service,
     build_single_strategy,
     preflight_command,
     run_command,
@@ -35,7 +35,7 @@ def test_run_once_parser_accepts_typed_fields() -> None:
             "--qty",
             "A1",
             "--tPrice",
-            "%0.5",
+            "B50",
             "-o",
             "L",
             "-y",
@@ -57,14 +57,14 @@ def test_run_once_parser_accepts_typed_fields() -> None:
     assert pair.timeout == 60
     assert pair.head_price == (1.0, 2.0)
     assert pair.head_quantity == 1
-    assert pair.tail_price_spec == 0.5
+    assert pair.tail_price_spec == 50.0
     assert pair.head.order_type == "L"
     assert pair.tail.order_type == "S-"
     assert pair.head.side.value == "sell"
-    assert pair.amount_type == "qAt%pDhDoD"
+    assert pair.amount_type == "qAtBpDhDoD"
 
 
-def test_run_once_parser_keeps_percent_tail_percent_head_grammar() -> None:
+def test_run_once_parser_keeps_logbps_tail_logbps_head_grammar() -> None:
     parser = build_parser()
 
     args = parser.parse_args(
@@ -73,11 +73,11 @@ def test_run_once_parser_keeps_percent_tail_percent_head_grammar() -> None:
             "-m",
             "XSellPercentTail",
             "-x",
-            "%-1 1",
+            "B-100 100",
             "--qty",
             "A1",
             "--tPrice",
-            "%0.5",
+            "B50",
             "-o",
             "M",
             "-y",
@@ -91,9 +91,9 @@ def test_run_once_parser_keeps_percent_tail_percent_head_grammar() -> None:
     pair = build_single_strategy(args).pairs[0]
 
     assert pair.head_quantity_type == "qA"
-    assert pair.tail_price_spec_type == "t%"
-    assert pair.head_price_type == "p%"
-    assert pair.tail_price_spec == 0.5
+    assert pair.tail_price_spec_type == "tB"
+    assert pair.head_price_type == "pB"
+    assert pair.tail_price_spec == 50.0
 
 
 def test_run_once_parser_accepts_usd_notional_quantity() -> None:
@@ -109,7 +109,7 @@ def test_run_once_parser_accepts_usd_notional_quantity() -> None:
             "--qty",
             "U15.5",
             "--tPrice",
-            "%0.5",
+            "B50",
             "-o",
             "L",
             "-y",
@@ -139,7 +139,7 @@ def test_run_once_parser_accepts_decimal_absolute_quantity() -> None:
             "--qty",
             "A0.0001",
             "--tPrice",
-            "%0.5",
+            "B50",
             "-o",
             "L",
             "-y",
@@ -169,7 +169,7 @@ def test_run_once_parser_accepts_decimal_percent_quantity() -> None:
             "--qty",
             "%0.5",
             "--tPrice",
-            "%0.5",
+            "B50",
             "-o",
             "L",
             "-y",
@@ -189,14 +189,14 @@ def test_run_once_parser_accepts_decimal_percent_quantity() -> None:
 @pytest.mark.parametrize(
     "removed_args",
     [
-        ["--aType", "qAt%pD"],
+        ["--aType", "qAtBpD"],
         ["--quantity", "1"],
         ["-q", "1"],
         ["--tailPrice", "0.5"],
         ["-T", "0.5"],
         ["--pgate", "D1 2"],
         ["--hprice", "D1"],
-        ["--tp", "%0.5"],
+        ["--tp", "B50"],
         ["--oDelta", "D1"],
     ],
 )
@@ -214,7 +214,7 @@ def test_run_once_parser_rejects_removed_legacy_args(removed_args: list[str]) ->
                 "--qty",
                 "A1",
                 "--tPrice",
-                "%0.5",
+                "B50",
                 "-o",
                 "L",
                 "-y",
@@ -240,7 +240,7 @@ def test_run_once_parser_accepts_tublk_keyword() -> None:
             "--qty",
             "A1",
             "--tPrice",
-            "%0.5",
+            "B50",
             "--tUblk",
             "D5",
             "-o",
@@ -272,7 +272,7 @@ def test_run_once_parser_accepts_wublk_keyword() -> None:
             "--qty",
             "A1",
             "--tPrice",
-            "%0.5",
+            "B50",
             "--wUblk",
             "6",
             "-o",
@@ -303,7 +303,7 @@ def test_run_once_parser_accepts_cool_keyword() -> None:
             "--qty",
             "A1",
             "--tPrice",
-            "%0.5",
+            "B50",
             "--cool",
             "2.5",
             "-o",
@@ -530,7 +530,7 @@ def test_run_once_command_dry_run_prints_canonical_structure(capsys) -> None:
         side="sell",
         pGate="D1 2",
         qty="A1",
-        tPrice="%0.5",
+        tPrice="B50",
         oType="L",
         hDelta=None,
         tDelta=None,
@@ -603,7 +603,7 @@ def test_run_and_run_once_share_bot_service_path(monkeypatch) -> None:
         side="sell",
         pGate="D1 2",
         qty="A1",
-        tPrice="%0.5",
+        tPrice="B50",
         oType="L",
         hDelta=None,
         tDelta=None,
@@ -643,7 +643,7 @@ def test_run_once_returns_130_on_keyboard_interrupt(monkeypatch, capsys) -> None
         side="sell",
         pGate="D1 2",
         qty="A1",
-        tPrice="%0.5",
+        tPrice="B50",
         oType="L",
         hDelta=None,
         tDelta=None,

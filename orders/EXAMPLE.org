@@ -5,12 +5,12 @@ This file shows the active strategy grammar used by =kolabi.bot=. Strategy files
 * Typed Value Rules
 
 - =qty= is required and starts with =A=, =%=, or =U=, for example =A11= or =U15= for USD notional converted from mark price.
-- =pGate= is a typed two-bound interval, for example =D1 2=, =D- +=, =%-1 1=, or =A79320 79340=.
-- =hPrice= is a lazy typed head price, for example =D6=, =%0.2=, or =A79350=; it is computed only when =pGate= opens.
-- =tPrice= is a typed tail distance, for example =D20=, =%1.2=, or =A0.25=.
-- =hDelta= starts with =D= or =%= when present and is only for =SL= or =LT= head trigger-to-limit offsets.
+- =pGate= is a typed two-bound interval, for example =D1 2=, =D- +=, =B-100.50 99.50=, or =A79320 79340=.
+- =hPrice= is a lazy typed head price, for example =D6=, =B19.98=, or =A79350=; it is computed only when =pGate= opens.
+- =tPrice= is a typed tail distance, for example =D20=, =B119.29=, or =A0.25=.
+- =hDelta= starts with =D= or =B= when present and is only for =SL= or =LT= head trigger-to-limit offsets.
 - =tDelta= starts with =D= when present.
-- =tUblk= starts with =D= or =%= when present.
+- =tUblk= starts with =D= or =B= when present.
 - =wUblk= is a plain number of minutes; blank defaults to 6.
 
 Removed compatibility flags and old keyword spellings are intentionally absent: =--aType=, =-a=, =--quantity=, =-q=, =--tailPrice=, =-T=, =--pgate=, =--hprice=, =--tp=, and =--oDelta= are no longer accepted.
@@ -30,21 +30,21 @@ python -m kolabi.bot run-once \
   --qty A1 \
   --tType S- \
   --pGate 'D1 2' \
-  --tPrice %0.5 \
+  --tPrice B49.88 \
   --dry-run
 
 python -m kolabi.bot run-once \
   --symbol PI_XBTUSD \
   --environment demo \
-  --name XPct \
+  --name XLog \
   --tps_run 0 60 \
   --side buy \
   --oType L \
-  --hPrice %0.5 \
+  --hPrice B49.88 \
   --qty A1 \
   --tType S- \
-  --pGate '%-1 1' \
-  --tPrice %0.5 \
+  --pGate 'B-100.50 99.50' \
+  --tPrice B49.88 \
   --dry-run
 
 python -m kolabi.bot run-once \
@@ -68,7 +68,7 @@ python -m kolabi.bot run-once \
 | exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
 |---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
 | KRKF | PI_XBTUSD | XBTC_SEL | 0 1440 | 1 | 6 |  |  | sell | L |  | A1 | S- |  | D- + | D6 | D20 |  |  |  |
-| KRKF | PI_ADAUSD | KADA_SEL | 0 1440 | 1 | 6 |  |  | sell | L |  | A1 | S- |  | D- + | %0.20 | %0.10 |  |  | XBTC_SEL-head-filled |
+| KRKF | PI_ADAUSD | KADA_SEL | 0 1440 | 1 | 6 |  |  | sell | L |  | A1 | S- |  | D- + | B19.98 | B10 |  |  | XBTC_SEL-head-filled |
 | BINS | ADAUSDT | NADA_BUY | 0 1440 | 1 | 6 |  |  | buy | M |  | A3 | L! |  | D- + |  | D0 |  |  | KADA_SEL-tail-closed |
 #+end_src
 

@@ -6,21 +6,18 @@ from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
-
 from kolabi.bot.run_report import (
     PairKey,
     ReportOptions,
     build_latent_rows,
     build_living_tail_rows,
-    build_report_table,
     build_report_rows,
+    build_report_table,
     fetch_fill_summaries,
     fetch_order_summaries,
     main,
-    parse_run_log_text,
     parse_log_text,
+    parse_run_log_text,
     render_latent_table,
     render_living_tail_table,
     render_market_snapshot_table,
@@ -30,13 +27,15 @@ from kolabi.bot.run_report import (
     render_terminated_summary_table,
 )
 from kolabi.shared.persistence import (
+    AccountBalance,
     Base,
     ExchangeFill,
     ExchangeInstrument,
     ExchangeOrder,
     RawExchangeEvent,
 )
-
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 SAMPLE_LOG = "\n".join(
     (
@@ -141,8 +140,34 @@ def test_terminal_zero_stop_placeholders_do_not_overwrite_last_amend() -> None:
     assert lifecycle.latest_tail_stop == Decimal("0.1624")
     assert lifecycle.tail_fill is not None
     assert lifecycle.tail_fill.price == Decimal("0.1624")
-    assert rows[0].amend_diff == Decimal("-0.0032")
-    assert "| -0.00320 | +0.001500 |" in table
+    assert rows[0].amend_logbps == Decimal("-195.1281422358174130861852988")
+    assert "|       -195 | +0.001500 |" in table
+
+
+def test_non_positive_amend_stop_renders_blank_logbps() -> None:
+    log = "\n".join(
+        (
+            "2026-06-18 15:26:47,467 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (MM_SEL#2): H2nimble sell L 5.00 0.1627 -",
+            "2026-06-18 15:27:01,780 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (MM_SEL#2): closed--hooked 5.0 0.1656 sell 5.00 0.1627 "
+            "2026-06-18T15:27:01.600000+00:00",
+            "2026-06-18 15:27:02,051 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (MM_SEL#2): closed--living 5.0 0.1656 0.1656 T2tail "
+            "tail-order 2026-06-18T15:27:01.817000+00:00",
+            "2026-06-18 15:29:27,898 MainThread~20 /strategy_runtime.py@1@x/ "
+            "AMEND_SENT (MM_SEL#2): 0.1656 0.0000 0.0000 last T2tail tail-order",
+            "2026-06-18 15:31:45,102 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (MM_SEL#2): closed--closed 5.0 0.0000 0.0000 buy 5.00 "
+            "0.1624 2026-06-18T15:31:44.826000+00:00",
+        )
+    )
+
+    rows = build_report_rows(parse_log_text(log))
+    table = render_org_table(rows)
+
+    assert rows[0].amend_logbps is None
+    assert "|  1 | 06-18 15:29 |             |            | +0.001500 |" in table
 
 
 def test_render_log_only_table_aligns_pair_attempt() -> None:
@@ -159,10 +184,21 @@ def test_render_log_only_table_aligns_pair_attempt() -> None:
         "| 06-17 23:05 | 06-17 23:21 | 00:15:52 | MM_BUY #4 | B/S  |"
         in table
     )
-    assert "|  2 | 06-17 23:19 | 06-17 23:20 | +0.00240 |" in table
+    assert "|  2 | 06-17 23:19 | 06-17 23:20 |       +145 |" in table
     assert "| 0.16670 | 0.16690 |" in table
-    assert "| +0.00240 | +0.002400 |" in table
-    assert "| +0.002400 |         | +0.1200 |" in table
+    assert "|       +145 | +0.002400 |" in table
+    assert "Cum est net" in table
+    assert "| +0.002400 | +0.000398 | +0.0199 | +0.0753 |   +0.000398 |" in table
+
+
+def test_report_can_leave_net_blank_without_fee_estimates() -> None:
+    options = ReportOptions(estimate_fees=False)
+    rows = build_report_rows(parse_log_text(SAMPLE_LOG), options=options)
+    table = render_org_table(rows, options=options)
+
+    assert "Cum net" in table
+    assert "Cum est net" not in table
+    assert "| +0.002400 |         | +0.1200 | +0.4537 |         |" in table
 
 
 def test_render_terminated_summary_table_uses_stat_rows() -> None:
@@ -173,9 +209,46 @@ def test_render_terminated_summary_table_uses_stat_rows() -> None:
     assert "AmendLife" in table
     assert "Tamend1" not in table
     assert "Tamend2" not in table
-    assert "amendDif" in table
-    assert "| min     | 00:15:52 | 0.1667 | 0.1669 |  12 |  2 |  00:15:52 |  +0.0024 |" in table
-    assert "| average | 00:15:52 | 0.1667 | 0.1669 |  12 |  2 |  00:15:52 |  +0.0024 |" in table
+    assert "amendLogbps" in table
+    assert "ROI/h %" in table
+    assert "| min     | 00:15:52 | 0.1667 | 0.1669 |  12 |       12 |  2 |  00:15:52 |        +145 |" in table
+    assert "| average | 00:15:52 | 0.1667 | 0.1669 |  12 |       12 |  2 |  00:15:52 |        +145 |" in table
+
+
+def test_terminated_summary_position_counts_overlapping_engagement() -> None:
+    log = "\n".join(
+        (
+            "2026-06-17 23:00:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (MM_BUY#1): H1alpha buy L 10.00 0.1000 -",
+            "2026-06-17 23:00:01,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (MM_BUY#1): closed--hooked 10.0 0.1010 buy 10.00 0.1000 "
+            "2026-06-17T23:00:01.000000+00:00",
+            "2026-06-17 23:00:02,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (MM_BUY#2): H2alpha buy L 5.00 0.1000 -",
+            "2026-06-17 23:00:03,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (MM_BUY#2): closed--hooked 5.0 0.1010 buy 5.00 0.1000 "
+            "2026-06-17T23:00:03.000000+00:00",
+            "2026-06-17 23:00:04,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (MM_BUY#1): closed--living 10.0 0.1010 0.1010 T1beta "
+            "tail-order 2026-06-17T23:00:04.000000+00:00",
+            "2026-06-17 23:00:05,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (MM_BUY#2): closed--living 5.0 0.1010 0.1010 T2beta "
+            "tail-order 2026-06-17T23:00:05.000000+00:00",
+            "2026-06-17 23:10:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (MM_BUY#1): closed--closed 10.0 0.1010 0.1010 sell 10.00 "
+            "0.1010 2026-06-17T23:10:00.000000+00:00",
+            "2026-06-17 23:11:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (MM_BUY#2): closed--closed 5.0 0.1010 0.1010 sell 5.00 "
+            "0.1010 2026-06-17T23:11:00.000000+00:00",
+        )
+    )
+
+    rows = build_report_rows(parse_log_text(log))
+    table = render_terminated_summary_table(rows, options=ReportOptions())
+
+    assert "Position" in table
+    assert "| min     | 00:09:59 |   0.1 | 0.101 |   5 |        5 |" in table
+    assert "| max     | 00:10:57 |   0.1 | 0.101 |  10 |       15 |" in table
 
 
 def test_terminated_summary_amend_life_uses_tail_placement() -> None:
@@ -199,13 +272,13 @@ def test_terminated_summary_amend_life_uses_tail_placement() -> None:
 
     assert rows[0].tail_placed_at is not None
     assert rows[0].life_seconds == 300
-    assert "| min     | 00:05:00 |   0.1 | 0.101 |   1 |  0 |  00:03:00 |" in table
+    assert "| min     | 00:05:00 |   0.1 | 0.101 |   1 |        1 |  0 |  00:03:00 |" in table
 
 
 def test_render_terminated_counts_line_counts_side_and_liquidity() -> None:
     rows = build_report_rows(parse_log_text(SAMPLE_LOG))
 
-    assert render_terminated_counts_line(rows) == "Side: B/S=1 | Liq: -=1"
+    assert render_terminated_counts_line(rows) == "Side: B/S=1 | Liq: ?/?=1"
     assert render_terminated_counts_line(()) == "Side: none | Liq: none"
 
 
@@ -216,7 +289,7 @@ def test_render_log_only_table_leaves_second_amend_time_blank() -> None:
     rows = build_report_rows(parse_log_text(single_amend_log))
     table = render_org_table(rows, options=ReportOptions())
 
-    assert "|  1 | 06-17 23:19 |             | +0.00240 |" in table
+    assert "|  1 | 06-17 23:19 |             |       +145 |" in table
 
 
 def test_fetch_fill_summaries_aggregates_local_db_rows(postgres_url_factory) -> None:
@@ -293,7 +366,176 @@ def test_fetch_fill_summaries_aggregates_local_db_rows(postgres_url_factory) -> 
 
     assert "| 0.16671 | 0.16685 |" in table
     assert "| M/T |" in table
-    assert "| +0.001680 | +0.000279 | +0.0139 | +0.000279 |" in table
+    assert "| +0.001680 | +0.000279 | +0.0139 | +0.0527 | +0.000279 |" in table
+
+
+def test_exact_report_falls_back_to_filled_order_when_fill_row_is_missing(
+    tmp_path: Path,
+    postgres_url_factory,
+) -> None:
+    db_url = postgres_url_factory("run-report-missing-tail-fill")
+    engine = create_engine(db_url)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        head = ExchangeOrder(
+            local_uuid="fallback-order-head",
+            exchange="kraken",
+            environment="live",
+            market_type="futures",
+            account_scope="default",
+            symbol="PF_ADAUSD",
+            exchange_order_id="head-order",
+            client_order_id="H4alpha",
+            side="buy",
+            order_type="limit",
+            status="filled",
+            price=0.1667,
+            quantity=12,
+            filled_quantity=12,
+        )
+        tail = ExchangeOrder(
+            local_uuid="fallback-order-tail",
+            exchange="kraken",
+            environment="live",
+            market_type="futures",
+            account_scope="default",
+            symbol="PF_ADAUSD",
+            exchange_order_id="a20c4f50",
+            client_order_id="T4beta",
+            side="sell",
+            order_type="stop",
+            status="filled",
+            price=0.1669,
+            quantity=12,
+            filled_quantity=12,
+        )
+        session.add_all([head, tail])
+        session.flush()
+        session.add(
+            ExchangeFill(
+                local_uuid="fallback-fill-head",
+                order_id=head.id,
+                exchange="kraken",
+                exchange_fill_id="head-fill",
+                price=0.16671,
+                quantity=12,
+                fee=0.0006,
+                fee_currency="USD",
+                liquidity_role="maker",
+            )
+        )
+        session.commit()
+    engine.dispose()
+
+    log_path = tmp_path / "sample.log"
+    log_path.write_text(SAMPLE_LOG, encoding="utf-8")
+    report = build_report_table(log_path, db_url=db_url)
+
+    assert "Evidence note: exact DB fills 1/2 legs; order-only 1; log-only 0; unknown liquidity 1." in report
+    assert "Estimated net uses maker=0.02% and taker/unknown=0.05%" in report
+    assert "Missing fill rows: T4beta/a20c4f50." in report
+    assert "| 0.16671 | 0.16690 |" in report
+    assert "| M/? |" in report
+    assert "Cum est net" in report
+
+
+def test_exact_report_resolves_fill_by_exchange_order_id(
+    tmp_path: Path,
+    postgres_url_factory,
+) -> None:
+    db_url = postgres_url_factory("run-report-exchange-order-fill")
+    engine = create_engine(db_url)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        head = ExchangeOrder(
+            local_uuid="exchange-id-order-head",
+            exchange="kraken",
+            environment="live",
+            market_type="futures",
+            account_scope="default",
+            symbol="PF_ADAUSD",
+            exchange_order_id="head-order",
+            client_order_id="H4alpha",
+            side="buy",
+            order_type="limit",
+            status="filled",
+            price=0.1667,
+            quantity=12,
+            filled_quantity=12,
+        )
+        tail = ExchangeOrder(
+            local_uuid="exchange-id-order-tail",
+            exchange="kraken",
+            environment="live",
+            market_type="futures",
+            account_scope="default",
+            symbol="PF_ADAUSD",
+            exchange_order_id="a20c4f50",
+            client_order_id=None,
+            side="sell",
+            order_type="stop",
+            status="filled",
+            price=0.1669,
+            quantity=12,
+            filled_quantity=12,
+        )
+        session.add_all([head, tail])
+        session.flush()
+        session.add_all(
+            [
+                ExchangeFill(
+                    local_uuid="exchange-id-fill-head",
+                    order_id=head.id,
+                    exchange="kraken",
+                    exchange_fill_id="head-fill",
+                    price=0.16671,
+                    quantity=12,
+                    fee=0.0006,
+                    fee_currency="USD",
+                    liquidity_role="maker",
+                ),
+                ExchangeFill(
+                    local_uuid="exchange-id-fill-tail",
+                    order_id=tail.id,
+                    exchange="kraken",
+                    exchange_fill_id="tail-fill",
+                    price=0.16685,
+                    quantity=12,
+                    fee=0.000801,
+                    fee_currency="USD",
+                    liquidity_role="taker",
+                ),
+            ]
+        )
+        session.commit()
+    engine.dispose()
+
+    log_path = tmp_path / "sample.log"
+    log_path.write_text(SAMPLE_LOG, encoding="utf-8")
+    report = build_report_table(log_path, db_url=db_url)
+
+    assert "Exact note:" not in report
+    assert "| 0.16671 | 0.16685 |" in report
+    assert "| M/T |" in report
+
+
+def test_exact_report_uses_log_rows_when_db_has_no_order_or_fill_evidence(
+    tmp_path: Path,
+    postgres_url_factory,
+) -> None:
+    db_url = postgres_url_factory("run-report-no-fill-evidence")
+    engine = create_engine(db_url)
+    Base.metadata.create_all(engine)
+    engine.dispose()
+
+    log_path = tmp_path / "sample.log"
+    log_path.write_text(SAMPLE_LOG, encoding="utf-8")
+    report = build_report_table(log_path, db_url=db_url)
+
+    assert "Evidence note: exact DB fills 0/2 legs; order-only 0; log-only 2; unknown liquidity 2." in report
+    assert "Missing fill rows: H4alpha, T4beta/a20c4f50." in report
+    assert "| 0.16670 | 0.16690 |" in report
+    assert "| ?/? |" in report
 
 
 def test_report_adds_volume_by_pair_and_market_from_local_dbs(
@@ -364,6 +606,19 @@ def test_report_adds_volume_by_pair_and_market_from_local_dbs(
                 ),
             ]
         )
+        session.add(
+            AccountBalance(
+                exchange="kraken",
+                environment="live",
+                account_scope="default",
+                asset="USD",
+                available=25.0,
+                locked=0.0,
+                total=25.0,
+                raw_payload={},
+                local_timestamp=datetime(2026, 6, 17, 23, 13, tzinfo=timezone.utc),
+            )
+        )
         session.commit()
     account_engine.dispose()
 
@@ -423,21 +678,42 @@ def test_report_adds_volume_by_pair_and_market_from_local_dbs(
         market_db_url=market_db_url,
     )
 
-    assert "** Volume by pair/market" in report
+    assert "*** Volume by market/pair" in report
     volume_line = next(
-        line for line in report.splitlines() if line.startswith("| MM_BUY ")
+        line
+        for line in report.splitlines()
+        if line.startswith("| kraken:futures:PF_ADAUSD ")
+        and "MM_BUY" in line
     )
     assert [cell.strip() for cell in volume_line.strip("|").split("|")] == [
-        "MM_BUY",
         "kraken:futures:PF_ADAUSD",
+        "MM_BUY",
         "2",
         "24",
         "4.002720",
+        "00:15:52",
+        "+0.0139",
+        "+0.0527",
+        "150",
         "24.950000",
+    ]
+    sizing_line = next(
+        line
+        for line in report.splitlines()
+        if line.startswith("| kraken:futures:PF_ADAUSD ")
+        and "25.000000" in line
+    )
+    assert [cell.strip() for cell in sizing_line.strip("|").split("|")] == [
+        "kraken:futures:PF_ADAUSD",
+        "25.000000",
+        "n/a",
         "1",
-        "0.166780",
+        "1",
         "0.5",
-        "0.083390",
+        "n/a",
+        "n/a",
+        "150",
+        "24.950000",
     ]
 
 
@@ -447,13 +723,12 @@ def test_report_renders_runtime_sizing_failure_without_fills(tmp_path: Path) -> 
 
     report = build_report_table(log_path, log_only=True)
 
-    assert "** Sizing diagnostics" in report
-    sizing_line = next(line for line in report.splitlines() if "too_small" in line)
+    assert "*** Sizing diagnostics" in report
+    sizing_line = next(
+        line for line in report.splitlines() if line.startswith("| kraken:futures:PF_XBTUSD ")
+    )
     assert [cell.strip() for cell in sizing_line.strip("|").split("|")] == [
         "kraken:futures:PF_XBTUSD",
-        "MM_SEL",
-        "5.000000",
-        "n/a",
         "n/a",
         "63955.734558",
         "1",
@@ -461,12 +736,10 @@ def test_report_renders_runtime_sizing_failure_without_fills(tmp_path: Path) -> 
         "1",
         "n/a",
         "63955.734558",
-        "0",
-        "0.000000",
-        "too_small",
-        "runtime",
+        "n/a",
+        "n/a",
     ]
-    assert "** Volume by pair/market\nNo rows." in report
+    assert "*** Volume by market/pair\nNo rows." in report
 
 
 def test_report_compares_runtime_sizing_with_cached_instrument_rules(
@@ -504,13 +777,10 @@ def test_report_compares_runtime_sizing_with_cached_instrument_rules(
     )
 
     market_line = next(
-        line for line in report.splitlines() if line.rstrip().endswith("| market_db |")
+        line for line in report.splitlines() if "0.0001" in line and "kraken" in line
     )
     assert [cell.strip() for cell in market_line.strip("|").split("|")] == [
         "kraken:futures:PF_XBTUSD",
-        "-",
-        "n/a",
-        "n/a",
         "n/a",
         "63955.734558",
         "1",
@@ -520,8 +790,6 @@ def test_report_compares_runtime_sizing_with_cached_instrument_rules(
         "6.395573",
         "n/a",
         "n/a",
-        "cached",
-        "market_db",
     ]
     assert "Sizing note: runtime rows show the values that actually accepted or rejected strategy quantities" in report
 
@@ -536,8 +804,8 @@ def test_report_keeps_log_sizing_when_market_db_is_unavailable(tmp_path: Path) -
         market_db_url=f"sqlite:///{tmp_path / 'empty-market.sqlite'}",
     )
 
-    assert "** Sizing diagnostics" in report
-    assert "too_small" in report
+    assert "*** Sizing diagnostics" in report
+    assert "kraken:futures:PF_XBTUSD" in report
     assert "Market DB unavailable for sizing; showing runtime log values only." in report
 
 
@@ -625,8 +893,9 @@ def test_living_tail_rows_include_latest_metrics_and_db_order_state(postgres_url
     table = render_living_tail_table(rows)
 
     assert "Ref" not in table.splitlines()[0]
+    assert "Dist logbps" in table.splitlines()[0]
     assert "| 06-18 15:23 | 03:26:57 | MM_BUY #1 | B/S  |" in table
-    assert "| 0.16247 |   6 | M    | 0.15940 | 0.00290 | untouched |        0 |" in table
+    assert "| 0.16247 |   6 | M    | 0.15940 |        +174 | untouched |        0 |" in table
     prices = render_market_snapshot_table(snapshot.market_snapshot)
     assert "| Latest prices |    Mark |    Last |  Spread | Max spread |" in prices
     assert (
@@ -783,19 +1052,19 @@ def test_full_report_renders_three_sections_in_log_only_mode(tmp_path: Path) -> 
     assert lines[0].startswith("* <2026-06-17 mer. 23:21> ")
     assert lines[1].startswith("Run UTC: 2026-06-17 23:05:38 |")
     assert "Command: kolabi-run-report " in lines[1]
-    assert lines[2].startswith("| Latest prices |")
-    assert lines[4].startswith("| unavailable")
-    assert lines[6] == "** Terminated pairs"
+    assert lines[2] == "** Overview"
+    assert lines[3].startswith("| Latest prices |")
+    assert lines[5].startswith("| unavailable")
     assert "\n** Terminated pairs" in table
     assert table.count("Latest prices") == 1
-    assert "Side: B/S=1 | Liq: -=1" in table
+    assert "Side: B/S=1 | Liq: ?/?=1" in table
     assert "\n| Stat" in table
     assert "Mode note: mode is the most repeated value; blank means no value repeats." in table
     assert "** Terminated pairs" in table
     assert "** Living tail-flying pairs\nNo rows." in table
     assert "** Latest latent pairs\nNo rows." in table
-    assert "** Sizing diagnostics\nNo rows." in table
-    assert "** Volume by pair/market\nNo rows." in table
+    assert "*** Sizing diagnostics\nNo rows." in table
+    assert "*** Volume by market/pair\nNo rows." in table
 
 
 def test_full_report_name_is_stable_for_same_runtime(tmp_path: Path) -> None:

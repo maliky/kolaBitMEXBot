@@ -14,8 +14,8 @@ from kolabi.bot.tail_tracking import (
 def sample_pair(
     *,
     side: Side,
-    tail: float = 1.0,
-    tail_type: str = "t%",
+    tail: float = 99.50,
+    tail_type: str = "tB",
     tail_unblock: float | None = None,
     tail_unblock_type: str = "uD",
     second_update_wait: float = 0.0,
@@ -524,14 +524,14 @@ def test_buy_tail_wublk_blocks_second_amend_until_wait_elapsed() -> None:
     assert second.catch_basis_width == first.catch_basis_width
 
 
-def test_buy_tail_percent_tublk_captures_first_jump_basis_before_wublk() -> None:
+def test_buy_tail_logbps_tublk_captures_first_jump_basis_before_wublk() -> None:
     now = datetime.now(timezone.utc)
     pair = sample_pair(
         side=Side.SELL,
-        tail=2.5,
-        tail_type="t%",
-        tail_unblock=1.0,
-        tail_unblock_type="u%",
+        tail=246.93,
+        tail_type="tB",
+        tail_unblock=99.50,
+        tail_unblock_type="uB",
         second_update_wait=60,
     )
     trail = initial_tail_trail(pair, Decimal("100"), now)

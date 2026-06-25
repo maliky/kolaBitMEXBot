@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 
 from kolabi.bot.domain import OrderPairSpec, Side, TailTrailSample, TailTrailState
+from kolabi.bot.price_units import logbps_price_distance
 from kolabi.shared.core.runtime_types import to_decimal
 
 DEFAULT_MAX_SAMPLES = 40
@@ -91,8 +92,8 @@ def tail_unblock_distance(
     if value <= 0:
         return Decimal("0")
     unblock_type = (pair.tail_unblock_spec_type or "uD").lower()
-    if "u%" in unblock_type:
-        return trail.entry_reference_price * value / Decimal("100")
+    if "ub" in unblock_type:
+        return logbps_price_distance(trail.entry_reference_price, value)
     return value
 
 
@@ -302,8 +303,8 @@ def _initial_stop_price(pair: OrderPairSpec, reference: Decimal) -> Decimal:
         raise ValueError(f"Order pair '{pair.name}' needs a tail price specification")
     value = to_decimal(spec)
     tail_type = (pair.tail_price_spec_type or "").lower()
-    if "t%" in tail_type or "t%" in pair.amount_type.lower():
-        offset = reference * value / Decimal("100")
+    if "tb" in tail_type or "tb" in pair.amount_type.lower():
+        offset = logbps_price_distance(reference, value)
     elif "td" in tail_type or "td" in pair.amount_type.lower():
         offset = value
     else:

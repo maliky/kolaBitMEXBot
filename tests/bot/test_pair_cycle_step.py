@@ -55,7 +55,7 @@ def sample_pair() -> OrderPairSpec:
     )
 
 
-def percent_tail_pair() -> OrderPairSpec:
+def logbps_tail_pair() -> OrderPairSpec:
     pair = sample_pair()
     return OrderPairSpec(
         name=pair.name,
@@ -65,13 +65,13 @@ def percent_tail_pair() -> OrderPairSpec:
         timeout=pair.timeout,
         head=pair.head,
         head_price=pair.head_price,
-        head_price_type="p%",
+        head_price_type="pB",
         head_quantity=pair.head_quantity,
         head_quantity_type=pair.head_quantity_type,
         tail=pair.tail,
-        tail_price_spec=1.5,
-        tail_price_spec_type="t%",
-        amount_type="qAt%p%",
+        tail_price_spec=148.89,
+        tail_price_spec_type="tB",
+        amount_type="qAtBpB",
         hook_name=pair.hook_name,
     )
 
@@ -115,9 +115,9 @@ def submitted_state() -> PairCycleState:
     )
 
 
-def submitted_percent_tail_state() -> PairCycleState:
+def submitted_logbps_tail_state() -> PairCycleState:
     return PairCycleState(
-        pair=percent_tail_pair(),
+        pair=logbps_tail_pair(),
         head_state=HeadState.SUBMITTED,
     )
 
@@ -162,7 +162,7 @@ def test_partial_fill_tail_uses_played_quantity_not_planned_quantity() -> None:
     assert intents[0].kind == PairIntentKind.PLACE_TAIL
 
 
-def test_percent_tail_uses_reference_derived_stop() -> None:
+def test_logbps_tail_uses_reference_derived_stop() -> None:
     pair = OrderPairSpec(
         name="pair-a",
         window=TimeWindow(start_minutes=-1.0, end_minutes=1.0),
@@ -171,13 +171,13 @@ def test_percent_tail_uses_reference_derived_stop() -> None:
         timeout=None,
         head=HeadSpec(side=Side.SELL, order_type="Market", delta=None),
         head_price=(-1.0, 1.0),
-        head_price_type="p%",
+        head_price_type="pB",
         head_quantity=2,
         head_quantity_type="qA",
         tail=TailSpec(side=Side.BUY, order_type="Stop", delta=None),
-        tail_price_spec=0.5,
-        tail_price_spec_type="t%",
-        amount_type="qAt%p%",
+        tail_price_spec=49.88,
+        tail_price_spec_type="tB",
+        amount_type="qAtBpB",
     )
     next_state, intents = step_pair(
         PairCycleState(pair=pair, head_state=HeadState.SUBMITTED),
@@ -196,7 +196,7 @@ def test_percent_tail_uses_reference_derived_stop() -> None:
     )
 
     assert next_state.tail_trail is not None
-    assert next_state.tail_trail.current_stop_price == Decimal("100.5")
+    assert abs(next_state.tail_trail.current_stop_price - Decimal("100.5")) < Decimal("0.001")
     assert len(intents) == 1
     assert intents[0].kind == PairIntentKind.PLACE_TAIL
 
@@ -427,9 +427,9 @@ def test_private_confirmation_required_for_tail_hook() -> None:
     assert intents == ()
 
 
-def test_percent_tail_place_uses_reference_price_not_raw_tail_spec() -> None:
+def test_logbps_tail_place_uses_reference_price_not_raw_tail_spec() -> None:
     next_state, intents = step_pair(
-        submitted_percent_tail_state(),
+        submitted_logbps_tail_state(),
         egg_move(EggMoveKind.PLAYED_NOT_CANCELED, played_quantity=3.0),
     )
 
@@ -440,10 +440,10 @@ def test_percent_tail_place_uses_reference_price_not_raw_tail_spec() -> None:
     )
 
     assert next_state.tail_trail is not None
-    assert next_state.tail_trail.current_stop_price == Decimal("98.500")
+    assert abs(next_state.tail_trail.current_stop_price - Decimal("98.500")) < Decimal("0.001")
     assert len(commands) == 1
     assert isinstance(commands[0], PlaceTailCommand)
-    assert commands[0].request.stopPx == Decimal("98.500")
+    assert abs(commands[0].request.stopPx - Decimal("98.500")) < Decimal("0.001")
 
 
 def test_market_tick_with_tail_identity_amends_on_first_unblock() -> None:

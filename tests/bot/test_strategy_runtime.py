@@ -7,7 +7,6 @@ from decimal import Decimal
 from typing import Any, cast
 
 from kolabi.bot.chronos import PendingRepeat
-from kolabi.bot.exchange_routes import ExchangeRoute
 from kolabi.bot.domain import (
     ChainDependencyToken,
     EggMove,
@@ -24,6 +23,7 @@ from kolabi.bot.domain import (
     TailState,
     TimeWindow,
 )
+from kolabi.bot.exchange_routes import ExchangeRoute
 from kolabi.bot.horus import plan_runtime_commands
 from kolabi.bot.pair_cycle import step_pair
 from kolabi.bot.strategy_runtime import (
@@ -1046,6 +1046,145 @@ def test_unacked_head_visibility_timeout_arms_cancel_path(caplog) -> None:
     assert "HEAD_VISIBILITY_TIMEOUT (pair-a#1):" in caplog.text
 
 
+def test_unacked_head_cancel_notfound_ack_terminates_hooked_head(caplog) -> None:
+    pair = replace(sample_strategy()[0], timeout=0.001)
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="visibility", pairs=(pair,)),
+        symbol="PI_XBTUSD",
+        simulate=False,
+        tail_visibility_timeout_seconds=0.1,
+    )
+    runtime.state = replace(
+        runtime.state,
+        pairs={
+            "pair-a": replace(
+                runtime.state.pairs["pair-a"],
+                head_state=HeadState.HOOKED,
+            )
+        },
+    )
+    runtime.chronos.state = runtime.state
+    command = PlaceHeadCommand(
+        kind=RuntimeCommandKind.PLACE,
+        symbol=Symbol("PI_XBTUSD"),
+        pair_name="pair-a",
+        request=PlaceOrderCommandRequest(
+            pair_name="pair-a",
+            side="buy",
+            ordType="Limit",
+            orderQty=Decimal("1"),
+            price=Decimal("100"),
+            clOrdID="CID-H",
+        ),
+    )
+    slot = _CommandSlot("pair-a", 1, "head")
+    identity = runtime._command_identity_from_command(command)
+    runtime._on_command_dispatched(slot, command, identity)
+    cancel = CancelCommand(
+        kind=RuntimeCommandKind.CANCEL,
+        symbol=Symbol("PI_XBTUSD"),
+        pair_name="pair-a",
+        request=CancelOrderCommandRequest(pair_name="pair-a", clOrdID="CID-H"),
+        reason="head_timeout",
+    )
+
+    with caplog.at_level("INFO", logger="kola"):
+        runtime._on_command_dispatched(
+            _CommandSlot("pair-a", 1, "cancel"),
+            cancel,
+            None,
+        )
+        runtime._record_live_ack(
+            cancel,
+            OrderAck(
+                order_id="CID-H",
+                status="NotFound",
+                executed_qty=0.0,
+                reason="client_order_id_not_visible",
+            ),
+        )
+        followups = runtime._followup_events(
+            cancel,
+            OrderAck(
+                order_id="CID-H",
+                status="NotFound",
+                executed_qty=0.0,
+                reason="client_order_id_not_visible",
+            ),
+            slot=_CommandSlot("pair-a", 1, "cancel"),
+        )
+
+    assert len(followups) == 1
+    assert not runtime._should_ignore_stale_runtime_cancel(followups[0])
+    runtime.chronos.process_event(followups[0])
+    runtime.state = runtime.chronos.state
+    pair_state = runtime.state.pairs["pair-a"]
+    assert pair_state.head_state == HeadState.FAILED
+    assert pair_state.tail_state == TailState.LATENT
+    assert "HEAD_CANCEL_NOT_FOUND (pair-a#1):" in caplog.text
+
+
+def test_unacked_head_cancel_retries_are_capped(caplog) -> None:
+    pair = replace(sample_strategy()[0], timeout=0.001)
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="visibility", pairs=(pair,)),
+        symbol="PI_XBTUSD",
+        simulate=False,
+        tail_visibility_timeout_seconds=0.1,
+    )
+    runtime.state = replace(
+        runtime.state,
+        pairs={
+            "pair-a": replace(
+                runtime.state.pairs["pair-a"],
+                head_state=HeadState.HOOKED,
+            )
+        },
+    )
+    runtime.chronos.state = runtime.state
+    command = PlaceHeadCommand(
+        kind=RuntimeCommandKind.PLACE,
+        symbol=Symbol("PI_XBTUSD"),
+        pair_name="pair-a",
+        request=PlaceOrderCommandRequest(
+            pair_name="pair-a",
+            side="buy",
+            ordType="Limit",
+            orderQty=Decimal("1"),
+            price=Decimal("100"),
+            clOrdID="CID-H",
+        ),
+    )
+    slot = _CommandSlot("pair-a", 1, "head")
+    identity = runtime._command_identity_from_command(command)
+    runtime._on_command_dispatched(slot, command, identity)
+    lease = runtime._order_leases[slot]
+    runtime._check_order_lease_deadlines(lease.created_at + timedelta(seconds=0.2))
+    runtime._check_head_fill_deadlines(lease.created_at + timedelta(seconds=0.21))
+    cancel = cast(CancelCommand, runtime.commands[-1])
+    runtime._on_command_dispatched(
+        _CommandSlot("pair-a", 1, "cancel"),
+        cancel,
+        None,
+    )
+
+    now = lease.created_at + timedelta(seconds=10)
+    with caplog.at_level("WARNING", logger="kola"):
+        runtime._check_order_lease_deadlines(now)
+        runtime._check_order_lease_deadlines(now + timedelta(seconds=10))
+        runtime._check_order_lease_deadlines(now + timedelta(seconds=20))
+
+    event = runtime.event_queue.get_nowait()
+    assert not runtime._should_ignore_stale_runtime_cancel(event)
+    runtime.chronos.process_event(event)
+    runtime.state = runtime.chronos.state
+    pair_state = runtime.state.pairs["pair-a"]
+    assert pair_state.head_state == HeadState.FAILED
+    assert pair_state.tail_state == TailState.LATENT
+    assert len([item for item in runtime.commands if isinstance(item, CancelCommand)]) == 3
+    assert "HEAD_CANCEL_GAVE_UP (pair-a#1): CID-H retry=3 head_unconfirmed_timeout" in caplog.text
+
+
 def test_rest_acked_head_visibility_timeout_warns_without_cancel(caplog) -> None:
     pair = sample_strategy()[0]
     runtime = StrategyRuntime(
@@ -1180,6 +1319,62 @@ def test_head_timeout_notfound_without_cumqty_does_not_terminate_head(
     pair_state = result.state.pairs["pair-a"]
     assert pair_state.head_state == HeadState.NEW
     assert "HEAD_CANCELLED (pair-a#1):" not in caplog.text
+
+
+def test_head_timeout_zero_fill_notfound_terminates_unfilled_head() -> None:
+    pair = replace(sample_strategy()[0], timeout=0.001)
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="head-timeout", pairs=(pair,)),
+        symbol="PI_XBTUSD",
+        simulate=False,
+    )
+    runtime.state = replace(
+        runtime.state,
+        pairs={
+            "pair-a": PairCycleState(
+                pair=pair,
+                head_state=HeadState.NEW,
+                head_identity=OrderIdentity(
+                    pair_name="pair-a",
+                    role="head",
+                    client_order_id="CID-H",
+                    exchange_order_id="OID-H",
+                ),
+                attempt_index=1,
+            )
+        },
+    )
+    runtime.chronos.state = runtime.state
+    command = CancelCommand(
+        kind=RuntimeCommandKind.CANCEL,
+        symbol=Symbol("PI_XBTUSD"),
+        pair_name="pair-a",
+        request=CancelOrderCommandRequest(
+            pair_name="pair-a",
+            clOrdID="OID-H",
+        ),
+        reason="head_timeout",
+    )
+
+    followups = runtime._followup_events(
+        command,
+        OrderAck(
+            order_id="OID-H",
+            status="NotFound",
+            executed_qty=0.0,
+            reason="client_order_id_not_visible",
+        ),
+        slot=_CommandSlot(pair_name="pair-a", attempt_index=1, role="cancel"),
+    )
+
+    assert len(followups) == 1
+    assert not runtime._should_ignore_stale_runtime_cancel(followups[0])
+    runtime.chronos.process_event(followups[0])
+    runtime.state = runtime.chronos.state
+    pair_state = runtime.state.pairs["pair-a"]
+    assert pair_state.head_state == HeadState.FAILED
+    assert pair_state.tail_state == TailState.LATENT
+    assert pair_state.played_quantity == Decimal("0.0")
 
 
 def test_stale_head_timeout_cancel_ack_does_not_fail_new_attempt(caplog) -> None:
@@ -1552,6 +1747,67 @@ def test_ready_repeat_logs_deadline_and_gate_before_dispatch(caplog) -> None:
     assert repeat_index < deadline_index < gate_index
 
 
+def test_gate_wait_ready_uses_side_fallback_when_last_mark_missing(caplog) -> None:
+    class Market:
+        best_bid = 205.0
+        best_ask = 206.0
+        mid_price = 200.0
+        last_price = None
+        mark_price = None
+        index_price = None
+        tick_size = 0.5
+        recorded_at = "side-fallback"
+
+    class Reader:
+        def fetch_market_state(self, symbol=None):
+            return Market()
+
+    pair = replace(
+        sample_strategy()[0],
+        head=HeadSpec(
+            side=Side.SELL,
+            order_type="M",
+        ),
+        head_price=(5.0, 50.0),
+        head_price_type="pD",
+        amount_type="qAtDpD",
+    )
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="gate-side-fallback", pairs=(pair,)),
+        symbol="PI_XBTUSD",
+        public_state_reader=Reader(),
+        simulate=False,
+    )
+    now = runtime.state.launched_at + timedelta(seconds=1)
+    initial_pair_state = runtime.state.pairs["pair-a"]
+    runtime.state = replace(
+        runtime.state,
+        pairs={
+            "pair-a": replace(
+                initial_pair_state,
+                head_trigger_reference_price=Decimal("200"),
+                head_trigger_reference_source="bid",
+                head_state=HeadState.LATENT,
+            )
+        },
+    )
+    runtime.chronos.state = runtime.state
+
+    with caplog.at_level("INFO", logger="kola"):
+        runtime._log_gate_waits(now)
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("GATE_WAIT-2 (pair-a#1):")
+    ]
+    assert any(
+        message.startswith("GATE_WAIT-2 (pair-a#1): ready")
+        for message in messages
+    )
+    assert any("bid" in message.split()[3:] for message in messages if message.startswith("GATE_WAIT-2"))
+
+
 def test_runtime_legend_logs_once_with_compact_columns(caplog) -> None:
     runtime = StrategyRuntime(
         strategy=StrategySpec(name="legend", pairs=sample_strategy()),
@@ -1864,7 +2120,7 @@ def test_runtime_serialises_tail_amends_per_pair_but_not_across_pairs() -> None:
 
 def test_strategy_runtime_simulation_initialises_relative_tail_reference() -> None:
     pair = sample_strategy()[0]
-    pair = replace(pair, tail_price_spec=1.5, tail_price_spec_type="t%", amount_type="qAt%p%")
+    pair = replace(pair, tail_price_spec=148.89, tail_price_spec_type="tB", amount_type="qAtBpB")
     runtime = StrategyRuntime(
         strategy=StrategySpec(name="demo", pairs=(pair,)),
         symbol="PI_XBTUSD",
@@ -1880,7 +2136,7 @@ def test_strategy_runtime_simulation_initialises_relative_tail_reference() -> No
 
 def test_strategy_runtime_live_mode_does_not_emit_state_followups_from_ack() -> None:
     pair = sample_strategy()[0]
-    pair = replace(pair, tail_price_spec=1.5, tail_price_spec_type="t%", amount_type="qAt%p%")
+    pair = replace(pair, tail_price_spec=148.89, tail_price_spec_type="tB", amount_type="qAtBpB")
 
     runtime = StrategyRuntime(
         strategy=StrategySpec(name="demo", pairs=(pair,)),
@@ -2204,9 +2460,9 @@ def test_private_tail_fill_record_closes_living_tail() -> None:
 def test_head_fill_reference_wait_is_not_required_after_tail_is_anchored() -> None:
     pair = replace(
         sample_strategy()[0],
-        tail_price_spec=1.5,
-        tail_price_spec_type="t%",
-        amount_type="qAt%p%",
+        tail_price_spec=148.89,
+        tail_price_spec_type="tB",
+        amount_type="qAtBpB",
     )
     now = datetime.now(timezone.utc)
     anchored = PairCycleState(

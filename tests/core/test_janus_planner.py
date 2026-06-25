@@ -59,7 +59,7 @@ def sample_pair(
     )
 
 
-def percent_tail_pair(name: str) -> OrderPairSpec:
+def logbps_tail_pair(name: str) -> OrderPairSpec:
     pair = sample_pair(name)
     return OrderPairSpec(
         name=pair.name,
@@ -69,13 +69,13 @@ def percent_tail_pair(name: str) -> OrderPairSpec:
         timeout=pair.timeout,
         head=pair.head,
         head_price=pair.head_price,
-        head_price_type="p%",
+        head_price_type="pB",
         head_quantity=pair.head_quantity,
         head_quantity_type=pair.head_quantity_type,
         tail=pair.tail,
-        tail_price_spec=1.5,
-        tail_price_spec_type="t%",
-        amount_type="qAt%p%",
+        tail_price_spec=148.89,
+        tail_price_spec_type="tB",
+        amount_type="qAtBpB",
         hook_name=pair.hook_name,
     )
 
@@ -203,7 +203,7 @@ def test_place_head_percent_offset_does_not_forward_raw_delta() -> None:
                 side=Side.SELL,
                 order_type="Lm!",
                 delta=1.5,
-                delta_type="o%",
+                delta_type="oB",
             ),
             head_price=state.pair.head_price,
             head_price_type=state.pair.head_price_type,
@@ -212,7 +212,7 @@ def test_place_head_percent_offset_does_not_forward_raw_delta() -> None:
             tail=state.pair.tail,
             tail_price_spec=state.pair.tail_price_spec,
             tail_price_spec_type=state.pair.tail_price_spec_type,
-            amount_type="qAtDpDo%",
+            amount_type="qAtDpDoB",
         ),
         head_state=state.head_state,
         tail_state=state.tail_state,
@@ -451,8 +451,8 @@ def test_relative_tail_without_trail_fails_loudly() -> None:
         pair=sample_pair(
             "pair-a",
             tail_price_spec=0.5,
-            tail_price_spec_type="t%",
-            amount_type="qAt%p%",
+            tail_price_spec_type="tB",
+            amount_type="qAtBpB",
         ),
         head_state=HeadState.LIVING,
         tail_state=TailState.LIVING,
