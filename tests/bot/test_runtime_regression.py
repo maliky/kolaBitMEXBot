@@ -27,6 +27,7 @@ from kolabi.bot.service import (
     BotConfig,
     BotService,
     SymbolRoutingExchangePort,
+    _validate_route_symbol,
 )
 from kolabi.bot.strategy_runtime import (
     StrategyRunResult,
@@ -769,6 +770,34 @@ def test_preflight_validates_strategy_route_symbol_when_db_context_present(
     assert payload["reasons"] == ("Unknown Binance symbol 'BADADA'",)
     assert "spot-key" not in str(payload)
     assert "spot-secret" not in str(payload)
+
+
+def test_route_validation_prefers_cached_tradeable_instrument_rules() -> None:
+    class FakeKrakenAdapter:
+        def __init__(self) -> None:
+            self.validate_calls = 0
+
+        def instrument_rules(self, symbol: str):
+            return {
+                "symbol": symbol,
+                "tradeable": True,
+                "tickSize": 0.0001,
+                "minQuantity": 1.0,
+            }
+
+        def validate_symbol(self, _symbol: str):
+            self.validate_calls += 1
+            raise RuntimeError("Kraken HTTP 503 on /instruments")
+
+    adapter = FakeKrakenAdapter()
+
+    rules = _validate_route_symbol(
+        adapter,
+        ExchangeRoute(exchange="kraken", market_type="futures", symbol="PF_ADAUSD"),
+    )
+
+    assert rules["tickSize"] == 0.0001
+    assert adapter.validate_calls == 0
 
 
 def test_preflight_reports_required_base_url_for_demo_margin_route(

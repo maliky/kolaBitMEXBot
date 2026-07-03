@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import Mapping, Sequence, TextIO
 
-from sqlalchemy import text
+from sqlalchemy import Table, text
 from sqlalchemy.exc import OperationalError
 
 from kolabi.shared.persistence.db import create_persistence_engine
@@ -18,6 +18,7 @@ from kolabi.shared.redaction import redact_url
 _DB_ENV_RE = re.compile(
     r"^KOLABI(?:_[A-Z0-9]+)*_(?:MARKET|ACCOUNT|CRITICAL|AUDIT|TELEMETRY)_DB_URL$"
 )
+PRESERVED_TABLE_NAMES = frozenset({"exchange_instruments"})
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,10 @@ def mapped_table_names() -> tuple[str, ...]:
     return tuple(table.name for table in Base.metadata.sorted_tables)
 
 
+def purged_table_names() -> tuple[str, ...]:
+    return tuple(table.name for table in _purged_tables())
+
+
 def purge_database(
     lane: DatabaseLane,
     *,
@@ -60,7 +65,7 @@ def purge_database(
     """Truncate every mapped runtime table in one PostgreSQL database lane."""
 
     safe_url = redact_url(lane.url)
-    table_count = len(Base.metadata.sorted_tables)
+    table_count = len(_purged_tables())
     if dry_run:
         return f"would purge {lane.label} url={safe_url} tables={table_count}"
 
@@ -85,7 +90,7 @@ def _truncate_database(lane: DatabaseLane) -> None:
         Base.metadata.create_all(engine)
         preparer = engine.dialect.identifier_preparer
         table_sql = ", ".join(
-            preparer.format_table(table) for table in Base.metadata.sorted_tables
+            preparer.format_table(table) for table in _purged_tables()
         )
         with engine.begin() as connection:
             connection.execute(
@@ -93,6 +98,14 @@ def _truncate_database(lane: DatabaseLane) -> None:
             )
     finally:
         engine.dispose()
+
+
+def _purged_tables() -> tuple[Table, ...]:
+    return tuple(
+        table
+        for table in Base.metadata.sorted_tables
+        if table.name not in PRESERVED_TABLE_NAMES
+    )
 
 
 def purge_lanes(
