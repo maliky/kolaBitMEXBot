@@ -339,12 +339,19 @@ def _validate_route_symbol(
 
     rules = dict(adapter.instrument_rules(route.symbol))
     validator = getattr(adapter, "validate_symbol", None)
-    if "tradeable" not in rules and callable(validator):
-        validation = cast(SymbolValidationExchange, adapter).validate_symbol(route.symbol)
-        rules = {
-            **dict(validation),
-            **rules,
-        }
+    if callable(validator):
+        try:
+            validation = cast(SymbolValidationExchange, adapter).validate_symbol(
+                route.symbol
+            )
+        except RuntimeError:
+            if "tradeable" not in rules:
+                raise
+        else:
+            rules = {
+                **rules,
+                **dict(validation),
+            }
     tradeable = rules.get("tradeable")
     if tradeable is False:
         raise ValueError(f"Route {route.label} symbol is not tradeable")

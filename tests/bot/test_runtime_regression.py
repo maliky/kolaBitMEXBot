@@ -772,7 +772,7 @@ def test_preflight_validates_strategy_route_symbol_when_db_context_present(
     assert "spot-secret" not in str(payload)
 
 
-def test_route_validation_prefers_cached_tradeable_instrument_rules() -> None:
+def test_route_validation_falls_back_to_cached_tradeable_rules_on_live_outage() -> None:
     class FakeKrakenAdapter:
         def __init__(self) -> None:
             self.validate_calls = 0
@@ -797,7 +797,27 @@ def test_route_validation_prefers_cached_tradeable_instrument_rules() -> None:
     )
 
     assert rules["tickSize"] == 0.0001
-    assert adapter.validate_calls == 0
+    assert adapter.validate_calls == 1
+
+
+def test_route_validation_live_tradeable_status_overrides_cached_rules() -> None:
+    class FakeKrakenAdapter:
+        def instrument_rules(self, symbol: str):
+            return {
+                "symbol": symbol,
+                "tradeable": True,
+                "tickSize": 0.0001,
+                "minQuantity": 1.0,
+            }
+
+        def validate_symbol(self, symbol: str):
+            return {"symbol": symbol, "tradeable": False}
+
+    with pytest.raises(ValueError, match="not tradeable"):
+        _validate_route_symbol(
+            FakeKrakenAdapter(),
+            ExchangeRoute(exchange="kraken", market_type="futures", symbol="PF_ADAUSD"),
+        )
 
 
 def test_preflight_reports_required_base_url_for_demo_margin_route(
