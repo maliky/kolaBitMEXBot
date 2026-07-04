@@ -146,6 +146,168 @@ def test_terminal_zero_stop_placeholders_do_not_overwrite_last_amend() -> None:
     assert "|       -195 | +0.001500 |" in table
 
 
+def test_terminal_dash_stop_placeholder_does_not_crash_or_overwrite() -> None:
+    log = "\n".join(
+        (
+            "2026-07-04 16:35:55,176 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (DW_SEL0#253): H253tail sell L 7.00 0.1957 -",
+            "2026-07-04 16:35:56,176 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (DW_SEL0#253): closed--hooked 7.0 0.1987 sell 7.00 "
+            "0.1957 2026-07-04T16:35:55.823000+00:00",
+            "2026-07-04 16:35:56,666 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (DW_SEL0#253): closed--closed 7.0 - 0.1987 buy 7.00 "
+            "0.1960 2026-07-04T16:35:56.408000+00:00",
+        )
+    )
+
+    lifecycle = parse_log_text(log)[PairKey("DW_SEL0", 253)]
+    rows = build_report_rows({lifecycle.key: lifecycle})
+
+    assert lifecycle.terminated
+    assert lifecycle.initial_tail_stop == Decimal("0.1987")
+    assert lifecycle.latest_tail_stop is None
+    assert lifecycle.tail_fill is not None
+    assert lifecycle.tail_fill.price == Decimal("0.1960")
+    assert rows[0].tail_price == Decimal("0.1960")
+
+
+def test_lease_closed_supplies_tail_exchange_id_for_exact_fill(
+    tmp_path: Path,
+    postgres_url_factory,
+) -> None:
+    db_url = postgres_url_factory("run-report-lease-tail-fill")
+    engine = create_engine(db_url)
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        head = ExchangeOrder(
+            local_uuid="lease-order-head",
+            exchange="kraken",
+            environment="live",
+            market_type="futures",
+            account_scope="default",
+            symbol="PF_ADAUSD",
+            exchange_order_id="a22df6aa-469e-49c6-b3a2-63b461bf0c4e",
+            client_order_id="H253therapeutic-260704163555",
+            side="sell",
+            order_type="limit",
+            status="filled",
+            price=0.19572,
+            quantity=7,
+            filled_quantity=7,
+        )
+        tail = ExchangeOrder(
+            local_uuid="lease-order-tail",
+            exchange="kraken",
+            environment="live",
+            market_type="futures",
+            account_scope="default",
+            symbol="PF_ADAUSD",
+            exchange_order_id="a22df6ab-2b05-41e3-9e81-e8761c803e3e",
+            client_order_id=None,
+            side="buy",
+            order_type="stop",
+            status="filled",
+            price=0.196,
+            quantity=7,
+            filled_quantity=7,
+        )
+        session.add_all([head, tail])
+        session.flush()
+        session.add_all(
+            [
+                ExchangeFill(
+                    local_uuid="lease-fill-head",
+                    order_id=head.id,
+                    exchange="kraken",
+                    exchange_fill_id="head-fill",
+                    price=0.19572,
+                    quantity=7,
+                    fee=0.00068502,
+                    fee_currency="USD",
+                    liquidity_role="taker",
+                ),
+                ExchangeFill(
+                    local_uuid="lease-fill-tail",
+                    order_id=tail.id,
+                    exchange="kraken",
+                    exchange_fill_id="tail-fill",
+                    price=0.19595,
+                    quantity=7,
+                    fee=0.000685825,
+                    fee_currency="USD",
+                    liquidity_role="taker",
+                ),
+            ]
+        )
+        session.commit()
+    engine.dispose()
+
+    log = "\n".join(
+        (
+            "2026-07-04 16:32:07,518 MainThread~20 /strategy_runtime.py@1@x/ "
+            "LATENT_TIMEOUT_ARMED (DW_SEL0#253): "
+            "2026-07-04T16:36:07.518460+00:00",
+            "2026-07-04 16:32:07,711 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (DW_SEL0#253): above last 0.1979 0.1979 0.0000 "
+            "-100000.00..-120.00 pB L 0.0001 4.0",
+            "2026-07-04 16:35:55,534 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (DW_SEL0#253): ready last 0.1955 0.1979 -123.02 "
+            "-100000.00..-120.00 pB L 0.0001 4.0",
+            "2026-07-04 16:35:55,704 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_SENT (DW_SEL0#253): H253therapeutic-260704163555 sell L "
+            "7.00 0.1956 -",
+            "2026-07-04 16:35:56,083 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_ACK (DW_SEL0#253): H253therapeutic-260704163555 "
+            "a22df6aa-469e-49c6-b3a2-63b461bf0c4e",
+            "2026-07-04 16:35:56,088 MainThread~20 /strategy_runtime.py@1@x/ "
+            "LEASE_CLOSED (DW_SEL0#253): head H253therapeutic-260704163555 "
+            "a22df6aa-469e-49c6-b3a2-63b461bf0c4e CLOSED",
+            "2026-07-04 16:35:56,108 MainThread~20 /strategy_runtime.py@1@x/ "
+            "LEASE_OPEN (DW_SEL0#253): tail T253mustard-260704163556 - "
+            "PENDING_PLACE",
+            "2026-07-04 16:35:56,108 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (DW_SEL0#253): closed--hooked 7.0 0.1987 sell 7.00 "
+            "0.1957 2026-07-04T16:35:55.823000+00:00",
+            "2026-07-04 16:35:56,519 MainThread~20 /strategy_runtime.py@1@x/ "
+            "LEASE_CLOSED (DW_SEL0#253): tail T253mustard-260704163556 "
+            "a22df6ab-2b05-41e3-9e81-e8761c803e3e CLOSED",
+            "2026-07-04 16:35:56,571 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (DW_SEL0#253): closed--closed 7.0 - 0.1987 buy 7.00 "
+            "0.1960 2026-07-04T16:35:56.408000+00:00",
+        )
+    )
+    log_path = tmp_path / "lease-tail.log"
+    log_path.write_text(log, encoding="utf-8")
+
+    report = build_report_table(log_path, db_url=db_url)
+    row = next(line for line in report.splitlines() if "DW_SEL0 #253" in line)
+
+    assert "07-04 16:32 | 00:03:48 | 0.19550" in row
+    assert "| T/T |" in row
+    assert "| 0.19572 | 0.19595 |" in row
+    assert "0.19600" not in row
+
+
+def test_lease_event_ignores_previous_attempt_client_id() -> None:
+    log = "\n".join(
+        (
+            "2026-07-04 16:36:07,518 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_ACK (DW_SEL0#254): H254current current-head-order",
+            "2026-07-04 16:36:08,518 MainThread~20 /strategy_runtime.py@1@x/ "
+            "LEASE_CLOSED (DW_SEL0#254): head H253previous old-head-order CLOSED",
+            "2026-07-04 16:36:09,518 MainThread~20 /strategy_runtime.py@1@x/ "
+            "LEASE_CLOSED (DW_SEL0#254): tail T253previous old-tail-order CLOSED",
+        )
+    )
+
+    lifecycle = parse_run_log_text(log).lifecycles[PairKey("DW_SEL0", 254)]
+
+    assert lifecycle.head_client_id == "H254current"
+    assert lifecycle.head_exchange_order_id == "current-head-order"
+    assert lifecycle.tail_client_id is None
+    assert lifecycle.tail_exchange_order_id is None
+
+
 def test_non_positive_amend_stop_renders_blank_logbps() -> None:
     log = "\n".join(
         (
@@ -169,24 +331,25 @@ def test_non_positive_amend_stop_renders_blank_logbps() -> None:
     table = render_org_table(rows)
 
     assert rows[0].amend_logbps is None
-    assert "|  1 | 06-18 15:29 |             |            | +0.001500 |" in table
+    assert "|  1 | 15:29   |" in table
+    assert "| +0.001500 |" in table
 
 
 def test_render_log_only_table_aligns_pair_attempt() -> None:
     rows = build_report_rows(parse_log_text(SAMPLE_LOG))
     table = render_org_table(rows, options=ReportOptions())
 
-    assert (
-        "| H fill UTC  | T fill UTC  | Life     | Pair      | Side |"
-        in table
-    )
-    assert "Tamend1 UTC" in table
-    assert "Tamend2 UTC" in table
-    assert (
-        "| 06-17 23:05 | 06-17 23:21 | 00:15:52 | MM_BUY #4 | B/S  |"
-        in table
-    )
-    assert "|  2 | 06-17 23:19 | 06-17 23:20 |       +145 |" in table
+    header = table.splitlines()[0]
+    assert "| Start UTC" in header
+    assert "H wait" in header
+    assert "Ref" in header
+    assert "Life" not in header
+    assert "Tamend1" in header
+    assert "Tamend1 UTC" not in table
+    assert "Tamend2 UTC" not in table
+    assert "| 06-17 23:05 | 00:00:01 |" in table
+    assert "| MM_BUY #4 | B/S  |" in table
+    assert "|  2 | 23:19   | 23:20   |       +145 |" in table
     assert "| 0.16670 | 0.16690 |" in table
     assert "|       +145 | +0.002400 |" in table
     assert "Cum est net" in table
@@ -291,7 +454,8 @@ def test_render_log_only_table_leaves_second_amend_time_blank() -> None:
     rows = build_report_rows(parse_log_text(single_amend_log))
     table = render_org_table(rows, options=ReportOptions())
 
-    assert "|  1 | 06-17 23:19 |             |       +145 |" in table
+    assert "|  1 | 23:19   |" in table
+    assert "|       +145 |" in table
 
 
 def test_fetch_fill_summaries_aggregates_local_db_rows(postgres_url_factory) -> None:
@@ -1213,7 +1377,10 @@ def test_cli_log_only_writes_stdout(tmp_path: Path) -> None:
     assert err.getvalue() == ""
     assert out.getvalue().startswith("* <2026-06-17 mer. 23:21> ")
     assert "\nRun UTC: " in out.getvalue()
-    assert "| 06-17 23:05 | 06-17 23:21 | 00:15:52 | MM_BUY #4 |" in out.getvalue()
+    assert (
+        "| 06-17 23:05 | 00:00:01 |     | 06-17 23:05 | 06-17 23:21 | "
+        "MM_BUY #4 |"
+    ) in out.getvalue()
 
 
 def test_cli_output_prepends_report_without_erasing_existing_content(tmp_path: Path) -> None:

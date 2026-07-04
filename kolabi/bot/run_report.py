@@ -17,7 +17,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_DOWN, ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence, TextIO
 
@@ -72,6 +72,8 @@ class PairLifecycle:
     """Log-derived lifecycle facts needed to recognise terminated pairs."""
 
     key: PairKey
+    started_at: datetime | None = None
+    gate_reference_price: Decimal | None = None
     head_client_id: str | None = None
     head_exchange_order_id: str | None = None
     tail_client_id: str | None = None
@@ -319,6 +321,9 @@ class ReportRow:
     """
 
     key: PairKey
+    pair_started_at: datetime | None
+    head_wait_seconds: int | None
+    gate_reference_price: Decimal | None
     head_fill_at: datetime
     tail_fill_at: datetime
     tail_placed_at: datetime | None
@@ -603,7 +608,7 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
     """Parse compact runtime lifecycle lines from text.
 
     The parser intentionally ignores unrelated log lines.  Required events are
-    `HEAD_SENT`, `UPDATE`, and `AMEND_SENT`; private DB rows fill in exact
+    `HEAD_SENT`, `HEAD_ACK`/`LEASE_*`, `UPDATE`, and `AMEND_SENT`; private DB rows fill in exact
     prices, fees, and liquidity when the final report is built.  `METRICS`
     rows provide living-tail distance, and latent-head events provide the
     latest active not-yet-filled attempts.  Terminal `closed--living` and
@@ -653,12 +658,15 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
         if key is None:
             continue
         lifecycle = lifecycles.setdefault(key, PairLifecycle(key=key))
+        _record_pair_started(lifecycle, log_time)
         if event == "HEAD_SENT":
             _parse_head_sent(lifecycle, body)
             _parse_latent_head_sent(latent_attempts, key, body, log_time)
         elif event == "HEAD_ACK":
             _parse_head_ack(lifecycle, body)
             _parse_latent_head_ack(latent_attempts, key, body, log_time)
+        elif event in {"LEASE_OPEN", "LEASE_CLOSED"}:
+            _parse_lease_event(lifecycle, body)
         elif event == "UPDATE":
             _parse_update(lifecycle, body)
         elif event == "AMEND_SENT":
@@ -686,6 +694,7 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
         elif event == "HEAD_VISIBILITY_TIMEOUT":
             _parse_latent_head_visibility_timeout(latent_attempts, key, body, log_time)
         elif event.startswith("GATE_WAIT"):
+            _parse_lifecycle_gate_wait(lifecycle, event, body)
             _parse_gate_wait(latent_attempts, key, event, body, log_time)
         elif event in {
             "COMMAND_FAILED",
@@ -1042,6 +1051,9 @@ def build_report_rows(
         rows.append(
             ReportRow(
                 key=row.key,
+                pair_started_at=row.pair_started_at,
+                head_wait_seconds=row.head_wait_seconds,
+                gate_reference_price=row.gate_reference_price,
                 head_fill_at=row.head_fill_at,
                 tail_fill_at=row.tail_fill_at,
                 tail_placed_at=row.tail_placed_at,
@@ -1078,9 +1090,11 @@ def render_org_table(
     options = options or ReportOptions()
     cumulative_header = "Cum est net" if any(row.net_estimated for row in rows) else "Cum net"
     headers = (
+        "Start UTC",
+        "H wait",
+        "Ref",
         "H fill UTC",
         "T fill UTC",
-        "Life",
         "Pair",
         "Side",
         "Hfill",
@@ -1088,8 +1102,8 @@ def render_org_table(
         "Qty",
         "Liq",
         "A#",
-        "Tamend1 UTC",
-        "Tamend2 UTC",
+        "Tamend1",
+        "Tamend2",
         "Amd logbps",
         "Gross USD",
         "Net USD",
@@ -1101,18 +1115,20 @@ def render_org_table(
     pair_attempt_width = max((len(f"#{row.key.attempt}") for row in rows), default=2)
     body = [
         (
+            _format_optional_time(row.pair_started_at),
+            _format_optional_life_seconds(row.head_wait_seconds),
+            _format_optional_decimal(row.gate_reference_price, options.price_places),
             _format_time(row.head_fill_at),
             _format_time(row.tail_fill_at),
-            _format_life(row.life_seconds),
             _format_pair(row.key, pair_name_width, pair_attempt_width),
             row.side,
-            _format_decimal(row.head_price, options.price_places),
-            _format_decimal(row.tail_price, options.price_places),
+            _format_fill_price(row.head_price, options.price_places),
+            _format_fill_price(row.tail_price, options.price_places),
             _format_quantity(row.quantity),
             row.liquidity,
             str(row.amend_count),
-            _format_optional_time(row.tail_amend_1_at),
-            _format_optional_time(row.tail_amend_2_at),
+            _format_optional_clock_time(row.tail_amend_1_at),
+            _format_optional_clock_time(row.tail_amend_2_at),
             _format_logbps_optional(row.amend_logbps),
             _format_signed(row.gross_usd, options.money_places),
             _format_signed_optional(row.net_usd, options.money_places),
@@ -1123,6 +1139,8 @@ def render_org_table(
         for row in rows
     ]
     align_right = {
+        "H wait",
+        "Ref",
         "Hfill",
         "Tfill",
         "Qty",
@@ -1329,7 +1347,7 @@ def render_living_tail_table(
             _format_life(row.age_seconds),
             _format_pair(row.key, pair_name_width, pair_attempt_width),
             row.side,
-            _format_decimal(row.head_price, options.price_places),
+            _format_fill_price(row.head_price, options.price_places),
             _format_quantity(row.quantity),
             row.head_liquidity,
             _format_optional_decimal(row.tail_stop, options.price_places),
@@ -2422,13 +2440,79 @@ def _parse_head_ack(lifecycle: PairLifecycle, body: str) -> None:
         lifecycle.head_exchange_order_id = fields[1]
 
 
+def _record_pair_started(lifecycle: PairLifecycle, log_time: datetime) -> None:
+    if lifecycle.started_at is None or log_time < lifecycle.started_at:
+        lifecycle.started_at = log_time
+
+
+def _parse_lifecycle_gate_wait(
+    lifecycle: PairLifecycle,
+    event: str,
+    body: str,
+) -> None:
+    if event != "GATE_WAIT-2":
+        return
+    fields = body.split()
+    if len(fields) < 3:
+        return
+    reference_price = _optional_positive_decimal(fields[2])
+    if reference_price is None:
+        return
+    status = fields[0]
+    if lifecycle.gate_reference_price is None or status == "ready":
+        lifecycle.gate_reference_price = reference_price
+
+
+def _parse_lease_event(lifecycle: PairLifecycle, body: str) -> None:
+    fields = body.split()
+    if len(fields) < 2:
+        return
+    role = fields[0]
+    client_id = _identity_field(fields[1])
+    exchange_order_id = _identity_field(fields[2]) if len(fields) >= 3 else None
+    if role == "head":
+        if not _client_id_matches_attempt(client_id, lifecycle.key, "H"):
+            return
+        if client_id is not None:
+            lifecycle.head_client_id = client_id
+        if exchange_order_id is not None:
+            lifecycle.head_exchange_order_id = exchange_order_id
+    elif role == "tail":
+        if not _client_id_matches_attempt(client_id, lifecycle.key, "T"):
+            return
+        if client_id is not None:
+            lifecycle.tail_client_id = client_id
+        if exchange_order_id is not None:
+            lifecycle.tail_exchange_order_id = exchange_order_id
+
+
+def _identity_field(value: str) -> str | None:
+    stripped = value.strip()
+    if not stripped or stripped in {"-", "PENDING_PLACE"}:
+        return None
+    return stripped
+
+
+def _client_id_matches_attempt(
+    client_id: str | None,
+    key: PairKey,
+    prefix: str,
+) -> bool:
+    if client_id is None:
+        return True
+    match = re.match(rf"^{re.escape(prefix)}(\d+)", client_id)
+    if match is None:
+        return True
+    return int(match.group(1)) == key.attempt
+
+
 def _parse_update(lifecycle: PairLifecycle, body: str) -> None:
     fields = body.split()
     if not fields:
         return
     state = fields[0]
     if state == "closed--hooked" and len(fields) >= 7:
-        initial_tail_stop = _positive_decimal(fields[2])
+        initial_tail_stop = _optional_positive_decimal(fields[2])
         if lifecycle.initial_tail_stop is None and initial_tail_stop is not None:
             lifecycle.initial_tail_stop = initial_tail_stop
         lifecycle.head_fill = FillLeg(
@@ -2438,8 +2522,8 @@ def _parse_update(lifecycle: PairLifecycle, body: str) -> None:
             filled_at=_parse_iso_utc(fields[6]),
         )
     elif state == "closed--living" and len(fields) >= 7:
-        confirmed_stop = _positive_decimal(fields[2])
-        desired_stop = _positive_decimal(fields[3])
+        confirmed_stop = _optional_positive_decimal(fields[2])
+        desired_stop = _optional_positive_decimal(fields[3])
         if lifecycle.initial_tail_stop is None and confirmed_stop is not None:
             lifecycle.initial_tail_stop = confirmed_stop
         if desired_stop is not None:
@@ -2456,7 +2540,7 @@ def _parse_update(lifecycle: PairLifecycle, body: str) -> None:
                 price=_decimal(fields[6]),
                 filled_at=_parse_iso_utc(fields[7]),
             )
-        latest_tail_stop = _positive_decimal(fields[2])
+        latest_tail_stop = _optional_positive_decimal(fields[2])
         if latest_tail_stop is not None:
             lifecycle.latest_tail_stop = latest_tail_stop
 
@@ -2771,9 +2855,20 @@ def _build_report_row(
             - lifecycle.head_fill.filled_at.replace(microsecond=0)
         ).total_seconds()
     )
+    head_wait_seconds = None
+    if lifecycle.started_at is not None:
+        head_wait_seconds = int(
+            (
+                lifecycle.head_fill.filled_at.replace(microsecond=0)
+                - lifecycle.started_at.replace(microsecond=0)
+            ).total_seconds()
+        )
 
     return ReportRow(
         key=lifecycle.key,
+        pair_started_at=lifecycle.started_at,
+        head_wait_seconds=head_wait_seconds,
+        gate_reference_price=lifecycle.gate_reference_price,
         head_fill_at=lifecycle.head_fill.filled_at,
         tail_fill_at=lifecycle.tail_fill.filled_at,
         tail_placed_at=lifecycle.tail_placed_at,
@@ -3428,6 +3523,10 @@ def _format_time(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%m-%d %H:%M")
 
 
+def _format_clock_time(value: datetime) -> str:
+    return value.astimezone(timezone.utc).strftime("%H:%M")
+
+
 def _format_org_heading(value: datetime, *, report_name: str | None = None) -> str:
     local_value = value.astimezone(timezone.utc)
     weekdays = ("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim.")
@@ -3518,12 +3617,24 @@ def _format_optional_time(value: datetime | None) -> str:
     return _format_time(value)
 
 
+def _format_optional_clock_time(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    return _format_clock_time(value)
+
+
 def _format_life(seconds: int) -> str:
     sign = "-" if seconds < 0 else ""
     seconds = abs(seconds)
     hours, remainder = divmod(seconds, 3600)
     minutes, secs = divmod(remainder, 60)
     return f"{sign}{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def _format_optional_life_seconds(seconds: int | None) -> str:
+    if seconds is None:
+        return ""
+    return _format_life(seconds)
 
 
 def _format_pair(key: PairKey, name_width: int, attempt_width: int) -> str:
@@ -3552,6 +3663,11 @@ def _format_optional_quantity_word(value: Decimal | None) -> str:
 def _format_decimal(value: Decimal, places: int) -> str:
     quant = Decimal("1").scaleb(-places)
     return f"{value.quantize(quant, rounding=ROUND_HALF_UP):.{places}f}"
+
+
+def _format_fill_price(value: Decimal, places: int) -> str:
+    quant = Decimal("1").scaleb(-places)
+    return f"{value.quantize(quant, rounding=ROUND_DOWN):.{places}f}"
 
 
 def _format_optional_decimal(value: Decimal | None, places: int) -> str:
