@@ -1,13 +1,13 @@
-"""Runtime command translation and dispatch boundary.
+"""Runtime command translation helpers.
 
 Purpose: translate legacy order dict payloads into typed runtime commands and
-derive pure validation/timeout rules.
+derive pure validation/timeout metadata.
 Inputs: `OrderDict` payloads and `RuntimeCommand` instances.
-Outputs: normalized commands and role payloads.
+Outputs: normalised commands, role payloads, and validation hints.
 Side effects: none.
 Important types: `RuntimeCommand`, `RuntimeCommandKind`, `OrderDict`,
 `HeadCommandPayload`, `TailCommandPayload`.
-Role: boundary adapter.
+Role: transitional compatibility adapter.
 Transitional: yes, still bridges legacy order function signatures.
 """
 from __future__ import annotations

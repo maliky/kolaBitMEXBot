@@ -1,13 +1,12 @@
-"""Async strategy supervisor shell around the pure Isis reducer.
+"""Synchronous strategy supervisor shell around the pure Isis reducer.
 
 Purpose: own persistent strategy cache, apply event ordering and deduplication,
-and forward typed runtime commands to the execution layer.
+activate dependencies/repeats, and return typed runtime commands to the caller.
 Inputs: typed `EggMove` values from market/private/account listeners.
 Outputs: typed bot commands and supervisor notices.
 Side effects: none outside local supervisor state.
-Important types: `StrategyState`, `EggMove`, bot command union,
-`ChronosNotice`.
-Role: interpreter shell.
+Important types: `StrategyState`, `EggMove`, `DragonSong`, `ChronosNotice`.
+Role: deterministic orchestration shell.
 """
 from __future__ import annotations
 

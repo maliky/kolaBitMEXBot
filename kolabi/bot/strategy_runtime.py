@@ -1,13 +1,15 @@
-"""Async persistent strategy runtime over Dragon, Chronos, Horus, and Ogun.
+"""Async persistent strategy runtime over Dragon, Chronos, and an executor boundary.
 
 Purpose: own the active supervisor loop for simulated and live/demo execution
 through the typed bot stack.
-Inputs: canonical strategy state, real event sources, and an executor.
+Inputs: canonical strategy state, runtime event sources/readers, and an optional
+`CommandExecutor`.
 Outputs: final strategy state, emitted bot commands, and supervisor notices.
-Side effects: async queue flow and optional command execution through an
-executor boundary.
-Important types: `Chronos`, `EggMove`, algebraic bot commands.
-Role: interpreter shell.
+Side effects: async queue flow, telemetry/logging, reader access, and optional
+command execution through the injected executor.
+Important types: `StrategyRuntime`, `Chronos`, `EggMove`, `DragonSong`,
+`CommandExecutor`.
+Role: async coordinator shell.
 """
 
 from __future__ import annotations

@@ -369,12 +369,15 @@ class CryptoApiLike(Protocol):
 
 
 class BargainLike(Protocol):
-    """Broker-facing negotiation boundary used by Chronos/order-cycle logic.
+    """Legacy broker-facing negotiation protocol kept for compatibility.
 
     Why this name:
     - `Bargain` keeps the strategic metaphor: negotiation with the market.
-    - This protocol defines the minimal contract needed by runtime logic
+    - This protocol describes the older broker-facing surface
       (price read, balance, execution lookup, position/open-order access).
+    - The active Chronos/Isis/Horus path does not call this protocol directly;
+      live execution goes through `DragonSong`, `CommandExecutor`, and
+      `ExchangePort`.
     - It is intentionally structural: any object exposing this surface can be
       used without explicit inheritance.
     """
