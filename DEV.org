@@ -1,6 +1,11 @@
 #+TITLE: kolaBiBot
 #+OPTIONS: toc:2 num:nil
 
+* <2026-07-05 dim. 22:16>
+How can I set a function to update successive repeated  pair qunqtities qnd price....  eg if a paris is terminated then the next own shold be plaicing its l a little further from the ref price. if it is time out it gets closer to the ref price or a ref delta to the ref price...  that funciton would take last termination status , filled, cancled, if filled roi, it sould atke the whole pari line, and retunr an updated pari line for the same pair but difference occurence.  it could change any part of the pari line but the symbole exchange tps_run essais hook tType oType tPrice and tUblk units (if B then updat has to be B also)
+
+* <2026-06-26 ven. 12:54> 30 pbs (ADA) minimun for me.
+
 * <2026-06-22 lun. 10:48> Gates
 P1 Finding (2026-06-22): executable_head_reference_price and head_price_reference_price now default unsuffixed head references to last for all markets. When last is unavailable (and mark also unavailable), they silently drop to mid (price_from_source), replacing the old side-aware book behavior (ask for BUY, bid for SELL). That can mis-score GATE_WAIT for relative gates (pD/pB) and keep latent heads from reaching ready.
 
@@ -709,6 +714,50 @@ set -a
 . ./.env.postgres
 set +a
 #+end_src
+
+* Test Suite Usefulness Audit <2026-07-04>
+
+** Scope
+- Audited the Python test base under =tests/= for whether tests still protect active behaviour.
+- Baseline collection: =pytest --collect-only -q= collected 871 tests.
+- No test deletion was made in this pass. The current suite is useful as a regression net; the main improvement opportunity is tiering and a few clarity renames, not pruning.
+
+** Verification
+| Command | Result |
+|---------+--------|
+| =pytest --collect-only -q= | 871 collected |
+| =pytest tests/bdd -q= | 14 passed |
+| =pytest tests/core -q= | 72 passed |
+| =pytest tests/shared -q= | 7 passed |
+| =pytest tests/scripts -q= | 20 passed |
+| =pytest tests/bot -q= | 434 passed |
+| =pytest tests/exchanges -q= | 90 passed |
+| =pytest tests/test_config.py tests/test_kraken_cli.py tests/test_kraken_smoke.py -q= | 108 passed |
+| =pytest tests/tree -q= | 126 passed |
+
+** Classification
+| Test area | Files | Verdict |
+|-----------+-------+---------|
+| BDD contracts | =tests/bdd/test_*_bdd.py= | Keep. The apparent =pass= bodies are =pytest-bdd= scenario anchors; assertions live in step functions. |
+| Runtime core | =tests/bot/test_chronos_supervisor.py=, =test_pair_cycle_step.py=, =test_strategy_runtime.py=, =test_runtime_regression.py=, =tests/core/*.py= | Keep. These protect the typed lifecycle boundary, reducer semantics, Chronos/Horus/Ogun separation, and runtime side-effect contracts. |
+| Strategy grammar and CLI | =tests/bot/test_cli.py=, =test_tsv_parser.py=, =test_exchange_routes.py=, =test_fresh_run.py= | Keep. Legacy-looking tests mostly assert intentional rejection of removed grammar or backward-compatible route/env handling. |
+| Reporting | =tests/bot/test_run_report.py= | Keep. The tests are directly useful for operator reports and recently caught the dash tail-stop parser regression. |
+| Exchange adapters and bargain tools | =tests/exchanges/*.py=, =tests/test_kraken_cli.py=, =tests/test_kraken_smoke.py=, =tests/test_config.py= | Keep. They are mocked or local contract tests for route metadata, adapter payloads, credentials, and operator safety paths. |
+| Feed/account persistence | =tests/tree/*.py=, =tests/shared/*.py= | Keep. These are DB/feed tier tests for private/public evidence, idempotency, retention, liveness, and purge behaviour. |
+| Scripts | =tests/scripts/test_kolabidb.py= | Keep. It guards local operator service commands and unsupported backend messaging. |
+
+** Findings
+- No clearly useless tests were found: no =xfail= markers, no blanket skipped files, and no placeholder tests without assertions after accounting for =pytest-bdd= scenario functions.
+- PostgreSQL-dependent tests are useful but should be treated as a separate tier. Fixture skips in =tests/conftest.py= are availability guards, not dead tests.
+- Tests referencing =legacy= behaviour are still useful when they assert explicit rejection or supported compatibility, such as removed run-once arguments, legacy TSV rejection, legacy credential env names, and SQLite backend rejection.
+- The remaining =orders/advers.tsv= strings in CLI tests are not reading a real strategy file in those cases; they are parser/service path placeholders. They are useful, but changing those strings to =orders/advers.org= later would reduce reader confusion.
+- The biggest files are large because they hold active subsystem contracts, not because they are obviously redundant: =test_strategy_runtime.py=, =test_runtime_regression.py=, =test_account_state.py=, =test_kraken_adapter.py=, and =test_run_report.py= should be split only when a local change makes that useful.
+
+** Recommendations
+- Do not prune tests now.
+- Add pytest markers later for =db=, =adapter=, =runtime=, =report=, and =operator_cli= so daily runs can choose the right tier without deleting coverage.
+- When touching CLI path fixtures, prefer active =orders/*.org= names unless the test is explicitly asserting old TSV rejection.
+- Keep focused test commands in commit notes so the operator knows whether a change touched fast pure logic, DB feeders, adapters, or reports.
 
 The local =.env.postgres= file is ignored by Git. If the local password changes, URL-encode special characters before placing them in =KOLABI_PG=.
 
