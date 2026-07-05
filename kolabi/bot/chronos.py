@@ -20,6 +20,7 @@ from kolabi.bot.domain import (
     EggMove,
     EggMoveKind,
     HeadState,
+    OrderPairSpec,
     OrderRole,
     PairCycleState,
     StrategyState,
@@ -28,6 +29,7 @@ from kolabi.bot.domain import (
 from kolabi.bot.horus import plan_runtime_commands
 from kolabi.bot.isis import step_strategy
 from kolabi.bot.pricing import pair_window_is_open
+from kolabi.bot.repeat_adjustment import apply_repeat_adjustment
 from kolabi.shared.core.runtime_types import DragonSong, RuntimeCommandKind, Symbol
 
 
@@ -57,6 +59,8 @@ class PendingRepeat:
     pair_name: str
     ready_at: datetime
     next_attempt: int
+    next_pair: OrderPairSpec | None = None
+    terminal_event: EggMove | None = None
 
 
 class HookTargetKind(StrEnum):
@@ -215,6 +219,8 @@ class Chronos:
                 self._activate_repeat_pair(
                     pending.pair_name,
                     next_attempt=pending.next_attempt,
+                    next_pair=pending.next_pair,
+                    terminal_event=pending.terminal_event,
                 )
             )
         return self._dedupe_commands(emitted)
@@ -341,8 +347,13 @@ class Chronos:
             return ()
         wait_minutes = _repeat_wait_minutes(pair_state, event)
         ready_at = current_time + timedelta(minutes=wait_minutes)
+        next_pair = _next_repeat_pair(
+            pair_state,
+            event,
+            next_attempt=next_attempt,
+        )
         if not pair_window_is_open(
-            pair_state.pair,
+            next_pair,
             launched_at=self.state.launched_at,
             now=ready_at,
         ):
@@ -352,11 +363,15 @@ class Chronos:
                 pair_name=pair_name,
                 ready_at=ready_at,
                 next_attempt=next_attempt,
+                next_pair=next_pair,
+                terminal_event=event,
             )
             return ()
         self._activate_repeat_pair(
             pair_name,
             next_attempt=next_attempt,
+            next_pair=next_pair,
+            terminal_event=event,
         )
         return ()
 
@@ -365,12 +380,23 @@ class Chronos:
         pair_name: str,
         *,
         next_attempt: int,
+        next_pair: OrderPairSpec | None = None,
+        terminal_event: EggMove | None = None,
     ) -> tuple[DragonSong, ...]:
         pair_state = self.state.pairs.get(pair_name)
         if pair_state is None:
             return ()
+        if next_pair is None and terminal_event is not None:
+            next_pair = _next_repeat_pair(
+                pair_state,
+                terminal_event,
+                next_attempt=next_attempt,
+            )
+        if next_pair is None:
+            next_pair = pair_state.pair
         reset_state = replace(
             pair_state,
+            pair=next_pair,
             head_state=HeadState.LATENT,
             tail_state=None,
             tail_mode=None,
@@ -382,6 +408,7 @@ class Chronos:
             head_trigger_reference_at=None,
             head_order_price=None,
             head_order_stop_price=None,
+            head_order_quantity=None,
             dependency_token=None,
             played_quantity=None,
             latest_commands=None,
@@ -533,6 +560,19 @@ def _repeat_wait_minutes(pair_state: PairCycleState, event: EggMove) -> float:
     if not _tail_fill_closed_repeat_event(pair_state, event):
         return pause_minutes
     return pause_minutes + max(pair_state.pair.cooldown_minutes or 0.0, 0.0)
+
+
+def _next_repeat_pair(
+    pair_state: PairCycleState,
+    event: EggMove,
+    *,
+    next_attempt: int,
+) -> OrderPairSpec:
+    return apply_repeat_adjustment(
+        pair_state,
+        event,
+        next_attempt=next_attempt,
+    )
 
 
 def _tail_fill_closed_repeat_event(pair_state: PairCycleState, event: EggMove) -> bool:

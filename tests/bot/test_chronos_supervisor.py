@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
 from kolabi.bot.chronos import (
     Chronos,
     ChronosNoticeKind,
@@ -26,6 +27,11 @@ from kolabi.bot.domain import (
     TailSpec,
     TailState,
     TimeWindow,
+)
+from kolabi.bot.repeat_adjustment import (
+    RepeatAdjustmentContext,
+    RepeatAdjustmentError,
+    register_repeat_adjustment,
 )
 from kolabi.shared.core.runtime_types import (
     DragonSong,
@@ -616,6 +622,270 @@ def test_chronos_repeats_not_played_canceled_head_with_fresh_attempt_key() -> No
     assert repeated.attempt_index == 2
     assert repeated.head_state == HeadState.LATENT
     assert repeated.head_trigger_reference_price is None
+
+
+def test_chronos_applies_repeat_adjustment_to_immediate_repeat() -> None:
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=0.0,
+        head_price=(10.0, 20.0),
+        head_price_type="pD",
+        repeat_adjustment="mm_scurve",
+    )
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.FAILED,
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    commands = chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.NOT_PLAYED_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            event_id="latent-timeout:pair-r:1",
+            reply={"execType": "latent_timeout"},
+        ),
+        now=occurred_at,
+    )
+
+    repeated = chronos.state.pairs["pair-r"]
+    assert commands == ()
+    assert repeated.attempt_index == 2
+    assert repeated.pair.head_price == (8.0, 16.0)
+    assert repeated.pair.head_price_type == "pD"
+    assert repeated.pair.repeat_adjustment == "mm_scurve"
+
+
+def test_chronos_applies_repeat_adjustment_to_delayed_repeat() -> None:
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=1.0,
+        head_price=(10.0, 20.0),
+        head_price_type="pD",
+        repeat_adjustment="mm_scurve",
+    )
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc-delay",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.FAILED,
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    commands = chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.NOT_PLAYED_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            event_id="latent-timeout:pair-r:1",
+            reply={"execType": "latent_timeout"},
+        ),
+        now=occurred_at,
+    )
+
+    assert commands == ()
+    assert chronos.state.pairs["pair-r"].attempt_index == 1
+    assert chronos.pending_repeats["pair-r"].ready_at == occurred_at + timedelta(minutes=1)
+
+    chronos.activate_ready_repeats(
+        symbol="PI_XBTUSD",
+        now=occurred_at + timedelta(minutes=1),
+    )
+
+    repeated = chronos.state.pairs["pair-r"]
+    assert repeated.attempt_index == 2
+    assert repeated.pair.head_price == (8.0, 16.0)
+
+
+def test_chronos_repeat_adjustment_moves_successful_tail_further() -> None:
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=0.0,
+        head_price=(10.0, 20.0),
+        head_price_type="pD",
+        repeat_adjustment="mm_scurve",
+    )
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc-success",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                tail_mode=TailMode.FLYING,
+                head_order_price=Decimal("100"),
+                played_quantity=Decimal("1"),
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            role=OrderRole.TAIL,
+            event_id="evt-success-rfunc",
+            reply={"price": "105", "cumQty": "1"},
+            is_private=True,
+        ),
+        now=occurred_at,
+    )
+
+    repeated = chronos.state.pairs["pair-r"]
+    assert repeated.attempt_index == 2
+    assert repeated.pair.head_price == (11.0, 22.0)
+
+
+def test_chronos_repeat_adjustment_unknown_name_fails_closed() -> None:
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=0.0,
+        repeat_adjustment="missing_policy",
+    )
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc-missing",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.FAILED,
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    with pytest.raises(RepeatAdjustmentError, match="Unknown repeat adjustment"):
+        chronos.process_event(
+            EggMove(
+                kind=EggMoveKind.NOT_PLAYED_CANCELED,
+                occurred_at=occurred_at,
+                symbol="PI_XBTUSD",
+                pair_name="pair-r",
+                event_id="evt-missing-rfunc",
+                is_private=True,
+            ),
+            now=occurred_at,
+        )
+
+    assert chronos.state.pairs["pair-r"].attempt_index == 1
+
+
+def test_chronos_repeat_adjustment_rejects_protected_field_change() -> None:
+    def bad_adjustment(
+        pair: OrderPairSpec,
+        _context: RepeatAdjustmentContext,
+    ) -> OrderPairSpec:
+        return replace(pair, symbol="PI_ETHUSD")
+
+    register_repeat_adjustment("test_bad_symbol_change", bad_adjustment)
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=0.0,
+        repeat_adjustment="test_bad_symbol_change",
+    )
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc-invalid",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.FAILED,
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    with pytest.raises(RepeatAdjustmentError, match="symbol"):
+        chronos.process_event(
+            EggMove(
+                kind=EggMoveKind.NOT_PLAYED_CANCELED,
+                occurred_at=occurred_at,
+                symbol="PI_XBTUSD",
+                pair_name="pair-r",
+                event_id="evt-bad-rfunc",
+                is_private=True,
+            ),
+            now=occurred_at,
+        )
+
+    assert chronos.state.pairs["pair-r"].attempt_index == 1
+
+
+def test_chronos_repeat_adjustment_rejects_typed_suffix_change() -> None:
+    def bad_adjustment(
+        pair: OrderPairSpec,
+        _context: RepeatAdjustmentContext,
+    ) -> OrderPairSpec:
+        return replace(pair, head_price_type="pB")
+
+    register_repeat_adjustment("test_bad_suffix_change", bad_adjustment)
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=0.0,
+        head_price_type="pD",
+        repeat_adjustment="test_bad_suffix_change",
+    )
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc-bad-suffix",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.FAILED,
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    with pytest.raises(RepeatAdjustmentError, match="head_price_type"):
+        chronos.process_event(
+            EggMove(
+                kind=EggMoveKind.NOT_PLAYED_CANCELED,
+                occurred_at=occurred_at,
+                symbol="PI_XBTUSD",
+                pair_name="pair-r",
+                event_id="evt-bad-suffix-rfunc",
+                is_private=True,
+            ),
+            now=occurred_at,
+        )
+
+    assert chronos.state.pairs["pair-r"].attempt_index == 1
 
 
 def test_chronos_star_attempts_repeat_until_pair_window_closes() -> None:
