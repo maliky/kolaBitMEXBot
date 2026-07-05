@@ -167,6 +167,7 @@ class RunLogSnapshot:
     latent_attempts: dict[PairKey, LatentAttempt]
     quantity_diagnostics: tuple["QuantityDiagnostic", ...]
     market_snapshot: MarketSnapshot | None
+    market_snapshots: tuple[MarketSnapshot, ...]
     first_log_at: datetime | None
     last_log_at: datetime | None
     runtime_metadata: RuntimeMetadata = RuntimeMetadata()
@@ -622,6 +623,7 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
     latent_attempts: dict[PairKey, LatentAttempt] = {}
     quantity_diagnostics: list[QuantityDiagnostic] = []
     market_snapshot: MarketSnapshot | None = None
+    market_snapshots: list[MarketSnapshot] = []
     first_log_at: datetime | None = None
     last_log_at: datetime | None = None
     runtime_metadata = RuntimeMetadata()
@@ -673,11 +675,13 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
             _parse_amend_sent(lifecycle, body, log_time)
         elif event == "METRICS":
             parsed_market = _parse_tail_metrics(tail_telemetry, key, body, log_time)
-            if parsed_market is not None and (
-                market_snapshot is None
-                or parsed_market.recorded_at >= market_snapshot.recorded_at
-            ):
-                market_snapshot = parsed_market
+            if parsed_market is not None:
+                market_snapshots.append(parsed_market)
+                if (
+                    market_snapshot is None
+                    or parsed_market.recorded_at >= market_snapshot.recorded_at
+                ):
+                    market_snapshot = parsed_market
         elif event == "REPEAT_READY":
             _parse_repeat_ready(latent_attempts, key, body, log_time)
         elif event == "LATENT_TIMEOUT_ARMED":
@@ -709,6 +713,7 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
         latent_attempts=latent_attempts,
         quantity_diagnostics=tuple(quantity_diagnostics),
         market_snapshot=market_snapshot,
+        market_snapshots=tuple(market_snapshots),
         first_log_at=first_log_at,
         last_log_at=last_log_at,
         runtime_metadata=runtime_metadata,
@@ -1750,9 +1755,10 @@ def render_sizing_table(
 def render_market_snapshot_table(
     snapshot: MarketSnapshot | None,
     *,
+    snapshots: Sequence[MarketSnapshot] = (),
     options: ReportOptions | None = None,
 ) -> str:
-    """Render the latest parsed mark and market prices as a one-row table."""
+    """Render latest parsed market prices and basic run statistics."""
 
     options = options or ReportOptions()
     headers = (
@@ -1760,6 +1766,7 @@ def render_market_snapshot_table(
         "Mark",
         "Last",
         "Spread",
+        "Mark-Last",
         "Max spread",
         "Bid",
         "Ask",
@@ -1768,15 +1775,19 @@ def render_market_snapshot_table(
         "Src",
     )
     if snapshot is None:
-        body = (("unavailable", "", "", "", "", "", "", "", "", ""),)
+        body = (("unavailable", "", "", "", "", "", "", "", "", "", ""),)
     else:
-        body = (
+        market_snapshots = tuple(snapshots) or (snapshot,)
+        body = [
             (
                 _format_time(snapshot.recorded_at),
                 _format_optional_price_word(snapshot.mark_price, options.price_places),
                 _format_optional_price_word(snapshot.last_price, options.price_places),
                 _format_optional_price_word(
                     _snapshot_spread(snapshot), options.price_places
+                ),
+                _format_optional_price_word(
+                    _snapshot_mark_minus_last(snapshot), options.price_places
                 ),
                 _format_optional_price_word(snapshot.spread_guard, options.price_places),
                 _format_optional_price_word(snapshot.bid_price, options.price_places),
@@ -1785,12 +1796,106 @@ def render_market_snapshot_table(
                 _format_optional_price_word(snapshot.index_price, options.price_places),
                 snapshot.source or "-",
             ),
-        )
+        ]
+        body.extend(_market_snapshot_stat_rows(market_snapshots, options=options))
     return _format_table(
         headers,
         body,
         align_right=set(headers) - {"Latest prices", "Src"},
     )
+
+
+def render_market_snapshot_note(snapshot: MarketSnapshot | None) -> str:
+    """Render a compact legend for the overview market-price columns."""
+
+    if snapshot is None:
+        return ""
+    return (
+        "Price note: min/max/average/median rows use all parsed METRICS snapshots; "
+        "Spread is Ask - Bid; Mark-Last is Mark - Last; Index is the "
+        "exchange index/reference price when supplied; Src is the market-price "
+        "source used by the runtime row, such as last, mark, bid, ask, or mid."
+    )
+
+
+def render_overview_clock_table(
+    *,
+    identity: ReportIdentity | None = None,
+    latest_log_at: datetime | None = None,
+    market_snapshot: MarketSnapshot | None = None,
+) -> str:
+    """Render run/report timing facts that contextualise overview prices."""
+
+    headers = ("Clock", "UTC", "Age vs log")
+    rows: list[tuple[str, str, str]] = []
+    if identity is not None:
+        rows.append(("Run start", _format_full_time(identity.run_started_at), ""))
+    if latest_log_at is not None:
+        rows.append(("Latest log", _format_full_time(latest_log_at), ""))
+    if market_snapshot is not None:
+        rows.append(
+            (
+                "Latest full prices",
+                _format_full_time(market_snapshot.recorded_at),
+                _format_snapshot_age(market_snapshot.recorded_at, latest_log_at),
+            )
+        )
+    if not rows:
+        return ""
+    return _format_table(headers, rows, align_right={"Age vs log"})
+
+
+def _market_snapshot_stat_rows(
+    snapshots: Sequence[MarketSnapshot],
+    *,
+    options: ReportOptions,
+) -> list[tuple[str, str, str, str, str, str, str, str, str, str, str]]:
+    stats = ("min", "max", "average", "median")
+    return [
+        (
+            stat,
+            _format_optional_price_word(
+                _stat_value(_optional_values(item.mark_price for item in snapshots), stat),
+                options.price_places,
+            ),
+            _format_optional_price_word(
+                _stat_value(_optional_values(item.last_price for item in snapshots), stat),
+                options.price_places,
+            ),
+            _format_optional_price_word(
+                _stat_value(
+                    _optional_values(_snapshot_spread(item) for item in snapshots),
+                    stat,
+                ),
+                options.price_places,
+            ),
+            _format_optional_price_word(
+                _stat_value(
+                    _optional_values(
+                        _snapshot_mark_minus_last(item) for item in snapshots
+                    ),
+                    stat,
+                ),
+                options.price_places,
+            ),
+            "",
+            _format_optional_price_word(
+                _stat_value(_optional_values(item.bid_price for item in snapshots), stat),
+                options.price_places,
+            ),
+            _format_optional_price_word(
+                _stat_value(_optional_values(item.ask_price for item in snapshots), stat),
+                options.price_places,
+            ),
+            _format_optional_price_word(
+                _stat_value(_optional_values(item.mid_price for item in snapshots), stat),
+                options.price_places,
+            ),
+            "",
+            "",
+        )
+        for stat in stats
+    ]
 
 
 def render_run_report(
@@ -1803,6 +1908,8 @@ def render_run_report(
     sizing_notes: Sequence[str] = (),
     report_notes: Sequence[str] = (),
     market_snapshot: MarketSnapshot | None = None,
+    market_snapshots: Sequence[MarketSnapshot] = (),
+    latest_log_at: datetime | None = None,
     report_at: datetime | None = None,
     identity: ReportIdentity | None = None,
     options: ReportOptions | None = None,
@@ -1817,15 +1924,37 @@ def render_run_report(
         market_snapshot=market_snapshot,
         report_at=report_at,
     )
+    overview_clock = render_overview_clock_table(
+        identity=identity,
+        latest_log_at=latest_log_at,
+        market_snapshot=market_snapshot,
+    )
     sections = [
         _format_org_heading(timestamp, report_name=identity.name if identity else None),
         "** Overview",
-        render_market_snapshot_table(market_snapshot, options=options),
-        _render_optional_summary(terminated_rows, options=options),
-        "",
-        "*** Volume by market/pair",
-        _render_section_table(render_volume_table, volume_rows, options=options),
     ]
+    if overview_clock:
+        sections.append(overview_clock)
+    sections.extend(
+        (
+            render_market_snapshot_table(
+                market_snapshot,
+                snapshots=market_snapshots,
+                options=options,
+            ),
+        )
+    )
+    market_snapshot_note = render_market_snapshot_note(market_snapshot)
+    if market_snapshot_note:
+        sections.append(market_snapshot_note)
+    sections.extend(
+        (
+            _render_optional_summary(terminated_rows, options=options),
+            "",
+            "*** Volume by market/pair",
+            _render_section_table(render_volume_table, volume_rows, options=options),
+        )
+    )
     sections.extend(
         (
             "",
@@ -2002,9 +2131,9 @@ def build_report_table(
         sizing_notes=sizing_notes,
         report_notes=report_notes,
         market_snapshot=snapshot.market_snapshot,
-        report_at=snapshot.market_snapshot.recorded_at
-        if snapshot.market_snapshot is not None
-        else snapshot.last_log_at,
+        market_snapshots=snapshot.market_snapshots,
+        latest_log_at=snapshot.last_log_at,
+        report_at=resolved_run_started_at,
         identity=identity,
         options=options,
     )
@@ -3523,6 +3652,10 @@ def _format_time(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%m-%d %H:%M")
 
 
+def _format_full_time(value: datetime) -> str:
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _format_clock_time(value: datetime) -> str:
     return value.astimezone(timezone.utc).strftime("%H:%M")
 
@@ -3637,6 +3770,22 @@ def _format_optional_life_seconds(seconds: int | None) -> str:
     return _format_life(seconds)
 
 
+def _format_snapshot_age(
+    snapshot_at: datetime,
+    latest_log_at: datetime | None,
+) -> str:
+    if latest_log_at is None:
+        return ""
+    return _format_life(
+        int(
+            (
+                latest_log_at.astimezone(timezone.utc).replace(microsecond=0)
+                - snapshot_at.astimezone(timezone.utc).replace(microsecond=0)
+            ).total_seconds()
+        )
+    )
+
+
 def _format_pair(key: PairKey, name_width: int, attempt_width: int) -> str:
     return f"{key.name:<{name_width}} {f'#{key.attempt}':>{attempt_width}}"
 
@@ -3723,6 +3872,12 @@ def _snapshot_spread(snapshot: MarketSnapshot) -> Decimal | None:
     if snapshot.bid_price is None or snapshot.ask_price is None:
         return None
     return snapshot.ask_price - snapshot.bid_price
+
+
+def _snapshot_mark_minus_last(snapshot: MarketSnapshot) -> Decimal | None:
+    if snapshot.mark_price is None or snapshot.last_price is None:
+        return None
+    return snapshot.mark_price - snapshot.last_price
 
 
 def _format_signed(value: Decimal, places: int) -> str:

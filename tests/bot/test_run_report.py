@@ -1127,11 +1127,71 @@ def test_living_tail_rows_include_latest_metrics_and_db_order_state(postgres_url
     assert "| 06-18 15:23 | 03:26:57 | MM_BUY #1 | B/S  |" in table
     assert "| 0.16247 |   6 | M    | 0.15940 |        +174 | untouched |        0 |" in table
     prices = render_market_snapshot_table(snapshot.market_snapshot)
-    assert "| Latest prices |    Mark |    Last |  Spread | Max spread |" in prices
+    assert "| Latest prices |    Mark |    Last |  Spread | Mark-Last | Max spread |" in prices
     assert (
-        "| 06-18 18:50   | 0.16230 | 0.16220 | 0.00010 |    0.00040 |"
+        "| 06-18 18:50   | 0.16230 | 0.16220 | 0.00010 |   0.00010 |    0.00040 |"
         in prices
     )
+
+
+def test_market_snapshot_table_renders_run_statistics_and_legend() -> None:
+    log = "\n".join(
+        (
+            "2026-06-18 18:49:31,793 MainThread~20 /strategy_runtime.py@1@x/ "
+            "METRICS (MM_BUY#1): closed--living 0.1621 0.1594 0.0031 "
+            "0.0029 0.0005 0.0037 2026-06-18T15:23:34.658510+00:00 "
+            "last 0.1605 0.1607 0.1606 0.1621 0.1622 0.1622",
+            "2026-06-18 18:50:31,793 MainThread~20 /strategy_runtime.py@1@x/ "
+            "METRICS (MM_BUY#1): closed--living 0.1622 0.1594 0.0031 "
+            "0.0029 0.0004 0.0037 2026-06-18T15:23:34.658510+00:00 "
+            "last 0.1607 0.1608 0.1607 0.1622 0.1623 0.1623",
+        )
+    )
+
+    snapshot = parse_run_log_text(log)
+    prices = render_market_snapshot_table(
+        snapshot.market_snapshot,
+        snapshots=snapshot.market_snapshots,
+    )
+    report = render_run_report(
+        (),
+        (),
+        (),
+        market_snapshot=snapshot.market_snapshot,
+        market_snapshots=snapshot.market_snapshots,
+    )
+
+    assert len(snapshot.market_snapshots) == 2
+    assert "| min           | 0.16220 | 0.16210 | 0.00010 |   0.00010 |" in prices
+    assert "| max           | 0.16230 | 0.16220 | 0.00020 |   0.00010 |" in prices
+    assert "| average       | 0.16225 | 0.16215 | 0.00015 |   0.00010 |" in prices
+    assert "| median        | 0.16225 | 0.16215 | 0.00015 |   0.00010 |" in prices
+    assert "Index is the exchange index/reference price when supplied" in report
+    assert "Src is the market-price source used by the runtime row" in report
+
+
+def test_report_overview_records_latest_log_time_and_price_age(tmp_path: Path) -> None:
+    log = "\n".join(
+        (
+            "2026-06-18 18:50:31,793 MainThread~20 /strategy_runtime.py@1@x/ "
+            "METRICS (MM_BUY#1): closed--living 0.1622 0.1594 0.0031 "
+            "0.0029 0.0004 0.0037 2026-06-18T15:23:34.658510+00:00 "
+            "last 0.1607 0.1608 0.1607 0.1622 0.1623 0.1623",
+            "2026-06-18 19:05:31,793 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (MM_SEL#6): above last 0.1626 0.1624 12.30 "
+            "-100000.00..-120.00 pB L 0.0001 1.0",
+        )
+    )
+    log_path = tmp_path / "stale-prices.log"
+    log_path.write_text(log, encoding="utf-8")
+
+    report = build_report_table(log_path, log_only=True)
+
+    assert report.startswith("* <2026-06-18 jeu. 18:50> ")
+    assert "| Run start          | 2026-06-18 18:50:31 |" in report
+    assert "| Latest log         | 2026-06-18 19:05:31 |" in report
+    assert "| Latest full prices | 2026-06-18 18:50:31 |   00:15:00 |" in report
+    assert "| 06-18 18:50   | 0.16230 | 0.16220 |" in report
 
 
 def test_latest_latent_rows_exclude_failed_latest_attempts() -> None:
@@ -1279,12 +1339,15 @@ def test_full_report_renders_three_sections_in_log_only_mode(tmp_path: Path) -> 
     table = build_report_table(log_path, log_only=True)
 
     lines = table.splitlines()
-    assert lines[0].startswith("* <2026-06-17 mer. 23:21> ")
+    assert lines[0].startswith("* <2026-06-17 mer. 23:05> ")
     assert lines[1].startswith("Run UTC: 2026-06-17 23:05:38 |")
     assert "Command: kolabi-run-report " in lines[1]
     assert lines[2] == "** Overview"
-    assert lines[3].startswith("| Latest prices |")
-    assert lines[5].startswith("| unavailable")
+    assert "\n| Clock" in table
+    assert "| Run start  | 2026-06-17 23:05:38 |" in table
+    assert "| Latest log | 2026-06-17 23:21:32 |" in table
+    assert "\n| Latest prices |" in table
+    assert "\n| unavailable" in table
     assert "\n** Terminated pairs" in table
     assert table.count("Latest prices") == 1
     assert "Side: B/S=1 | Liq: ?/?=1" in table
@@ -1375,7 +1438,7 @@ def test_cli_log_only_writes_stdout(tmp_path: Path) -> None:
 
     assert result == 0
     assert err.getvalue() == ""
-    assert out.getvalue().startswith("* <2026-06-17 mer. 23:21> ")
+    assert out.getvalue().startswith("* <2026-06-17 mer. 23:05> ")
     assert "\nRun UTC: " in out.getvalue()
     assert (
         "| 06-17 23:05 | 00:00:01 |     | 06-17 23:05 | 06-17 23:21 | "
@@ -1413,7 +1476,7 @@ def test_cli_output_prepends_report_without_erasing_existing_content(tmp_path: P
     assert out.getvalue() == ""
     assert err.getvalue() == ""
     text = output_path.read_text(encoding="utf-8")
-    assert text.startswith("* <2026-06-17 mer. 23:21> ")
+    assert text.startswith("* <2026-06-17 mer. 23:05> ")
     assert "\nRun UTC: " in text
     assert "\n** Strategy\n" in text
     assert f"Path: {strategy_path}\n" in text
