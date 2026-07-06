@@ -1,4 +1,5 @@
 # Org strategy table. File extension is kept for existing commands.
+# Optional rFunc column: append it to name a pure Python repeat adjustment from ignored orders/rfunc.py, or KOLABI_STRATEGY_RFUNC; leave blank for fixed repeats.
 | exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
 |---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
 |  |  | SLS0 | 0 5440 | 1 |  |  |  | sell | SL |  | A1.4e3 | S | D1e-7 | D-2e-6 -1e-6 |  | D1e-6 |  |  |  |

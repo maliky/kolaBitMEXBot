@@ -25,6 +25,8 @@ dbs/postgres/
 logs/*
 notes.org
 orders/*
+# Strategy-local repeat-adjustment functions may encode operator tactics.
+orders/rfunc.py
 run.sh
 secrets*
 strategies.org

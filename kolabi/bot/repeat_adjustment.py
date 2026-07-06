@@ -1,11 +1,21 @@
-"""Pure repeat-adjustment policies for successive pair attempts."""
+"""Registry and safety checks for repeat-adjustment policies.
+
+Strategy rows name policies through the optional ``rFunc`` column.  This module
+keeps the typed runtime boundary: it builds the repeat context, loads the
+operator-local strategy module when needed, and validates the returned
+``OrderPairSpec``.  Strategy-specific policy functions belong in the ignored
+``orders/rfunc.py`` file, or in the path named by ``KOLABI_STRATEGY_RFUNC``.
+"""
 
 from __future__ import annotations
 
+import importlib.util
+import os
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
+from pathlib import Path
 
 from kolabi.bot.domain import (
     EggMove,
@@ -23,6 +33,8 @@ class RepeatAdjustmentError(ValueError):
 
 
 class RepeatTermination(StrEnum):
+    """Policy-level terminal categories derived from event and pair state."""
+
     LATENT_TIMEOUT = "latent_timeout"
     UNFILLED_CANCEL = "unfilled_cancel"
     SUCCESSFUL_TAIL_CLOSE = "successful_tail_close"
@@ -32,6 +44,15 @@ class RepeatTermination(StrEnum):
 
 @dataclass(frozen=True)
 class RepeatAdjustmentContext:
+    """Evidence available to one repeat policy.
+
+    ``previous_state`` is the terminal state of the attempt that just finished.
+    ``terminal_event`` is the event that caused the repeat decision.
+    ``termination`` is a compact classification for simple policies, and ``roi``
+    is best effort because exact fee/fill evidence may not be available at this
+    pure Chronos boundary.
+    """
+
     previous_state: PairCycleState
     terminal_event: EggMove
     next_attempt: int
@@ -40,10 +61,15 @@ class RepeatAdjustmentContext:
 
 
 RepeatAdjustment = Callable[[OrderPairSpec, RepeatAdjustmentContext], OrderPairSpec]
+LOCAL_RFUNC_ENV = "KOLABI_STRATEGY_RFUNC"
+DEFAULT_STRATEGY_RFUNC = Path("orders/rfunc.py")
 _REPEAT_ADJUSTMENTS: dict[str, RepeatAdjustment] = {}
+_LOADED_STRATEGY_RFUNC_PATHS: set[Path] = set()
 
 
 def register_repeat_adjustment(name: str, func: RepeatAdjustment) -> RepeatAdjustment:
+    """Register one operator-facing ``rFunc`` name."""
+
     key = _normalise_name(name)
     _REPEAT_ADJUSTMENTS[key] = func
     return func
@@ -53,12 +79,17 @@ def resolve_repeat_adjustment(name: str | None) -> RepeatAdjustment | None:
     if name is None or not name.strip():
         return None
     key = _normalise_name(name)
-    try:
-        return _REPEAT_ADJUSTMENTS[key]
-    except KeyError as exc:
+    func = _REPEAT_ADJUSTMENTS.get(key)
+    if func is not None:
+        return func
+
+    _load_strategy_repeat_adjustments()
+    func = _REPEAT_ADJUSTMENTS.get(key)
+    if func is None:
         raise RepeatAdjustmentError(
             f"Unknown repeat adjustment function '{name}'."
-        ) from exc
+        )
+    return func
 
 
 def apply_repeat_adjustment(
@@ -67,6 +98,8 @@ def apply_repeat_adjustment(
     *,
     next_attempt: int,
 ) -> OrderPairSpec:
+    """Return the next pair spec, after applying the optional row policy."""
+
     pair = previous_state.pair
     func = resolve_repeat_adjustment(pair.repeat_adjustment)
     if func is None:
@@ -80,6 +113,7 @@ def apply_repeat_adjustment(
         roi=_best_effort_roi(previous_state, terminal_event),
     )
     adjusted = func(pair, context)
+    # Strategy modules are dynamic Python, so keep the runtime fail-closed guard.
     if not isinstance(adjusted, OrderPairSpec):
         raise RepeatAdjustmentError(
             f"Repeat adjustment '{pair.repeat_adjustment}' did not return an OrderPairSpec."
@@ -92,6 +126,7 @@ def classify_repeat_termination(
     previous_state: PairCycleState,
     terminal_event: EggMove,
 ) -> RepeatTermination:
+    """Condense terminal state/event evidence into simple policy categories."""
     if _is_latent_timeout(terminal_event):
         return RepeatTermination.LATENT_TIMEOUT
     if _is_successful_tail_close(previous_state, terminal_event):
@@ -103,30 +138,48 @@ def classify_repeat_termination(
     return RepeatTermination.GENERIC_TERMINAL
 
 
-def mm_scurve(pair: OrderPairSpec, context: RepeatAdjustmentContext) -> OrderPairSpec:
-    """Small built-in policy: failed/timeout entries move closer, wins further."""
-
-    if context.termination == RepeatTermination.SUCCESSFUL_TAIL_CLOSE:
-        factor = Decimal("1.10")
-        if context.roi is not None and context.roi < 0:
-            factor = Decimal("0.90")
-        return _scale_entry_distance(pair, factor)
-    if context.termination == RepeatTermination.LATENT_TIMEOUT:
-        adjusted = _scale_entry_distance(pair, Decimal("0.80"))
-        return replace(adjusted, timeout=_scale_timeout_minutes(pair.timeout, Decimal("0.90")))
-    if context.termination == RepeatTermination.FAILED_TAIL:
-        adjusted = _scale_entry_distance(pair, Decimal("0.90"))
-        return replace(adjusted, dr_pause=_scale_wait_minutes(pair.dr_pause, Decimal("1.20")))
-    if context.termination == RepeatTermination.UNFILLED_CANCEL:
-        return _scale_entry_distance(pair, Decimal("0.90"))
-    return pair
-
-
 def _normalise_name(name: str) -> str:
     key = name.strip()
     if not key:
         raise RepeatAdjustmentError("Repeat adjustment function name cannot be empty.")
     return key
+
+
+def _load_strategy_repeat_adjustments() -> None:
+    path = _strategy_rfunc_path()
+    if path is None:
+        return
+    if path in _LOADED_STRATEGY_RFUNC_PATHS:
+        return
+    if not path.is_file():
+        return
+
+    module_name = f"kolabi_strategy_rfunc_{len(_LOADED_STRATEGY_RFUNC_PATHS)}"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise RepeatAdjustmentError(f"Cannot load repeat adjustment file '{path}'.")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:  # pragma: no cover - exact exception belongs to local policy.
+        raise RepeatAdjustmentError(
+            f"Failed to load repeat adjustment file '{path}': {exc}"
+        ) from exc
+    _LOADED_STRATEGY_RFUNC_PATHS.add(path)
+
+
+def _strategy_rfunc_path() -> Path | None:
+    raw = os.environ.get(LOCAL_RFUNC_ENV)
+    if raw is not None and not raw.strip():
+        return None
+    return _normalise_path(Path(raw)) if raw else _normalise_path(DEFAULT_STRATEGY_RFUNC)
+
+
+def _normalise_path(path: Path) -> Path:
+    expanded = path.expanduser()
+    if not expanded.is_absolute():
+        expanded = Path.cwd() / expanded
+    return expanded.resolve(strict=False)
 
 
 def _is_latent_timeout(event: EggMove) -> bool:
@@ -206,57 +259,6 @@ def _decimal_or_none(value: object) -> Decimal | None:
         return None
 
 
-def _scale_entry_distance(pair: OrderPairSpec, factor: Decimal) -> OrderPairSpec:
-    head = pair.head
-    if _is_relative_type(head.delta_type) and head.delta is not None:
-        head = replace(head, delta=_scale_float(head.delta, factor))
-    return replace(
-        pair,
-        head=head,
-        head_price=(
-            _scale_float(pair.head_price[0], factor),
-            _scale_float(pair.head_price[1], factor),
-        )
-        if _is_relative_type(pair.head_price_type)
-        else pair.head_price,
-        head_order_price_spec=_scale_optional_float(
-            pair.head_order_price_spec,
-            pair.head_order_price_spec_type,
-            factor,
-        ),
-    )
-
-
-def _scale_optional_float(
-    value: float | None,
-    value_type: str,
-    factor: Decimal,
-) -> float | None:
-    if value is None or not _is_relative_type(value_type):
-        return value
-    return _scale_float(value, factor)
-
-
-def _scale_timeout_minutes(value: float | None, factor: Decimal) -> float | None:
-    if value is None:
-        return None
-    return max(0.5, _scale_float(value, factor))
-
-
-def _scale_wait_minutes(value: float | None, factor: Decimal) -> float | None:
-    if value is None:
-        return None
-    return max(0.0, _scale_float(value, factor))
-
-
-def _scale_float(value: float, factor: Decimal) -> float:
-    return float(Decimal(str(value)) * factor)
-
-
-def _is_relative_type(value_type: str) -> bool:
-    return value_type.endswith(("B", "D"))
-
-
 def _validate_adjusted_pair(
     original: OrderPairSpec,
     adjusted: OrderPairSpec,
@@ -300,6 +302,3 @@ def _validate_adjusted_pair(
             raise RepeatAdjustmentError(
                 f"Repeat adjustment '{name}' changed protected field {field}."
             )
-
-
-register_repeat_adjustment("mm_scurve", mm_scurve)

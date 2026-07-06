@@ -31,6 +31,7 @@ from kolabi.bot.domain import (
 from kolabi.bot.repeat_adjustment import (
     RepeatAdjustmentContext,
     RepeatAdjustmentError,
+    RepeatTermination,
     register_repeat_adjustment,
 )
 from kolabi.shared.core.runtime_types import (
@@ -81,6 +82,34 @@ def sample_state() -> StrategyState:
             "pair-b": submitted_b,
             "pair-c": PairCycleState(pair=sample_pair("pair-c")),
         },
+    )
+
+
+def register_test_scurve(name: str = "test_scurve") -> str:
+    def test_scurve(
+        pair: OrderPairSpec,
+        context: RepeatAdjustmentContext,
+    ) -> OrderPairSpec:
+        if context.termination == RepeatTermination.SUCCESSFUL_TAIL_CLOSE:
+            return _scale_test_head_price(pair, Decimal("1.10"))
+        if context.termination in {
+            RepeatTermination.LATENT_TIMEOUT,
+            RepeatTermination.UNFILLED_CANCEL,
+        }:
+            return _scale_test_head_price(pair, Decimal("0.80"))
+        return pair
+
+    register_repeat_adjustment(name, test_scurve)
+    return name
+
+
+def _scale_test_head_price(pair: OrderPairSpec, factor: Decimal) -> OrderPairSpec:
+    return replace(
+        pair,
+        head_price=(
+            float(Decimal(str(pair.head_price[0])) * factor),
+            float(Decimal(str(pair.head_price[1])) * factor),
+        ),
     )
 
 
@@ -625,13 +654,14 @@ def test_chronos_repeats_not_played_canceled_head_with_fresh_attempt_key() -> No
 
 
 def test_chronos_applies_repeat_adjustment_to_immediate_repeat() -> None:
+    adjustment_name = register_test_scurve("test_scurve_immediate")
     pair = replace(
         sample_pair("pair-r"),
         try_num=2,
         dr_pause=0.0,
         head_price=(10.0, 20.0),
         head_price_type="pD",
-        repeat_adjustment="mm_scurve",
+        repeat_adjustment=adjustment_name,
     )
     state = StrategyState(
         launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
@@ -664,17 +694,18 @@ def test_chronos_applies_repeat_adjustment_to_immediate_repeat() -> None:
     assert repeated.attempt_index == 2
     assert repeated.pair.head_price == (8.0, 16.0)
     assert repeated.pair.head_price_type == "pD"
-    assert repeated.pair.repeat_adjustment == "mm_scurve"
+    assert repeated.pair.repeat_adjustment == adjustment_name
 
 
 def test_chronos_applies_repeat_adjustment_to_delayed_repeat() -> None:
+    adjustment_name = register_test_scurve("test_scurve_delayed")
     pair = replace(
         sample_pair("pair-r"),
         try_num=2,
         dr_pause=1.0,
         head_price=(10.0, 20.0),
         head_price_type="pD",
-        repeat_adjustment="mm_scurve",
+        repeat_adjustment=adjustment_name,
     )
     occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
     state = StrategyState(
@@ -717,13 +748,14 @@ def test_chronos_applies_repeat_adjustment_to_delayed_repeat() -> None:
 
 
 def test_chronos_repeat_adjustment_moves_successful_tail_further() -> None:
+    adjustment_name = register_test_scurve("test_scurve_success")
     pair = replace(
         sample_pair("pair-r"),
         try_num=2,
         dr_pause=0.0,
         head_price=(10.0, 20.0),
         head_price_type="pD",
-        repeat_adjustment="mm_scurve",
+        repeat_adjustment=adjustment_name,
     )
     state = StrategyState(
         launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
@@ -762,7 +794,154 @@ def test_chronos_repeat_adjustment_moves_successful_tail_further() -> None:
     assert repeated.pair.head_price == (11.0, 22.0)
 
 
-def test_chronos_repeat_adjustment_unknown_name_fails_closed() -> None:
+def test_chronos_loads_strategy_rfunc_module_for_timeout(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rfunc_path = tmp_path / "rfunc.py"
+    rfunc_path.write_text(
+        "\n".join(
+            [
+                "from dataclasses import replace",
+                "from decimal import Decimal",
+                "from kolabi.bot.domain import OrderPairSpec",
+                "from kolabi.bot.repeat_adjustment import RepeatAdjustmentContext, RepeatTermination, register_repeat_adjustment",
+                "",
+                "def local_timeout_x1_1(pair: OrderPairSpec, context: RepeatAdjustmentContext) -> OrderPairSpec:",
+                "    if context.termination == RepeatTermination.LATENT_TIMEOUT:",
+                "        return pair",
+                "    if (context.previous_state.played_quantity or Decimal('0')) <= 0:",
+                "        return pair",
+                "    if pair.timeout is None:",
+                "        return pair",
+                "    return replace(pair, timeout=float(Decimal(str(pair.timeout)) * Decimal('1.10')))",
+                "",
+                "register_repeat_adjustment('local_timeout_x1_1', local_timeout_x1_1)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KOLABI_STRATEGY_RFUNC", str(rfunc_path))
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=0.0,
+        timeout=10.0,
+        repeat_adjustment="local_timeout_x1_1",
+    )
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc-timeout",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                tail_mode=TailMode.FLYING,
+                head_order_price=Decimal("100"),
+                played_quantity=Decimal("1"),
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            role=OrderRole.TAIL,
+            event_id="evt-timeout-rfunc",
+            reply={"price": "105", "cumQty": "1"},
+            is_private=True,
+        ),
+        now=occurred_at,
+    )
+
+    repeated = chronos.state.pairs["pair-r"]
+    assert repeated.attempt_index == 2
+    assert repeated.pair.timeout == 11.0
+
+
+def test_chronos_strategy_rfunc_can_reduce_quantity_by_percent(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rfunc_path = tmp_path / "rfunc.py"
+    rfunc_path.write_text(
+        "\n".join(
+            [
+                "from dataclasses import replace",
+                "from decimal import Decimal",
+                "from kolabi.bot.domain import OrderPairSpec",
+                "from kolabi.bot.repeat_adjustment import RepeatAdjustmentContext, RepeatTermination, register_repeat_adjustment",
+                "",
+                "def local_qty_x0_98(pair: OrderPairSpec, context: RepeatAdjustmentContext) -> OrderPairSpec:",
+                "    if context.termination == RepeatTermination.LATENT_TIMEOUT:",
+                "        return pair",
+                "    if (context.previous_state.played_quantity or Decimal('0')) <= 0:",
+                "        return pair",
+                "    if pair.head_quantity is None:",
+                "        return pair",
+                "    return replace(pair, head_quantity=Decimal(str(pair.head_quantity)) * Decimal('0.98'))",
+                "",
+                "register_repeat_adjustment('local_qty_x0_98', local_qty_x0_98)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KOLABI_STRATEGY_RFUNC", str(rfunc_path))
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=0.0,
+        head_quantity=Decimal("15"),
+        repeat_adjustment="local_qty_x0_98",
+    )
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc-qty-usd",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                tail_mode=TailMode.FLYING,
+                head_order_price=Decimal("100"),
+                played_quantity=Decimal("1"),
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            role=OrderRole.TAIL,
+            event_id="evt-qty-usd-rfunc",
+            reply={"price": "105", "cumQty": "1"},
+            is_private=True,
+        ),
+        now=occurred_at,
+    )
+
+    repeated = chronos.state.pairs["pair-r"]
+    assert repeated.attempt_index == 2
+    assert repeated.pair.head_quantity == Decimal("14.70")
+
+
+def test_chronos_repeat_adjustment_unknown_name_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KOLABI_STRATEGY_RFUNC", "")
     pair = replace(
         sample_pair("pair-r"),
         try_num=2,
