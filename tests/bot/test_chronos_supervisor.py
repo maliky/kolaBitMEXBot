@@ -32,6 +32,7 @@ from kolabi.bot.repeat_adjustment import (
     RepeatAdjustmentContext,
     RepeatAdjustmentError,
     RepeatTermination,
+    head_timed_out,
     parse_repeat_adjustment,
     register_repeat_adjustment,
 )
@@ -120,6 +121,38 @@ def test_repeat_adjustment_parser_accepts_colon_arguments() -> None:
     assert request is not None
     assert request.name == "head_offset_toggle"
     assert request.args == (Decimal("3"), Decimal("-8"))
+
+
+def test_head_timed_out_reads_runtime_reason_from_private_cancel() -> None:
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+    pair = sample_pair("pair-r")
+    previous = PairCycleState(
+        pair=pair,
+        head_state=HeadState.FAILED,
+        played_quantity=Decimal("0"),
+    )
+    event = EggMove(
+        kind=EggMoveKind.NOT_PLAYED_CANCELED,
+        occurred_at=occurred_at,
+        symbol="PI_XBTUSD",
+        pair_name="pair-r",
+        role=OrderRole.HEAD,
+        is_private=True,
+        reply={
+            "execType": "cancelled_by_user",
+            "runtime_reason": "head_timeout",
+            "attempt_index": 1,
+            "cumQty": 0.0,
+        },
+    )
+    context = RepeatAdjustmentContext(
+        previous_state=previous,
+        terminal_event=event,
+        next_attempt=2,
+        termination=RepeatTermination.UNFILLED_CANCEL,
+    )
+
+    assert head_timed_out(context)
 
 
 @pytest.mark.parametrize(

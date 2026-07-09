@@ -26,6 +26,11 @@ from kolabi.bot.domain import (
 from kolabi.bot.exchange_routes import ExchangeRoute
 from kolabi.bot.horus import plan_runtime_commands
 from kolabi.bot.pair_cycle import step_pair
+from kolabi.bot.repeat_adjustment import (
+    RepeatAdjustmentContext,
+    head_timed_out,
+    register_repeat_adjustment,
+)
 from kolabi.bot.strategy_runtime import (
     KrakenPrivateOrderPollingSource,
     KrakenPublicTriggerSource,
@@ -851,6 +856,58 @@ def test_head_timeout_private_db_cancel_terminates_unfilled_head(
     assert pair_state.head_state == HeadState.FAILED
     assert pair_state.tail_state == TailState.LATENT
     assert pair_state.played_quantity == Decimal("0.0")
+
+
+def test_head_timeout_private_db_cancel_drives_repeat_adjustment(
+    postgres_url_factory,
+) -> None:
+    adjustment_name = "test_live_head_timeout_tightens_repeat"
+
+    def tighten_after_head_timeout(
+        pair: OrderPairSpec,
+        context: RepeatAdjustmentContext,
+    ) -> OrderPairSpec:
+        if not head_timed_out(context):
+            return pair
+        return replace(pair, timeout=1.5, head_order_price_spec=45.0)
+
+    register_repeat_adjustment(adjustment_name, tighten_after_head_timeout)
+    db = _PrivateDbHarness(postgres_url_factory)
+    executor = _CancelAckLiveExecutor()
+    pair = replace(
+        sample_strategy()[0],
+        try_num=2,
+        dr_pause=0.0,
+        timeout=0.001,
+        head_order_price_spec=50.0,
+        head_order_price_spec_type="hB",
+        repeat_adjustment=adjustment_name,
+    )
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="head-timeout-repeat", pairs=(pair,)),
+        symbol="PI_XBTUSD",
+        executor=executor,
+        public_source=_HeadOpenThenCancelSource(db, executor),
+        private_source=KrakenPrivateOrderPollingSource(
+            db.reader,
+            poll_seconds=0.01,
+            head_fill_reference_grace_seconds=0.5,
+        ),
+        simulate=False,
+        tail_visibility_timeout_seconds=0.1,
+    )
+
+    result = asyncio.run(_run_runtime_for(runtime, seconds=0.45))
+
+    cancel_commands = [
+        command for command in result.commands if isinstance(command, CancelCommand)
+    ]
+    assert len(cancel_commands) == 1
+    pair_state = result.state.pairs["pair-a"]
+    assert pair_state.attempt_index == 2
+    assert pair_state.head_state == HeadState.LATENT
+    assert pair_state.pair.timeout == 1.5
+    assert pair_state.pair.head_order_price_spec == 45.0
 
 
 def test_unacked_head_visibility_timeout_warns_without_cancel(caplog) -> None:
