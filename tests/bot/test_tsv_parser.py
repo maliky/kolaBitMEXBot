@@ -141,12 +141,12 @@ def test_org_strategy_table_parses_and_ignores_surrounding_text(tmp_path: Path) 
 def test_org_strategy_parses_repeat_function_column(tmp_path: Path) -> None:
     path = _write_strategy(
         tmp_path / "rfunc.tsv",
-        [_base_row(name="RFUNC", rFunc="mm_scurve")],
+        [_base_row(name="RFUNC", rFunc="head_offset_toggle: 3,8")],
     )
 
     pair = read_strategy_file(path).pairs[0]
 
-    assert pair.repeat_adjustment == "mm_scurve"
+    assert pair.repeat_adjustment == "head_offset_toggle: 3,8"
 
 
 def test_org_strategy_table_accepts_usd_notional_quantity(tmp_path: Path) -> None:

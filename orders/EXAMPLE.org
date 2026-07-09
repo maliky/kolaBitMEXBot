@@ -12,7 +12,7 @@ This file shows the active strategy grammar used by =kolabi.bot=. Strategy files
 - =tDelta= starts with =D= when present.
 - =tUblk= starts with =D= or =B= when present.
 - =wUblk= is a plain number of minutes; blank defaults to 6.
-- Optional =rFunc= names a pure Python repeat adjustment registered by the ignored =orders/rfunc.py= strategy file, or by the file named in =KOLABI_STRATEGY_RFUNC=.
+- Optional =rFunc= names a pure Python repeat adjustment registered by the ignored =orders/rfunc.py= strategy file, or by the file named in =KOLABI_STRATEGY_RFUNC=. Use =name: x,y= to pass numeric arguments.
 
 Removed compatibility flags and old keyword spellings are intentionally absent: =--aType=, =-a=, =--quantity=, =-q=, =--tailPrice=, =-T=, =--pgate=, =--hprice=, =--tp=, and =--oDelta= are no longer accepted.
 

@@ -32,6 +32,7 @@ from kolabi.bot.repeat_adjustment import (
     RepeatAdjustmentContext,
     RepeatAdjustmentError,
     RepeatTermination,
+    parse_repeat_adjustment,
     register_repeat_adjustment,
 )
 from kolabi.shared.core.runtime_types import (
@@ -111,6 +112,27 @@ def _scale_test_head_price(pair: OrderPairSpec, factor: Decimal) -> OrderPairSpe
             float(Decimal(str(pair.head_price[1])) * factor),
         ),
     )
+
+
+def test_repeat_adjustment_parser_accepts_colon_arguments() -> None:
+    request = parse_repeat_adjustment("head_offset_toggle: 3, -8")
+
+    assert request is not None
+    assert request.name == "head_offset_toggle"
+    assert request.args == (Decimal("3"), Decimal("-8"))
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "head_offset_once:",
+        "head_offset_toggle: 1,,2",
+        "head_offset_toggle: nope",
+    ],
+)
+def test_repeat_adjustment_parser_rejects_bad_arguments(raw: str) -> None:
+    with pytest.raises(RepeatAdjustmentError):
+        parse_repeat_adjustment(raw)
 
 
 def test_chronos_dedupes_duplicate_event() -> None:
@@ -936,6 +958,183 @@ def test_chronos_strategy_rfunc_can_reduce_quantity_by_percent(
     repeated = chronos.state.pairs["pair-r"]
     assert repeated.attempt_index == 2
     assert repeated.pair.head_quantity == Decimal("14.70")
+
+
+def test_chronos_passes_rfunc_arguments_to_strategy_module(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rfunc_path = tmp_path / "rfunc.py"
+    rfunc_path.write_text(
+        "\n".join(
+            [
+                "from dataclasses import replace",
+                "from kolabi.bot.domain import OrderPairSpec",
+                "from kolabi.bot.repeat_adjustment import RepeatAdjustmentContext, RepeatTermination, register_repeat_adjustment",
+                "",
+                "def local_head_offset(pair: OrderPairSpec, context: RepeatAdjustmentContext) -> OrderPairSpec:",
+                "    if context.termination != RepeatTermination.SUCCESSFUL_TAIL_CLOSE:",
+                "        return pair",
+                "    return replace(pair, head_order_price_spec=float(abs(context.args[0])))",
+                "",
+                "register_repeat_adjustment('local_head_offset', local_head_offset)",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KOLABI_STRATEGY_RFUNC", str(rfunc_path))
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=0.0,
+        head_order_price_spec=1.0,
+        head_order_price_spec_type="hD",
+        repeat_adjustment="local_head_offset: -7",
+    )
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc-head-offset",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                tail_mode=TailMode.FLYING,
+                head_order_price=Decimal("100"),
+                played_quantity=Decimal("1"),
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            role=OrderRole.TAIL,
+            event_id="evt-head-offset-rfunc",
+            reply={"price": "105", "cumQty": "1"},
+            is_private=True,
+        ),
+        now=occurred_at,
+    )
+
+    repeated = chronos.state.pairs["pair-r"]
+    assert repeated.attempt_index == 2
+    assert repeated.pair.head_order_price_spec == 7.0
+    assert repeated.pair.head_order_price_spec_type == "hD"
+
+
+def test_chronos_rfunc_toggle_uses_attempt_index_parity() -> None:
+    def test_toggle(
+        pair: OrderPairSpec,
+        context: RepeatAdjustmentContext,
+    ) -> OrderPairSpec:
+        if context.termination != RepeatTermination.SUCCESSFUL_TAIL_CLOSE:
+            return pair
+        first, second = context.args
+        return replace(
+            pair,
+            head_order_price_spec=float(first if context.next_attempt % 2 == 0 else second),
+        )
+
+    register_repeat_adjustment("test_head_offset_toggle", test_toggle)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    def repeated_offset(attempt_index: int) -> float | None:
+        pair = replace(
+            sample_pair("pair-r"),
+            try_num=4,
+            dr_pause=0.0,
+            head_order_price_spec=1.0,
+            repeat_adjustment="test_head_offset_toggle: 3,8",
+        )
+        chronos = Chronos(
+            state=StrategyState(
+                launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+                strategy_id=f"strategy-rfunc-toggle-{attempt_index}",
+                pairs={
+                    "pair-r": PairCycleState(
+                        pair=pair,
+                        head_state=HeadState.CLOSED,
+                        tail_state=TailState.CLOSED,
+                        tail_mode=TailMode.FLYING,
+                        head_order_price=Decimal("100"),
+                        played_quantity=Decimal("1"),
+                        attempt_index=attempt_index,
+                    ),
+                },
+            )
+        )
+        chronos.process_event(
+            EggMove(
+                kind=EggMoveKind.PLAYED_AND_CANCELED,
+                occurred_at=occurred_at,
+                symbol="PI_XBTUSD",
+                pair_name="pair-r",
+                role=OrderRole.TAIL,
+                event_id=f"evt-toggle-rfunc-{attempt_index}",
+                reply={"price": "105", "cumQty": "1"},
+                is_private=True,
+            ),
+            now=occurred_at,
+        )
+        return chronos.state.pairs["pair-r"].pair.head_order_price_spec
+
+    assert repeated_offset(1) == 3.0
+    assert repeated_offset(2) == 8.0
+
+
+def test_chronos_rfunc_head_offset_ignores_latent_timeout() -> None:
+    def test_success_only(
+        pair: OrderPairSpec,
+        context: RepeatAdjustmentContext,
+    ) -> OrderPairSpec:
+        if context.termination != RepeatTermination.SUCCESSFUL_TAIL_CLOSE:
+            return pair
+        return replace(pair, head_order_price_spec=float(context.args[0]))
+
+    register_repeat_adjustment("test_head_offset_success_only", test_success_only)
+    pair = replace(
+        sample_pair("pair-r"),
+        try_num=2,
+        dr_pause=0.0,
+        head_order_price_spec=1.0,
+        repeat_adjustment="test_head_offset_success_only: 7",
+    )
+    state = StrategyState(
+        launched_at=datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc),
+        strategy_id="strategy-rfunc-latent",
+        pairs={
+            "pair-r": PairCycleState(
+                pair=pair,
+                head_state=HeadState.FAILED,
+                attempt_index=1,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    occurred_at = datetime(2026, 5, 21, 12, 1, tzinfo=timezone.utc)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.NOT_PLAYED_CANCELED,
+            occurred_at=occurred_at,
+            symbol="PI_XBTUSD",
+            pair_name="pair-r",
+            event_id="latent-timeout:pair-r:1",
+            reply={"execType": "latent_timeout"},
+        ),
+        now=occurred_at,
+    )
+
+    repeated = chronos.state.pairs["pair-r"]
+    assert repeated.attempt_index == 2
+    assert repeated.pair.head_order_price_spec == 1.0
 
 
 def test_chronos_repeat_adjustment_unknown_name_fails_closed(

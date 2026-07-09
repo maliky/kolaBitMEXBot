@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import importlib.util
 import os
-from collections.abc import Callable
-from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, replace
+from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
 
@@ -25,6 +25,7 @@ from kolabi.bot.domain import (
     PairCycleState,
     TailState,
 )
+from kolabi.bot.order_codes import parse_order_code
 from kolabi.shared.core.runtime_types import Side
 
 
@@ -57,39 +58,68 @@ class RepeatAdjustmentContext:
     terminal_event: EggMove
     next_attempt: int
     termination: RepeatTermination
+    args: tuple[Decimal, ...] = ()
     roi: Decimal | None = None
 
 
 RepeatAdjustment = Callable[[OrderPairSpec, RepeatAdjustmentContext], OrderPairSpec]
+RepeatAdjustmentValidator = Callable[
+    [OrderPairSpec, tuple[Decimal, ...], str],
+    None,
+]
 LOCAL_RFUNC_ENV = "KOLABI_STRATEGY_RFUNC"
 DEFAULT_STRATEGY_RFUNC = Path("orders/rfunc.py")
-_REPEAT_ADJUSTMENTS: dict[str, RepeatAdjustment] = {}
+HEAD_OFFSET_BASES = frozenset({"L", "S", "SL", "LT", "MT"})
+HEAD_OFFSET_FLOOR = Decimal("25")
 _LOADED_STRATEGY_RFUNC_PATHS: set[Path] = set()
 
 
-def register_repeat_adjustment(name: str, func: RepeatAdjustment) -> RepeatAdjustment:
+@dataclass(frozen=True)
+class RepeatAdjustmentRequest:
+    raw: str
+    name: str
+    args: tuple[Decimal, ...] = ()
+
+
+@dataclass(frozen=True)
+class _RepeatAdjustmentRegistration:
+    func: RepeatAdjustment
+    validator: RepeatAdjustmentValidator | None = None
+
+
+_REPEAT_ADJUSTMENTS: dict[str, _RepeatAdjustmentRegistration] = {}
+
+
+def register_repeat_adjustment(
+    name: str,
+    func: RepeatAdjustment,
+    *,
+    validator: RepeatAdjustmentValidator | None = None,
+) -> RepeatAdjustment:
     """Register one operator-facing ``rFunc`` name."""
 
     key = _normalise_name(name)
-    _REPEAT_ADJUSTMENTS[key] = func
+    _REPEAT_ADJUSTMENTS[key] = _RepeatAdjustmentRegistration(func, validator)
     return func
 
 
 def resolve_repeat_adjustment(name: str | None) -> RepeatAdjustment | None:
-    if name is None or not name.strip():
+    request = parse_repeat_adjustment(name)
+    if request is None:
         return None
-    key = _normalise_name(name)
-    func = _REPEAT_ADJUSTMENTS.get(key)
-    if func is not None:
-        return func
+    return _resolve_repeat_adjustment_registration(request).func
 
-    _load_strategy_repeat_adjustments()
-    func = _REPEAT_ADJUSTMENTS.get(key)
-    if func is None:
-        raise RepeatAdjustmentError(
-            f"Unknown repeat adjustment function '{name}'."
-        )
-    return func
+
+def validate_repeat_adjustments(pairs: Iterable[OrderPairSpec]) -> None:
+    """Fail strategy startup when an ``rFunc`` name or argument set is invalid."""
+
+    for pair in pairs:
+        request = parse_repeat_adjustment(pair.repeat_adjustment)
+        if request is None:
+            continue
+        registration = _resolve_repeat_adjustment_registration(request)
+        if registration.validator is not None:
+            registration.validator(pair, request.args, request.raw)
 
 
 def apply_repeat_adjustment(
@@ -101,24 +131,26 @@ def apply_repeat_adjustment(
     """Return the next pair spec, after applying the optional row policy."""
 
     pair = previous_state.pair
-    func = resolve_repeat_adjustment(pair.repeat_adjustment)
-    if func is None:
+    request = parse_repeat_adjustment(pair.repeat_adjustment)
+    if request is None:
         return pair
+    registration = _resolve_repeat_adjustment_registration(request)
 
     context = RepeatAdjustmentContext(
         previous_state=previous_state,
         terminal_event=terminal_event,
         next_attempt=next_attempt,
         termination=classify_repeat_termination(previous_state, terminal_event),
+        args=request.args,
         roi=_best_effort_roi(previous_state, terminal_event),
     )
-    adjusted = func(pair, context)
+    adjusted = registration.func(pair, context)
     # Strategy modules are dynamic Python, so keep the runtime fail-closed guard.
     if not isinstance(adjusted, OrderPairSpec):
         raise RepeatAdjustmentError(
-            f"Repeat adjustment '{pair.repeat_adjustment}' did not return an OrderPairSpec."
+            f"Repeat adjustment '{request.raw}' did not return an OrderPairSpec."
         )
-    _validate_adjusted_pair(pair, adjusted, name=str(pair.repeat_adjustment))
+    _validate_adjusted_pair(pair, adjusted, name=request.raw)
     return adjusted
 
 
@@ -138,11 +170,308 @@ def classify_repeat_termination(
     return RepeatTermination.GENERIC_TERMINAL
 
 
+def parse_repeat_adjustment(raw: str | None) -> RepeatAdjustmentRequest | None:
+    if raw is None or not raw.strip():
+        return None
+    expression = raw.strip()
+    name, separator, raw_args = expression.partition(":")
+    key = _normalise_name(name)
+    if not separator:
+        return RepeatAdjustmentRequest(raw=expression, name=key)
+    return RepeatAdjustmentRequest(
+        raw=expression,
+        name=key,
+        args=_parse_repeat_adjustment_args(raw_args, raw=expression),
+    )
+
+
+def require_arg_count(raw: str, args: tuple[Decimal, ...], expected: int) -> None:
+    if len(args) != expected:
+        raise RepeatAdjustmentError(
+            f"Repeat adjustment '{raw}' expects {expected} argument(s), got {len(args)}."
+        )
+
+
+def require_positive_arg(raw: str, value: Decimal, label: str) -> None:
+    if value <= 0:
+        raise RepeatAdjustmentError(
+            f"Repeat adjustment '{raw}' requires positive {label}."
+        )
+
+
+def single_arg(context: RepeatAdjustmentContext, name: str) -> Decimal:
+    require_arg_count(name, context.args, 1)
+    return context.args[0]
+
+
+def two_args(context: RepeatAdjustmentContext, name: str) -> tuple[Decimal, Decimal]:
+    require_arg_count(name, context.args, 2)
+    return context.args[0], context.args[1]
+
+
+def validate_head_offset_order_type(pair: OrderPairSpec, raw: str) -> None:
+    base = parse_order_code(pair.head.order_type).base_key
+    if base not in HEAD_OFFSET_BASES:
+        raise RepeatAdjustmentError(
+            f"Repeat adjustment '{raw}' requires L, S, SL, LT, or MT head order type; "
+            f"pair '{pair.name}' uses {base}."
+        )
+
+
+def head_filled_before_timeout(context: RepeatAdjustmentContext) -> bool:
+    if context.termination == RepeatTermination.LATENT_TIMEOUT:
+        return False
+    return (context.previous_state.played_quantity or Decimal("0")) > Decimal("0")
+
+
+def head_timed_out(context: RepeatAdjustmentContext) -> bool:
+    if context.termination == RepeatTermination.LATENT_TIMEOUT:
+        return True
+    event = context.terminal_event
+    if event.event_id and (
+        event.event_id.startswith("head-timeout-cancel:")
+        or event.event_id.startswith("latent-timeout:")
+    ):
+        return True
+    payload = event.reply or event.order or {}
+    tokens = {
+        str(payload.get("execType") or ""),
+        str(payload.get("reason") or ""),
+        str(payload.get("runtime_reason") or ""),
+        str(payload.get("text") or ""),
+    }
+    return bool(tokens & {"head_timeout", "head_unconfirmed_timeout", "latent_timeout"})
+
+
+def pair_has_negative_roi(context: RepeatAdjustmentContext) -> bool:
+    return (
+        context.termination
+        not in {
+            RepeatTermination.LATENT_TIMEOUT,
+            RepeatTermination.UNFILLED_CANCEL,
+        }
+        and context.roi is not None
+        and context.roi < Decimal("0")
+    )
+
+
+def pair_has_positive_roi(context: RepeatAdjustmentContext) -> bool:
+    return (
+        context.termination
+        not in {
+            RepeatTermination.LATENT_TIMEOUT,
+            RepeatTermination.UNFILLED_CANCEL,
+        }
+        and context.roi is not None
+        and context.roi > Decimal("0")
+    )
+
+
+def pair_has_positive_roi_after_tail_update(context: RepeatAdjustmentContext) -> bool:
+    return pair_has_positive_roi(context) and tail_was_updated(context)
+
+
+def tail_was_updated(context: RepeatAdjustmentContext) -> bool:
+    trail = context.previous_state.tail_trail
+    return trail is not None and (
+        trail.local_amend_count > 0
+        or trail.last_amended_at is not None
+        or trail.last_confirmed_at is not None
+    )
+
+
+def step_timeout(
+    value: float | None,
+    step: Decimal,
+    *,
+    floor: Decimal,
+    cap: Decimal,
+) -> float | None:
+    if value is None:
+        return None
+    adjusted = Decimal(str(value)) + step
+    adjusted = max(floor, min(cap, adjusted))
+    return float(round_down_to_step(adjusted, Decimal("0.1")))
+
+
+def adapt_timeout_by_timeout_or_negative_roi(
+    pair: OrderPairSpec,
+    context: RepeatAdjustmentContext,
+    *,
+    base_timeout: Decimal,
+    step: Decimal,
+) -> OrderPairSpec:
+    """Move tOut toward the objective that every emitted head gets filled."""
+
+    if head_timed_out(context):
+        return replace(
+            pair,
+            timeout=step_timeout(
+                pair.timeout,
+                step,
+                floor=Decimal("0.1"),
+                cap=base_timeout * Decimal("2"),
+            ),
+        )
+    if pair_has_negative_roi(context):
+        return replace(
+            pair,
+            timeout=step_timeout(
+                pair.timeout,
+                -step,
+                floor=Decimal("0.1"),
+                cap=base_timeout * Decimal("2"),
+            ),
+        )
+    return pair
+
+
+def adapt_head_offset_by_roi(
+    pair: OrderPairSpec,
+    context: RepeatAdjustmentContext,
+    *,
+    base_hprice: Decimal,
+    step: Decimal,
+) -> OrderPairSpec:
+    """Move hPrice from timeout/ROI evidence.
+
+    Timeout means the head was too far from the market, so reduce the offset
+    down to the S3/S4 floor.
+    Negative ROI means the pair was too close/aggressive, so increase it.
+    Positive ROI keeps the current offset.
+    """
+
+    hprice = decimal_or_none(pair.head_order_price_spec)
+    if hprice is None:
+        return pair
+    if head_timed_out(context):
+        return replace_head_offset(pair, max(HEAD_OFFSET_FLOOR, hprice - step))
+    if pair_has_negative_roi(context):
+        cap = round_down_to_step(base_hprice * Decimal("2"), step)
+        return replace_head_offset(pair, min(cap, hprice + step))
+    return pair
+
+
+def replace_head_offset(pair: OrderPairSpec, value: Decimal) -> OrderPairSpec:
+    return replace(pair, head_order_price_spec=float(abs(value)))
+
+
+def scale_entry_distance(pair: OrderPairSpec, factor: Decimal) -> OrderPairSpec:
+    head = pair.head
+    if is_relative_type(head.delta_type) and head.delta is not None:
+        head = replace(head, delta=scale_float(head.delta, factor))
+    return replace(
+        pair,
+        head=head,
+        head_price=(
+            scale_float(pair.head_price[0], factor),
+            scale_float(pair.head_price[1], factor),
+        )
+        if is_relative_type(pair.head_price_type)
+        else pair.head_price,
+        head_order_price_spec=scale_optional_float(
+            pair.head_order_price_spec,
+            pair.head_order_price_spec_type,
+            factor,
+        ),
+    )
+
+
+def scale_optional_float(
+    value: float | None,
+    value_type: str,
+    factor: Decimal,
+) -> float | None:
+    if value is None or not is_relative_type(value_type):
+        return value
+    return scale_float(value, factor)
+
+
+def scale_minutes(
+    value: float | None,
+    factor: Decimal,
+    *,
+    floor: Decimal,
+) -> float | None:
+    if value is None:
+        return None
+    return float(max(floor, Decimal(str(value)) * factor))
+
+
+def scale_float(value: float, factor: Decimal) -> float:
+    return float(Decimal(str(value)) * factor)
+
+
+def is_relative_type(value_type: str) -> bool:
+    return value_type.endswith(("B", "D"))
+
+
+def decimal_or_none(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def quantity_value_like(
+    original: object,
+    quantity: Decimal,
+) -> int | float | Decimal:
+    if isinstance(original, int) and quantity == quantity.to_integral_value():
+        return int(quantity)
+    if isinstance(original, float):
+        return float(quantity)
+    return quantity
+
+
+def round_down_to_step(value: Decimal, step: Decimal) -> Decimal:
+    return (value / step).to_integral_value(rounding=ROUND_FLOOR) * step
+
+
 def _normalise_name(name: str) -> str:
     key = name.strip()
     if not key:
         raise RepeatAdjustmentError("Repeat adjustment function name cannot be empty.")
     return key
+
+
+def _parse_repeat_adjustment_args(raw_args: str, *, raw: str) -> tuple[Decimal, ...]:
+    if not raw_args.strip():
+        raise RepeatAdjustmentError(
+            f"Repeat adjustment '{raw}' must provide arguments after ':'."
+        )
+    parsed: list[Decimal] = []
+    for item in raw_args.split(","):
+        candidate = item.strip()
+        if not candidate:
+            raise RepeatAdjustmentError(
+                f"Repeat adjustment '{raw}' has an empty argument."
+            )
+        try:
+            parsed.append(Decimal(candidate))
+        except (InvalidOperation, ValueError) as exc:
+            raise RepeatAdjustmentError(
+                f"Repeat adjustment '{raw}' has non-numeric argument '{candidate}'."
+            ) from exc
+    return tuple(parsed)
+
+
+def _resolve_repeat_adjustment_registration(
+    request: RepeatAdjustmentRequest,
+) -> _RepeatAdjustmentRegistration:
+    registration = _REPEAT_ADJUSTMENTS.get(request.name)
+    if registration is not None:
+        return registration
+
+    _load_strategy_repeat_adjustments()
+    registration = _REPEAT_ADJUSTMENTS.get(request.name)
+    if registration is None:
+        raise RepeatAdjustmentError(
+            f"Unknown repeat adjustment function '{request.name}' in rFunc '{request.raw}'."
+        )
+    return registration
 
 
 def _load_strategy_repeat_adjustments() -> None:
@@ -244,19 +573,10 @@ def _event_price(event: EggMove) -> Decimal | None:
             "stopPrice",
         ):
             value = payload.get(key)
-            parsed = _decimal_or_none(value)
+            parsed = decimal_or_none(value)
             if parsed is not None:
                 return parsed
     return None
-
-
-def _decimal_or_none(value: object) -> Decimal | None:
-    if value is None:
-        return None
-    try:
-        return Decimal(str(value))
-    except (InvalidOperation, ValueError):
-        return None
 
 
 def _validate_adjusted_pair(

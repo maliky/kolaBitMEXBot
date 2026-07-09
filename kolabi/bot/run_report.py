@@ -696,6 +696,12 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
         elif event.startswith("GATE_WAIT"):
             _parse_lifecycle_gate_wait(lifecycle, event, body)
             _parse_gate_wait(latent_attempts, key, event, body, log_time)
+            parsed_market = _parse_gate_market_snapshot(event, body, log_time)
+            if parsed_market is not None and (
+                market_snapshot is None
+                or parsed_market.recorded_at >= market_snapshot.recorded_at
+            ):
+                market_snapshot = parsed_market
         elif event in {
             "COMMAND_FAILED",
             "HEAD_CANCELLED",
@@ -2598,6 +2604,52 @@ def _parse_market_snapshot(
         last_price=_field_decimal(fields[12]),
         mark_price=_field_decimal(fields[13]),
         index_price=_field_decimal(fields[14]),
+    )
+
+
+def _parse_gate_market_snapshot(
+    event: str,
+    body: str,
+    log_time: datetime,
+) -> MarketSnapshot | None:
+    if event != "GATE_WAIT-2":
+        return None
+    fields = body.split()
+    if len(fields) < 3:
+        return None
+    source = fields[1].lower()
+    price = _optional_positive_decimal(fields[2])
+    if price is None:
+        return None
+    prices: dict[str, Decimal | None] = {
+        "bid_price": None,
+        "ask_price": None,
+        "mid_price": None,
+        "last_price": None,
+        "mark_price": None,
+        "index_price": None,
+    }
+    field_name = {
+        "bid": "bid_price",
+        "ask": "ask_price",
+        "mid": "mid_price",
+        "last": "last_price",
+        "mark": "mark_price",
+        "index": "index_price",
+    }.get(source)
+    if field_name is None:
+        return None
+    prices[field_name] = price
+    return MarketSnapshot(
+        recorded_at=log_time,
+        source=source,
+        spread_guard=None,
+        bid_price=prices["bid_price"],
+        ask_price=prices["ask_price"],
+        mid_price=prices["mid_price"],
+        last_price=prices["last_price"],
+        mark_price=prices["mark_price"],
+        index_price=prices["index_price"],
     )
 
 

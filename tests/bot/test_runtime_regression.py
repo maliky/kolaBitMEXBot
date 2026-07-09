@@ -22,6 +22,12 @@ from kolabi.bot.domain import (
 )
 from kolabi.bot.exchange_routes import ExchangeRoute
 from kolabi.bot.indicators import DummyIndicatorClient
+from kolabi.bot.order_codes import parse_order_code
+from kolabi.bot.repeat_adjustment import (
+    RepeatAdjustmentContext,
+    RepeatAdjustmentError,
+    register_repeat_adjustment,
+)
 from kolabi.bot.service import (
     AdapterExchangePort,
     BotConfig,
@@ -627,6 +633,63 @@ def test_preflight_reports_missing_strategy_route_credentials_without_adapter(
     assert route["credentials_present"] is False
     assert route["api_key_source"] is None
     assert route["api_secret_source"] is None
+
+
+def test_run_strategy_validates_repeat_adjustment_before_runtime() -> None:
+    def noop_adjustment(
+        pair: OrderPairSpec,
+        _context: RepeatAdjustmentContext,
+    ) -> OrderPairSpec:
+        return pair
+
+    def validate_limit_like_head(
+        pair: OrderPairSpec,
+        args: tuple[Decimal, ...],
+        raw: str,
+    ) -> None:
+        if len(args) != 1:
+            raise RepeatAdjustmentError(f"{raw} expects one argument")
+        if parse_order_code(pair.head.order_type).base_key == "M":
+            raise RepeatAdjustmentError(f"{raw} requires a priced head order")
+
+    register_repeat_adjustment(
+        "test_startup_head_offset",
+        noop_adjustment,
+        validator=validate_limit_like_head,
+    )
+    bad_pair = replace(
+        _xbt_sell_tail_pair(),
+        head=replace(_xbt_sell_tail_pair().head, order_type="M"),
+        repeat_adjustment="test_startup_head_offset: 3",
+    )
+    service = BotService(
+        BotConfig(symbol="PI_XBTUSD", exchange="kraken", require_ready=False),
+        indicators=DummyIndicatorClient({"ma": 42}),
+    )
+
+    with pytest.raises(ValueError, match="requires a priced head order"):
+        service.run_strategy(StrategySpec(name="bad-rfunc", pairs=(bad_pair,)), dry_run=True)
+
+
+def test_preflight_reports_repeat_adjustment_validation_without_runtime_state() -> None:
+    pair = replace(
+        _xbt_sell_tail_pair(),
+        repeat_adjustment="missing_preflight_rfunc: 1",
+    )
+    service = BotService(
+        BotConfig(symbol="PI_XBTUSD", exchange="kraken", require_ready=False),
+        indicators=DummyIndicatorClient({"ma": 42}),
+    )
+    service.runtime_state = None
+
+    payload = service.preflight(StrategySpec(name="bad-rfunc", pairs=(pair,)))
+
+    assert payload["ready"] is False
+    assert payload["strategy_validation_ready"] is False
+    assert any(
+        "Unknown repeat adjustment function 'missing_preflight_rfunc'" in reason
+        for reason in payload["reasons"]
+    )
 
 
 def test_preflight_marks_present_strategy_route_credentials_without_values(

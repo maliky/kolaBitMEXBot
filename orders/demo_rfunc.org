@@ -1,0 +1,13 @@
+# Org strategy table for rFunc argument examples.
+# The policy bodies live in ignored orders/rfunc.py, not in this tracked demo.
+# Syntax: rFunc may be just a name or name: x,y. Arguments are bare numbers in the current hPrice unit.
+# head_offset_once: x sets the next repeated head hPrice offset to abs(x) after a successful tail close.
+# head_offset_toggle: a,b alternates by next attempt number: attempt 2 uses a, attempt 3 uses b, attempt 4 uses a.
+# L, S, SL, LT, and MT heads are accepted. M heads fail startup validation. SL/LT keep hDelta as the trigger-to-limit offset.
+| exchg | symbol    | name         | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook | rFunc                   |
+|-------+-----------+--------------+---------+--------+------+-------+------+------+-------+--------+-----+-------+--------+-------+--------+--------+-------+-------+------+-------------------------|
+| KRKF  | PI_XBTUSD | RF_L_ONCE    | 0 60    |      3 |    4 |     1 |      | buy  | L     |        | A1  | S-    |        | D- +  | D2     | D5     |       |       |      | head_offset_once: 4     |
+| KRKF  | PI_XBTUSD | RF_S_TOGGLE  | 0 60    |      3 |    4 |     1 |      | sell | S     |        | A1  | S-    |        | D- +  | D2     | D5     |       |       |      | head_offset_toggle: 3,8 |
+| KRKF  | PI_XBTUSD | RF_SL_ONCE   | 0 60    |      3 |    4 |     1 |      | buy  | SL    | D0.5   | A1  | S-    |        | D- +  | D2     | D5     |       |       |      | head_offset_once: 4     |
+| KRKF  | PI_XBTUSD | RF_LT_TOGGLE | 0 60    |      3 |    4 |     1 |      | sell | LT    | D0.5   | A1  | S-    |        | D- +  | D2     | D5     |       |       |      | head_offset_toggle: 3,8 |
+| KRKF  | PI_XBTUSD | RF_MT_ONCE   | 0 60    |      3 |    4 |     1 |      | buy  | MT    |        | A1  | S-    |        | D- +  | D2     | D5     |       |       |      | head_offset_once: 4     |

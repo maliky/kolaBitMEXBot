@@ -27,6 +27,7 @@ notes.org
 orders/*
 # Strategy-local repeat-adjustment functions may encode operator tactics.
 orders/rfunc.py
+!orders/demo_rfunc.org
 run.sh
 secrets*
 strategies.org

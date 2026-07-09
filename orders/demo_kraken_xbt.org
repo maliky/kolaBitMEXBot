@@ -1,49 +1,40 @@
 # Org strategy table. File extension is kept for existing commands.
-# Optional rFunc column: append it to name a pure Python repeat adjustment from ignored orders/rfunc.py, or KOLABI_STRATEGY_RFUNC; leave blank for fixed repeats.
-| exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
-|---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
-|  |  | CORE_BUY_M | 0 60 | 1 | 4 |  |  | buy | M |  | A1 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | CORE_SELL_M | 0 60 | 1 | 4 |  |  | sell | M |  | A2 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | CORE_BUY_L_POST | 0 60 | 1 | 4 |  |  | buy | L! |  | A3 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | CORE_SELL_L_POST | 0 60 | 1 | 4 |  |  | sell | L! |  | A4 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | HEAD_L_LAST | 0 60 | 1 | 4 |  |  | buy | Ll |  | A5 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_L_MARK | 0 60 | 1 | 4 |  |  | buy | Lm |  | A7 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_L_INDEX | 0 60 | 1 | 4 |  |  | buy | Li |  | A11 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_S_LAST | 0 60 | 1 | 4 |  |  | sell | Sl |  | A6 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | HEAD_S_MARK | 0 60 | 1 | 4 |  |  | sell | Sm |  | A8 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | HEAD_S_INDEX | 0 60 | 1 | 4 |  |  | sell | Si |  | A12 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | HEAD_SL_LAST | 0 60 | 1 | 4 |  |  | sell | SLl | D0.5 | A14 | S- |  | D5 + | D0 | D8 |  |  |  |
-|  |  | HEAD_SL_MARK | 0 60 | 1 | 4 |  |  | sell | SLm | D0.5 | A16 | S- |  | D5 + | D0 | D8 |  |  |  |
-|  |  | HEAD_SL_INDEX | 0 60 | 1 | 4 |  |  | sell | SLi | D0.5 | A20 | S- |  | D5 + | D0 | D8 |  |  |  |
-|  |  | HEAD_MT_LAST | 0 60 | 1 | 4 |  |  | buy | MTl |  | A13 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_MT_MARK | 0 60 | 1 | 4 |  |  | buy | MTm |  | A15 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_MT_INDEX | 0 60 | 1 | 4 |  |  | buy | MTi |  | A19 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | HEAD_LT_LAST | 0 60 | 1 | 4 |  |  | buy | LTl | D0.5 | A21 | S- |  | D- -5 | D0 | D8 |  |  |  |
-|  |  | HEAD_LT_MARK | 0 60 | 1 | 4 |  |  | buy | LTm | D0.5 | A23 | S- |  | D- -5 | D0 | D8 |  |  |  |
-|  |  | HEAD_LT_INDEX | 0 60 | 1 | 4 |  |  | buy | LTi | D0.5 | A27 | S- |  | D- -5 | D0 | D8 |  |  |  |
-|  |  | TAIL_S_LAST | 0 60 | 1 | 4 |  |  | buy | L |  | A29 | Sl- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_S_MARK | 0 60 | 1 | 4 |  |  | buy | L |  | A31 | Sm- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_S_INDEX | 0 60 | 1 | 4 |  |  | buy | L |  | A35 | Si- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_SL_LAST | 0 60 | 1 | 4 |  |  | sell | L |  | A22 | SLl- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_SL_MARK | 0 60 | 1 | 4 |  |  | sell | L |  | A24 | SLm- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_SL_INDEX | 0 60 | 1 | 4 |  |  | sell | L |  | A28 | SLi- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_MT_LAST | 0 60 | 1 | 4 |  |  | buy | L |  | A37 | MTl- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_MT_MARK | 0 60 | 1 | 4 |  |  | buy | L |  | A39 | MTm- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_MT_INDEX | 0 60 | 1 | 4 |  |  | buy | L |  | A43 | MTi- |  | D- -5 |  | D8 |  |  |  |
-|  |  | TAIL_LT_LAST | 0 60 | 1 | 4 |  |  | sell | L |  | A30 | LTl- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_LT_MARK | 0 60 | 1 | 4 |  |  | sell | L |  | A32 | LTm- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | TAIL_LT_INDEX | 0 60 | 1 | 4 |  |  | sell | L |  | A36 | LTi- | D0.5 | D5 + |  | D8 |  |  |  |
-|  |  | AT_QA_TD_PCT | 0 60 | 1 | 4 |  |  | buy | L |  | A45 | S- |  | B- -5.00 |  | D8 |  |  |  |
-|  |  | AT_QA_TD_PA | 0 60 | 1 | 4 |  |  | buy | L |  | A47 | S- |  | A- + |  | D8 |  |  |  |
-|  |  | AT_QA_TP_PD | 0 60 | 1 | 4 |  |  | buy | L |  | A49 | S- |  | D- -5 |  | B2.00 |  |  |  |
-|  |  | AT_QA_TA_PD | 0 60 | 1 | 4 |  |  | buy | L |  | A51 | S- |  | D- -5 |  | A73855 |  |  |  |
-|  |  | AT_QP_TD_PD | 0 60 | 1 | 4 |  |  | sell | L |  | %38 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | NOW_MARKET | 0 60 | 1 | 4 |  |  | buy | M |  | A53 | S- |  | D- -2 |  | D6 |  |  |  |
-|  |  | DELAY_MARKET | 2 60 | 1 | 4 |  |  | buy | M |  | A55 | S- |  | D- -2 |  | D6 |  |  |  |
-|  |  | SHORT_WINDOW | 0 1 | 1 | 4 |  |  | sell | M |  | A40 | S- |  | D2 + |  | D6 |  |  |  |
-|  |  | REPEAT_FAST | 0 20 | 3 | 4 | 0.2 |  | buy | M |  | A57 | S- |  | D- -5 |  | D8 |  |  |  |
-|  |  | CHAIN_PARENT | 0 20 | 2 | 4 | 0.5 |  | sell | M |  | A42 | S- |  | D5 + |  | D8 |  |  |  |
-|  |  | CHAIN_CHILD | 0 20 | 2 | 4 | 0.5 |  | buy | M |  | A59 | S- |  | D- -4 |  | D8 |  |  | CHAIN_PARENT |
+# Optional rFunc column: name a pure Python repeat adjustment from ignored orders/rfunc.py, or KOLABI_STRATEGY_RFUNC; leave blank for fixed repeats.
+| exchg | symbol    | name             | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate    | hPrice | tPrice | tUblk | wUblk | hook         | rFunc |
+|-------+-----------+------------------+---------+--------+------+-------+------+------+-------+--------+-----+-------+--------+----------+--------+--------+-------+-------+--------------+-------|
+| KRKF  | PI_XBTUSD | CORE_BUY_M       | 0 60    |      1 |    4 |       |      | buy  | M     |        | A1  | S-    |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | CORE_SELL_M      | 0 60    |      1 |    4 |       |      | sell | M     |        | A2  | S-    |        | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | CORE_BUY_L_POST  | 0 60    |      1 |    4 |       |      | buy  | L!    |        | A3  | S-    |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | CORE_SELL_L_POST | 0 60    |      1 |    4 |       |      | sell | L!    |        | A4  | S-    |        | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_L_LAST      | 0 60    |      1 |    4 |       |      | buy  | Ll    |        | A5  | S-    |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_L_MARK      | 0 60    |      1 |    4 |       |      | buy  | Lm    |        | A7  | S-    |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_S_LAST      | 0 60    |      1 |    4 |       |      | sell | Sl    |        | A6  | S-    |        | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_S_MARK      | 0 60    |      1 |    4 |       |      | sell | Sm    |        | A8  | S-    |        | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_SL_LAST     | 0 60    |      1 |    4 |       |      | sell | SLl   | D0.5   | A14 | S-    |        | D5 +     | D0     | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_SL_MARK     | 0 60    |      1 |    4 |       |      | sell | SLm   | D0.5   | A16 | S-    |        | D5 +     | D0     | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_MT_LAST     | 0 60    |      1 |    4 |       |      | buy  | MTl   |        | A13 | S-    |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_MT_MARK     | 0 60    |      1 |    4 |       |      | buy  | MTm   |        | A15 | S-    |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_LT_LAST     | 0 60    |      1 |    4 |       |      | buy  | LTl   | D0.5   | A21 | S-    |        | D- -5    | D0     | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | HEAD_LT_MARK     | 0 60    |      1 |    4 |       |      | buy  | LTm   | D0.5   | A23 | S-    |        | D- -5    | D0     | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | TAIL_S_LAST      | 0 60    |      1 |    4 |       |      | buy  | L     |        | A29 | Sl-   |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | TAIL_S_MARK      | 0 60    |      1 |    4 |       |      | buy  | L     |        | A31 | Sm-   |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | TAIL_SL_LAST     | 0 60    |      1 |    4 |       |      | sell | L     |        | A22 | SLl-  | D0.5   | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | TAIL_SL_MARK     | 0 60    |      1 |    4 |       |      | sell | L     |        | A24 | SLm-  | D0.5   | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | TAIL_MT_LAST     | 0 60    |      1 |    4 |       |      | buy  | L     |        | A37 | MTl-  |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | TAIL_MT_MARK     | 0 60    |      1 |    4 |       |      | buy  | L     |        | A39 | MTm-  |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | TAIL_LT_LAST     | 0 60    |      1 |    4 |       |      | sell | L     |        | A30 | LTl-  | D0.5   | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | TAIL_LT_MARK     | 0 60    |      1 |    4 |       |      | sell | L     |        | A32 | LTm-  | D0.5   | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | AT_QA_TD_PCT     | 0 60    |      1 |    4 |       |      | buy  | L     |        | A45 | S-    |        | B- -5.00 |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | AT_QA_TD_PA      | 0 60    |      1 |    4 |       |      | buy  | L     |        | A47 | S-    |        | A- +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | AT_QA_TP_PD      | 0 60    |      1 |    4 |       |      | buy  | L     |        | A49 | S-    |        | D- -5    |        | B2.00  |       |       |              |       |
+| KRKF  | PI_XBTUSD | AT_QA_TA_PD      | 0 60    |      1 |    4 |       |      | buy  | L     |        | A51 | S-    |        | D- -5    |        | A73855 |       |       |              |       |
+| KRKF  | PI_XBTUSD | AT_QP_TD_PD      | 0 60    |      1 |    4 |       |      | sell | L     |        | %38 | S-    |        | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | NOW_MARKET       | 0 60    |      1 |    4 |       |      | buy  | M     |        | A53 | S-    |        | D- -2    |        | D6     |       |       |              |       |
+| KRKF  | PI_XBTUSD | DELAY_MARKET     | 2 60    |      1 |    4 |       |      | buy  | M     |        | A55 | S-    |        | D- -2    |        | D6     |       |       |              |       |
+| KRKF  | PI_XBTUSD | SHORT_WINDOW     | 0 1     |      1 |    4 |       |      | sell | M     |        | A40 | S-    |        | D2 +     |        | D6     |       |       |              |       |
+| KRKF  | PI_XBTUSD | REPEAT_FAST      | 0 20    |      3 |    4 |   0.2 |      | buy  | M     |        | A57 | S-    |        | D- -5    |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | CHAIN_PARENT     | 0 20    |      2 |    4 |   0.5 |      | sell | M     |        | A42 | S-    |        | D5 +     |        | D8     |       |       |              |       |
+| KRKF  | PI_XBTUSD | CHAIN_CHILD      | 0 20    |      2 |    4 |   0.5 |      | buy  | M     |        | A59 | S-    |        | D- -4    |        | D8     |       |       | CHAIN_PARENT |       |
 
 # Notes from the previous strategy fixture:
 # Kolabi XBT scenario grammar:
@@ -51,8 +42,8 @@
 # Price interval convention: use "- -5" for down by at least 5 USD, and "5 +" for up by at least 5 USD.
 # Quantity convention: buy-head rows use unique odd quantities; sell-head rows use unique even quantities.
 # Kraken boundary: head suffixes are stripped before REST placement. They only choose the local reference or trigger signal.
-# Unsupported: M with i/l/m, ! on M/S/MT, and i/l/m on plain tail M/L fail clearly because no trigger price exists.
-# Suffix map: l=last, m=mark, i=index. There is no f suffix because it is redundant with m on Kraken.
+# Unsupported: M with l/m, ! on M/S/MT, and l/m on plain tail M/L fail clearly because no trigger price exists.
+# Suffix map: l=last, m=mark. There is no f suffix because it is redundant with m on Kraken.
 # --- Core order types ---
 # Given price drops by at least 5 USD; When buy market head is allowed; Then place a last-price reduce-only sell stop tail.
 # Given price rises by at least 5 USD; When sell market head is allowed; Then place a last-price reduce-only buy stop tail.
@@ -60,33 +51,24 @@
 # Given price rises by at least 5 USD; When sell post-only limit head rests; Then protect with a reduce-only stop.
 # Given last price drops by at least 5 USD; When buy Ll head hooks; Then place a last-price reduce-only sell stop.
 # Given mark price drops by at least 5 USD; When buy Lm head hooks; Then place a last-price reduce-only sell stop.
-# Given index price drops by at least 5 USD; When buy Li head hooks; Then place a last-price reduce-only sell stop.
 # --- Head stop/touch trigger-source suffix matrix ---
 # Given last price rises by at least 5 USD; When sell Sl stop head triggers; Then protect with a buy stop.
 # Given mark price rises by at least 5 USD; When sell Sm stop head triggers; Then protect with a buy stop.
-# Given index price rises by at least 5 USD; When sell Si stop head triggers; Then protect with a buy stop.
 # Given last price rises by at least 5 USD; When sell SLl stop-limit head triggers with 0.5 USD offset; Then protect with a buy stop.
 # Given mark price rises by at least 5 USD; When sell SLm stop-limit head triggers with 0.5 USD offset; Then protect with a buy stop.
-# Given index price rises by at least 5 USD; When sell SLi stop-limit head triggers with 0.5 USD offset; Then protect with a buy stop.
 # Given last price drops by at least 5 USD; When buy MTl market-if-touched head triggers; Then protect with a sell stop.
 # Given mark price drops by at least 5 USD; When buy MTm market-if-touched head triggers; Then protect with a sell stop.
-# Given index price drops by at least 5 USD; When buy MTi market-if-touched head triggers; Then protect with a sell stop.
 # Given last price drops by at least 5 USD; When buy LTl limit-if-touched head triggers with 0.5 USD offset; Then protect with a sell stop.
 # Given mark price drops by at least 5 USD; When buy LTm limit-if-touched head triggers with 0.5 USD offset; Then protect with a sell stop.
-# Given index price drops by at least 5 USD; When buy LTi limit-if-touched head triggers with 0.5 USD offset; Then protect with a sell stop.
 # --- Tail trigger-source suffix matrix ---
 # Given buy limit head fills after a 5 USD drop; When tail Sl- is placed; Then sell stop uses last trigger and reduce-only.
 # Given buy limit head fills after a 5 USD drop; When tail Sm- is placed; Then sell stop uses mark trigger and reduce-only.
-# Given buy limit head fills after a 5 USD drop; When tail Si- is placed; Then sell stop uses index trigger and reduce-only.
 # Given sell limit head fills after a 5 USD rise; When tail SLl- is placed with 0.5 USD limit offset; Then buy stop-limit uses last trigger and reduce-only.
 # Given sell limit head fills after a 5 USD rise; When tail SLm- is placed with 0.5 USD limit offset; Then buy stop-limit uses mark trigger and reduce-only.
-# Given sell limit head fills after a 5 USD rise; When tail SLi- is placed with 0.5 USD limit offset; Then buy stop-limit uses index trigger and reduce-only.
 # Given buy limit head fills after a 5 USD drop; When tail MTl- is placed; Then sell market-if-touched uses last trigger and reduce-only.
 # Given buy limit head fills after a 5 USD drop; When tail MTm- is placed; Then sell market-if-touched uses mark trigger and reduce-only.
-# Given buy limit head fills after a 5 USD drop; When tail MTi- is placed; Then sell market-if-touched uses index trigger and reduce-only.
 # Given sell limit head fills after a 5 USD rise; When tail LTl- is placed with 0.5 USD limit offset; Then buy limit-if-touched uses last trigger and reduce-only.
 # Given sell limit head fills after a 5 USD rise; When tail LTm- is placed with 0.5 USD limit offset; Then buy limit-if-touched uses mark trigger and reduce-only.
-# Given sell limit head fills after a 5 USD rise; When tail LTi- is placed with 0.5 USD limit offset; Then buy limit-if-touched uses index trigger and reduce-only.
 # --- Amount and price interpretation coverage ---
 # Given price drops by at least 0.05 percent; When buy limit head fills; Then nominal reduce-only stop tail is placed.
 # Given absolute XBT price is above zero; When buy limit head fills; Then nominal reduce-only stop tail is placed.

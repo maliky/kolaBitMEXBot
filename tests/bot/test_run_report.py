@@ -1164,6 +1164,24 @@ def test_latest_latent_rows_exclude_failed_latest_attempts() -> None:
     assert "| 06-18 19:00 | RB_SEL #1 | chain_wait | chain_wait |" in table
 
 
+def test_gate_wait_price_populates_latest_price_snapshot() -> None:
+    log = "\n".join(
+        (
+            "2026-06-18 19:00:21,362 MainThread~20 /strategy_runtime.py@1@x/ "
+            "REPEAT_READY (UP_BUY2#213): waiting_for_price_gate 0.0..1440.0 -",
+            "2026-06-18 19:00:21,387 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (UP_BUY2#213): below last 0.1625 0.1627 "
+            "-12.30 100.00..100000.00 pB L! 0.0001 6.0",
+        )
+    )
+
+    snapshot = parse_run_log_text(log)
+    prices = render_market_snapshot_table(snapshot.market_snapshot)
+
+    assert "| 06-18 19:00   |    - | 0.16250 |" in prices
+    assert prices.rstrip().endswith("| last |")
+
+
 def test_latest_latent_rows_mark_missing_gate_wait_after_head_sent() -> None:
     log = "\n".join(
         (

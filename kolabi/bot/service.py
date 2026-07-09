@@ -45,6 +45,7 @@ from kolabi.bot.quantity import (
     resolve_pair_usd_quantity,
     validate_pair_absolute_quantity,
 )
+from kolabi.bot.repeat_adjustment import validate_repeat_adjustments
 from kolabi.bot.strategy_runtime import (
     KrakenPrivateOrderPollingSource,
     KrakenPublicTriggerSource,
@@ -685,7 +686,18 @@ class BotService:
         credential_reasons = _credential_reasons(credential_routes)
         strategy_validation_ready = True
         strategy_validation_reasons: tuple[str, ...] = ()
-        if strategy is not None and route_config_ready and self.runtime_state is not None:
+        if strategy is not None:
+            try:
+                validate_repeat_adjustments(strategy.pairs)
+            except ValueError as exc:
+                strategy_validation_ready = False
+                strategy_validation_reasons = (_compact_admin_error(exc),)
+        if (
+            strategy is not None
+            and strategy_validation_ready
+            and route_config_ready
+            and self.runtime_state is not None
+        ):
             try:
                 self._validate_pairs(strategy.pairs)
             except ValueError as exc:
@@ -1030,6 +1042,7 @@ class BotService:
         if not dry_run and not simulate:
             self._validate_multi_route_market_db(strategy)
         pair_list = list(strategy.pairs)
+        validate_repeat_adjustments(pair_list)
         defer_usd_validation = (
             not dry_run
             and not simulate

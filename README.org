@@ -62,12 +62,13 @@ The active Org table grammar is:
 
 The =exchg= and =symbol= columns are optional. When =exchg= is omitted, the CLI =--exchange= and =--market-type= are used. When =symbol= is omitted, the effective CLI symbol is used. If CLI =--symbol= is also omitted, the route default is selected: =PI_XBTUSD= for Kraken futures, =XBT/USD= for Kraken spot/margin, =BTCUSDT= for Binance futures/spot/margin/isolated margin, =XBTUSD= for BitMEX futures, and =XBT_USDT= for BitMEX spot. When present, rows use platform-specific symbols directly, for example =PI_XBTUSD=, =BTCUSDT=, or =XBTUSD=. Blank Org cells keep their typed defaults where a default exists. A multi-route strategy run requires one shared market DB URL and public/private feeders for every active exchange, market type, account scope, and symbol.
 
-The optional =rFunc= column names a repeat-adjustment function registered at runtime. Leave it blank for fixed repeats. Define operator-specific policies in =orders/rfunc.py=; that file is ignored by git because it may encode live strategy. The tracked =kolabi/bot/repeat_adjustment.py= module owns only the registry, loader, context, and safety validation. A local rFunc file should import =register_repeat_adjustment=, define pure Python functions with the signature =(OrderPairSpec, RepeatAdjustmentContext) -> OrderPairSpec=, and register each operator-facing name. Set =KOLABI_STRATEGY_RFUNC=/path/to/rfunc.py= to load a different local file.
+The optional =rFunc= column names a repeat-adjustment function registered at runtime. Leave it blank for fixed repeats. Use =name: x,y= to pass numeric arguments, for example =head_offset_toggle: 3,8=. Define operator-specific policies in =orders/rfunc.py=; that file is ignored by git because it may encode live strategy. The tracked =kolabi/bot/repeat_adjustment.py= module owns only the registry, loader, context, argument parsing, and safety validation. A local rFunc file should import =register_repeat_adjustment=, define pure Python functions with the signature =(OrderPairSpec, RepeatAdjustmentContext) -> OrderPairSpec=, and register each operator-facing name. Startup/preflight validates the rFunc name, arguments, and any registered policy-specific constraints before the bot loop starts. Set =KOLABI_STRATEGY_RFUNC=/path/to/rfunc.py= to load a different local file. The local head-offset examples include =head_offset_once: x= and =head_offset_toggle: a,b= for =L=, =S=, =SL=, =LT=, and =MT= heads; they change the next =hPrice= offset and preserve any =hDelta= trigger-to-limit offset.
 
 Useful examples:
 - =orders/demo_ada.org= documents order-type examples in the Org table grammar.
 - =orders/demo_cross_exchange_chain.org= demonstrates the typed multi-exchange Org table grammar.
 - =orders/demo_kraken_xbt.org= covers Kraken XBT combinations.
+- =orders/demo_rfunc.org= documents rFunc argument syntax for head price offset policies.
 
 * DB And Feed Services
 
