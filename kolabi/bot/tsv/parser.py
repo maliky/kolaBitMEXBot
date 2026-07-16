@@ -52,6 +52,7 @@ class _TypedStrategyRow(TypedDict):
     hook: str
     symbol: str | None
     exchange: str | None
+    repeat_adjustment: str | None
 
 
 def read_strategy_file(path: str | Path) -> StrategySpec:
@@ -98,6 +99,7 @@ def order_pair_from_typed_values(
     tUblk_type: str = "uD",
     wUblk: float = 6.0,
     cooldown_minutes: float = 0.0,
+    repeat_adjustment: str | None = None,
 ) -> OrderPairSpec:
     """Normalise des valeurs typees vers une paire canonique."""
     normalized_side = normalize_side(side)
@@ -161,6 +163,7 @@ def order_pair_from_typed_values(
         head_order_price_spec=hPrice,
         head_order_price_spec_type=head_order_price_type,
         cooldown_minutes=cooldown,
+        repeat_adjustment=repeat_adjustment,
     )
 
 
@@ -191,6 +194,7 @@ def strategy_from_run_once_args(args: object) -> StrategySpec:
         "hook": getattr(args, "hook", ""),
         "symbol": None,
         "exchg": None,
+        "rFunc": None,
     }
     typed_row = normalize_typed_strategy_row(row)
     pair = order_pair_from_typed_values(name=str(getattr(args, "name")), **typed_row)
@@ -295,6 +299,7 @@ def normalize_typed_strategy_row(row: Mapping[str, object]) -> _TypedStrategyRow
         "hook": _optional_text(_row_value(row, "hook")) or "",
         "symbol": _optional_text(_row_value(row, "symbol")),
         "exchange": _optional_text(_row_value(row, "exchg")),
+        "repeat_adjustment": _optional_text(_row_value(row, "rFunc")),
     }
 
 

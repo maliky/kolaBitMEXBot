@@ -27,6 +27,7 @@ DEFAULT_COLUMNS = (
     "tUblk",
     "wUblk",
     "hook",
+    "rFunc",
 )
 
 
@@ -137,6 +138,17 @@ def test_org_strategy_table_parses_and_ignores_surrounding_text(tmp_path: Path) 
     assert strategy.pairs[1].tail_price_spec_type == "tB"
 
 
+def test_org_strategy_parses_repeat_function_column(tmp_path: Path) -> None:
+    path = _write_strategy(
+        tmp_path / "rfunc.tsv",
+        [_base_row(name="RFUNC", rFunc="head_offset_toggle: 3,8")],
+    )
+
+    pair = read_strategy_file(path).pairs[0]
+
+    assert pair.repeat_adjustment == "head_offset_toggle: 3,8"
+
+
 def test_org_strategy_table_accepts_usd_notional_quantity(tmp_path: Path) -> None:
     path = tmp_path / "usd.org"
     _write_strategy(path, [_base_row(qty="U15.5")])
@@ -231,7 +243,7 @@ def test_org_row_with_shifted_cell_count_fails(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="expected 20 cells, saw 3"):
+    with pytest.raises(ValueError, match="expected 21 cells, saw 3"):
         read_strategy_file(path)
 
 

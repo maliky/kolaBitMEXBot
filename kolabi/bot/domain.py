@@ -198,6 +198,7 @@ class OrderPairSpec:
     head_order_price_spec: float | None = None
     head_order_price_spec_type: str = "hD"
     cooldown_minutes: float | None = None
+    repeat_adjustment: str | None = None
 
     @property
     def attempts(self) -> int | None:

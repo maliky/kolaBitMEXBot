@@ -319,6 +319,7 @@ class _OrderLease:
     created_at: datetime
     last_seen_at: datetime | None = None
     cancel_sent_at: datetime | None = None
+    cancel_reason: str | None = None
     cancel_retry_count: int = 0
     visibility_warned_at: datetime | None = None
     exchange: str | None = None
@@ -553,6 +554,12 @@ class KrakenPrivateOrderPollingSource:
                         record,
                         is_fill=pending_record.is_fill,
                     )
+                )
+                move = _with_private_cancel_runtime_reason(
+                    runtime,
+                    pair_state,
+                    role,
+                    move,
                 )
                 if _is_mechanical_tail_amend_cancel(runtime, pair_state, role, move):
                     if event_id is not None and event_id in self._suppressed_event_id_set:
@@ -2046,6 +2053,7 @@ class StrategyRuntime:
                 lease,
                 status=_LEASE_CANCEL_REQUESTED,
                 cancel_sent_at=now,
+                cancel_reason=command.reason,
                 cancel_retry_count=lease.cancel_retry_count + 1,
             )
             _LOGGER.info(
@@ -2294,6 +2302,7 @@ class StrategyRuntime:
             current,
             status=_LEASE_CANCEL_REQUESTED,
             cancel_sent_at=now,
+            cancel_reason=reason,
             cancel_retry_count=current.cancel_retry_count + 1,
         )
 
@@ -3931,6 +3940,37 @@ def _lease_matches_identity(
     if exchange_order_id and lease.exchange_order_id == exchange_order_id:
         return True
     return False
+
+
+def _with_private_cancel_runtime_reason(
+    runtime: RuntimeQueueLike,
+    pair_state: PairCycleState,
+    role: OrderRole,
+    move: EggMove,
+) -> EggMove:
+    if role != OrderRole.HEAD or move.kind != EggMoveKind.NOT_PLAYED_CANCELED:
+        return move
+    slot = _CommandSlot(pair_state.pair.name, pair_state.attempt_index, "head")
+    leases = getattr(runtime, "_order_leases", None)
+    if not isinstance(leases, dict):
+        return move
+    lease = leases.get(slot)
+    if not isinstance(lease, _OrderLease):
+        return move
+    if lease.status != _LEASE_CANCEL_REQUESTED:
+        return move
+    if lease.cancel_reason not in {"head_timeout", "head_unconfirmed_timeout"}:
+        return move
+    reply = dict(move.reply or {})
+    if not _lease_matches_identity(
+        lease,
+        client_order_id=_string_payload(reply.get("clOrdID")),
+        exchange_order_id=_string_payload(reply.get("orderID")),
+    ):
+        return move
+    reply.setdefault("runtime_reason", lease.cancel_reason)
+    reply.setdefault("attempt_index", pair_state.attempt_index)
+    return replace(move, reply=reply)
 
 
 def _is_mechanical_tail_amend_cancel(
