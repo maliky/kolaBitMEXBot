@@ -700,13 +700,19 @@ python -m kolabi.bot run --strategy orders/stra.tsv --exchange kraken --symbol P
 #+begin_src bash
 scripts/kolabi-run-report logs/krf_ada.log
 scripts/kolabi-run-report logs/krf_ada.log -o JOURNAL.org
+scripts/kolabi-run-report logs/krf_ada.log --html-output /tmp/krf_ada.html
+scripts/kolabi-run-report logs/krf_ada.log --pair-regimes
 #+end_src
 
 By default the command resolves =KOLABI_ACCOUNT_DB_URL= and =KOLABI_MARKET_DB_URL= from the environment or from =.env.postgres=. Pass =--account-db-url= or =--market-db-url= to use another local DB. Use =--log-only= only when DB rows are unavailable; in that mode fill prices are the rounded values seen in runtime logs and DB-only columns such as maker/taker, net, cumulative net, tail DB status, and volume attribution can be blank. When =--output= is used, the new timestamped report is prepended to the file so older journal content remains below it.
 
 The report starts with an Org timestamp heading such as =* <2026-06-19 ven. 06:15> avocado-krf-ada=. The name is generated from the runtime preflight/ready route set and run-start timestamp, so reporting the same runtime later gives the same name. It includes compact platform/instrument tokens such as =krf-ada= or =krf-ada-xbt-binf-xbt-sol=. If the log has no runtime route line, the command falls back to the log filename stem.
 
-The second line records run provenance, for example =Run UTC: 2026-06-20 07:45:38 | Command: scripts/kolabi-run-report logs/krf_ada.log=. =Run UTC= comes from the runtime preflight/ready timestamp when present, then the first parseable runtime log timestamp, then the log file mtime as a final fallback. Secret-bearing command arguments such as =--account-db-url= and =--market-db-url= are redacted before printing. The provenance line is followed by a one-row =Latest prices= table and second-level sections for =Terminated pairs=, =Living tail-flying pairs=, =Latest latent pairs=, =Sizing diagnostics=, and =Volume by pair/market=.
+The second line records run provenance, for example =Run UTC: 2026-06-20 07:45:38 | Command: scripts/kolabi-run-report logs/krf_ada.log=. =Run UTC= comes from the runtime preflight/ready timestamp when present, then the first parseable runtime log timestamp, then the log file mtime as a final fallback. Secret-bearing command arguments such as =--account-db-url= and =--market-db-url= are redacted before printing. The provenance line is followed by a one-row =Latest prices= table, volume and sizing diagnostics, terminated pairs sorted by head-fill time, living tails, and latest latent pairs. Pair parameter regimes and attempt details are included after terminated pairs only when =--pair-regimes= is passed.
+
+With =--pair-regimes=, the =Pair parameter regimes= table groups contiguous attempts that used the same =tOut= and =hPrice=. It reports the attempt range, number of attempts and timeouts, completed cycles, wins/losses, total net, average ROI, and final state. Foldable per-pair details retain every financially material attempt, including fills that occurred after unchanged repeats. Historical =GATE_WAIT= logs preserve the numeric =hPrice= value but not its =B=, =D=, or =A= type prefix, so the report does not infer a prefix from a strategy file that may have changed since the run.
+
+The financial overview distinguishes exact, estimated/assumed, and unavailable rows. Linear P&L uses the instrument contract multiplier. Inverse P&L uses reciprocal entry/exit prices, preserves native base-currency P&L, and converts the result and base-currency fees to a USD equivalent at fill prices. Unknown instrument models render finance as unavailable instead of applying a linear formula. ROI remains return on entry notional, not return on margin or leveraged capital. Funding, financing, and unrelated account-ledger adjustments are excluded.
 
 The terminated-pair columns are:
 
@@ -720,13 +726,15 @@ The terminated-pair columns are:
 - =A#=, =Tamend1 UTC=, =Tamend2 UTC=, and =Amd logbps=: tail amendment count, first two amend times, and signed log basis point move from initial tail stop to latest amended tail stop, computed as =ln(latest_stop / initial_stop) * 10000= and rendered to the nearest whole logbps. Terminal =0.0000= stop placeholders in close updates are ignored so they do not erase the last real amend price.
 - =Gross USD=, =Net USD=, =ROI %=, and =Cum net=: gross before fees, net after DB fees when fee rows are in USD-like currency, return on notional, and running cumulative net. ROI uses =Net USD / (Hfill * Qty) * 100= when DB fees are available, otherwise =Gross USD / (Hfill * Qty) * 100= in =--log-only= mode.
 
-The living tail-flying section shows head-filled pairs whose tail has not filled. =Age= is measured from head fill to the latest parsed log timestamp. =Tstop= comes from latest tail lifecycle/telemetry, and =Dist logbps= is the signed log basis point move from current reference price to tail stop, rendered to the nearest whole logbps. =T status= and =T filled= come from the local account DB when available.
+The living tail-flying section shows head-filled pairs whose tail has not filled. =Age= is measured from head fill to the latest parsed log timestamp. =Tstop= comes from latest tail lifecycle/telemetry, and =Dist uBlk= is the signed log basis point move from current reference price to tail stop, rendered to the nearest whole logbps; this is the live distance used against the tail unblock requirement, not the configured =tUblk= value itself. =T status= and =T filled= come from the local account DB when available.
 
 The latest latent section shows one latest active not-yet-filled attempt per pair name. Attempts already ended by =HEAD_CANCELLED=, =COMMAND_FAILED=, =HEAD_TIMEOUT=, or a filled head are excluded. The section is meant to surface current pending gate/head state, not the full history of failed repeats. A compact =Latest prices= table at the start of the report prints the latest parsed mark, last, current spread, max observed spread guard used for tail placement, and market prices from runtime telemetry.
 
 The sizing diagnostics section shows the minimum information needed to choose =U= nominal quantities even when the strategy fails before any order is placed. Runtime rows come from =QTY_USD_READY=, =QTY_USD_RESOLVED=, or =QTY_USD_TOO_SMALL= log evidence and therefore show the values that actually accepted or rejected the strategy. Market DB rows come from cached instrument rules and are shown for comparison when available. =Step USD= is approximately =Step Qty * Mark * Contract=, so it is the smallest nominal =U= amount that can survive quantity-step flooring at that mark.
 
-The volume by pair/market section attributes DB-backed bot fill quantity and approximate USD bot volume to each pair name and market route. When local raw public trade events exist inside the run window, =Market USD Vol= shows the approximate total market traded volume for that market over the same interval; =n/a= means no local public trade witness was found on disk. =Min Qty Base= and =Min Qty USD= come from cached instrument minimum quantity and the row's weighted bot fill price. =Tick Base= and =Tick USD= use the cached quantity step when present, falling back to minimum quantity, and convert it approximately with the same weighted bot fill price.
+The volume by pair/market section separates closed cycles from execution fills and labels the two-leg quantity and notional as =Executed Qty= and =USD Turnover=. =Avg ROI/h %= is computed as =Avg ROI % * 3600 / Avg Life seconds=; it is not the average of the individually annualised pair returns, which would over-weight very short-lived pairs. When local raw public trade events exist inside the run window, =Market USD Vol= shows the approximate total market traded volume for that market over the same interval; =n/a= means no local public trade witness was found on disk.
+
+=--html-output PATH= writes a self-contained interactive HTML report while preserving the normal Org stdout or =--output= flow. The HTML file embeds no remote assets. It always provides cumulative net and finance tables; =--pair-regimes= additionally displays pair/state filters, parameter-regime and attempt tables, and selected-pair =tOut=/=hPrice= history.
 
 Useful options:
 
@@ -736,6 +744,8 @@ Useful options:
 --env-file PATH      Read KOLABI_ACCOUNT_DB_URL and KOLABI_MARKET_DB_URL from another env file.
 --log-only           Build a best-effort table from logs only.
 --output, -o PATH    Write the Org table to a file.
+--html-output PATH   Write a standalone interactive HTML report.
+--pair-regimes       Show pair parameter regimes and per-attempt details.
 --price-dp N         Decimal places for Hfill and Tfill.
 #+end_example
 

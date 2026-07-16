@@ -26,6 +26,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from kolabi.bot.price_units import signed_logbps_move
+from kolabi.bot.run_report_finance import (
+    EvidenceQuality,
+    PnlKind,
+    calculate_finance,
+    entry_notional_usd,
+    pnl_kind,
+)
 from kolabi.shared.persistence import (
     AccountBalance,
     ExchangeFill,
@@ -128,11 +135,16 @@ class LatentAttempt:
     gate: str = ""
     reference_price: Decimal | None = None
     head_price: Decimal | None = None
+    head_price_spec: Decimal | None = None
+    timeout_minutes: Decimal | None = None
+    parameters_observed: bool = False
     quantity: Decimal | None = None
     order_type: str = ""
     deadline_at: datetime | None = None
     head_client_id: str | None = None
     ended: bool = False
+    timed_out: bool = False
+    terminal_event: str | None = None
 
 
 @dataclass(frozen=True, order=True)
@@ -268,6 +280,8 @@ class VolumeRow:
     min_qty_usd: Decimal | None
     tick_base: Decimal | None
     tick_usd: Decimal | None
+    closed: int = 0
+    net_usd: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -345,6 +359,14 @@ class ReportRow:
     roi_percent: Decimal | None
     roi_per_hour_percent: Decimal | None
     cumulative_net: Decimal | None
+    route: RuntimeRoute | None = None
+    pnl_kind: PnlKind = PnlKind.UNKNOWN
+    pnl_currency: str = "USD"
+    gross_native: Decimal | None = None
+    net_native: Decimal | None = None
+    fees_usd: Decimal | None = None
+    entry_notional_usd: Decimal | None = None
+    finance_quality: EvidenceQuality = EvidenceQuality.UNAVAILABLE
 
 
 @dataclass(frozen=True)
@@ -363,6 +385,8 @@ class LivingTailRow:
     current_distance_logbps: Decimal | None
     tail_status: str
     tail_filled_quantity: Decimal | None
+    route: RuntimeRoute | None = None
+    entry_notional_usd: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -382,6 +406,81 @@ class LatentRow:
 
 
 @dataclass(frozen=True)
+class PairEvolutionRow:
+    """One initial or changed tOut/hPrice state and its attempt outcome."""
+
+    key: PairKey
+    change: str
+    timeout_minutes: Decimal | None
+    head_price_spec: Decimal | None
+    terminal: str
+    head_fill_at: datetime | None
+    tail_fill_at: datetime | None
+    net_usd: Decimal | None
+    roi_percent: Decimal | None
+
+
+@dataclass(frozen=True)
+class ParameterRegime:
+    """Contiguous attempts sharing one tOut and hPrice parameter state."""
+
+    pair_name: str
+    first_attempt: int
+    last_attempt: int
+    timeout_minutes: Decimal | None
+    head_price_spec: Decimal | None
+    attempts: int
+    timeouts: int
+    closed: int
+    wins: int
+    losses: int
+    total_net_usd: Decimal | None
+    average_roi_percent: Decimal | None
+    final_state: str
+    outcomes: tuple[PairEvolutionRow, ...]
+
+
+@dataclass(frozen=True)
+class FinancialOverview:
+    """Run-level finance and evidence coverage for the overview."""
+
+    closed: int
+    wins: int
+    losses: int
+    gross_usd: Decimal | None
+    fees_usd: Decimal | None
+    net_usd: Decimal | None
+    win_rate_percent: Decimal | None
+    profit_factor: Decimal | None
+    average_roi_percent: Decimal | None
+    aggregate_roi_percent: Decimal | None
+    roi_per_hour_percent: Decimal | None
+    max_drawdown_usd: Decimal | None
+    open_notional_usd: Decimal | None
+    exact_rows: int
+    estimated_rows: int
+    unavailable_rows: int
+
+
+@dataclass(frozen=True)
+class RunReport:
+    """Renderer-independent operator report model."""
+
+    identity: ReportIdentity
+    report_at: datetime
+    market_snapshot: MarketSnapshot | None
+    financial_overview: FinancialOverview
+    regimes: tuple[ParameterRegime, ...]
+    terminated_rows: tuple[ReportRow, ...]
+    living_rows: tuple[LivingTailRow, ...]
+    latent_rows: tuple[LatentRow, ...]
+    volume_rows: tuple[VolumeRow, ...]
+    sizing_rows: tuple[SizingRow, ...]
+    sizing_notes: tuple[str, ...]
+    report_notes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ReportOptions:
     """Presentation options for the Org report table."""
 
@@ -390,6 +489,7 @@ class ReportOptions:
     money_places: int = 6
     pct_places: int = 4
     estimate_fees: bool = True
+    show_pair_regimes: bool = False
     maker_fee_rate: Decimal = DEFAULT_MAKER_FEE_RATE
     taker_fee_rate: Decimal = DEFAULT_TAKER_FEE_RATE
 
@@ -472,7 +572,7 @@ class _VolumeAccumulator:
     bot_usd_volume: Decimal = Decimal("0")
     life_seconds: list[Decimal] = field(default_factory=list)
     roi_percentages: list[Decimal] = field(default_factory=list)
-    roi_per_hour_percentages: list[Decimal] = field(default_factory=list)
+    net_values: list[Decimal] = field(default_factory=list)
 
     def add_fill(
         self,
@@ -499,8 +599,8 @@ class _VolumeAccumulator:
         self.life_seconds.append(Decimal(row.life_seconds))
         if row.roi_percent is not None:
             self.roi_percentages.append(row.roi_percent)
-        if row.roi_per_hour_percent is not None:
-            self.roi_per_hour_percentages.append(row.roi_per_hour_percent)
+        if row.net_usd is not None:
+            self.net_values.append(row.net_usd)
 
     @property
     def average_life_seconds(self) -> Decimal | None:
@@ -512,7 +612,17 @@ class _VolumeAccumulator:
 
     @property
     def average_roi_per_hour_percent(self) -> Decimal | None:
-        return _average(self.roi_per_hour_percentages)
+        average_roi = self.average_roi_percent
+        average_life = self.average_life_seconds
+        if average_roi is None or average_life is None or average_life <= 0:
+            return None
+        return average_roi * Decimal("3600") / average_life
+
+    @property
+    def total_net_usd(self) -> Decimal | None:
+        if not self.net_values:
+            return None
+        return sum(self.net_values, Decimal("0"))
 
 
 _EVENT_RE = re.compile(
@@ -533,7 +643,7 @@ _QTY_PCT_EXCEPTION_RE = re.compile(
     r"at startup for (?P<route>[^:]+:[^:]+:[^:]+): (?P<body>.*)$"
 )
 _ENV_REF_RE = re.compile(r"\$\{([^}]+)\}")
-_USD_FEE_CURRENCIES = {"", "usd", "usdt", "zfusd"}
+_USD_FEE_CURRENCIES = {"usd", "usdt", "zfusd", "zusd"}
 _REPORT_CODENAMES = (
     "almond",
     "apple",
@@ -707,8 +817,9 @@ def parse_run_log_text(text: str) -> RunLogSnapshot:
             "HEAD_CANCELLED",
             "HEAD_CANCEL_SENT",
             "HEAD_TIMEOUT",
+            "LATENT_TIMEOUT",
         }:
-            _mark_latent_ended(latent_attempts, key, event, log_time)
+            _mark_latent_ended(latent_attempts, key, event, body, log_time)
     return RunLogSnapshot(
         lifecycles=lifecycles,
         tail_telemetry=tail_telemetry,
@@ -1021,28 +1132,34 @@ def build_report_rows(
     *,
     fill_summaries: Mapping[str, DbFillSummary] | None = None,
     order_summaries: Mapping[str, DbOrderSummary] | None = None,
+    instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] | None = None,
+    default_routes: Sequence[RuntimeRoute] = (),
     require_db: bool = False,
     options: ReportOptions | None = None,
 ) -> tuple[ReportRow, ...]:
-    """Build sorted report rows and a running cumulative net value."""
+    """Build head-fill-sorted rows and a running cumulative net value."""
 
     options = options or ReportOptions()
     fill_summaries = fill_summaries or {}
     order_summaries = order_summaries or {}
+    instrument_summaries = instrument_summaries or {}
     rows: list[ReportRow] = []
     cumulative_net: Decimal | None = Decimal("0")
     for lifecycle in sorted(
         (item for item in lifecycles.values() if item.terminated),
         key=lambda item: (
-            item.tail_fill.filled_at
-            if item.tail_fill
-            else datetime.max.replace(tzinfo=timezone.utc)
+            item.head_fill.filled_at
+            if item.head_fill
+            else datetime.max.replace(tzinfo=timezone.utc),
+            item.key,
         ),
     ):
         row = _build_report_row(
             lifecycle,
             fill_summaries,
             order_summaries,
+            instrument_summaries=instrument_summaries,
+            default_routes=default_routes,
             require_db=require_db,
             options=options,
         )
@@ -1081,6 +1198,14 @@ def build_report_rows(
                 roi_percent=row.roi_percent,
                 roi_per_hour_percent=row.roi_per_hour_percent,
                 cumulative_net=cumulative,
+                route=row.route,
+                pnl_kind=row.pnl_kind,
+                pnl_currency=row.pnl_currency,
+                gross_native=row.gross_native,
+                net_native=row.net_native,
+                fees_usd=row.fees_usd,
+                entry_notional_usd=row.entry_notional_usd,
+                finance_quality=row.finance_quality,
             )
         )
     return tuple(rows)
@@ -1229,10 +1354,7 @@ def render_terminated_summary_table(
                 signed=True,
             ),
             _format_stat_decimal(
-                _stat_value(
-                    _optional_values(row.roi_per_hour_percent for row in rows),
-                    stat,
-                ),
+                _summary_roi_per_hour(rows, stat),
                 options.pct_places,
                 signed=True,
             ),
@@ -1242,12 +1364,32 @@ def render_terminated_summary_table(
     return _format_table(headers, body, align_right=set(headers) - {"Stat"})
 
 
+def _summary_roi_per_hour(
+    rows: Sequence[ReportRow],
+    stat: str,
+) -> Decimal | None:
+    if stat != "average":
+        return _stat_value(
+            _optional_values(row.roi_per_hour_percent for row in rows),
+            stat,
+        )
+    roi = _average([row.roi_percent for row in rows if row.roi_percent is not None])
+    life = _average(
+        [Decimal(row.life_seconds) for row in rows if row.roi_percent is not None]
+    )
+    if roi is None or life is None or life <= 0:
+        return None
+    return roi * Decimal("3600") / life
+
+
 def build_living_tail_rows(
     lifecycles: Mapping[PairKey, PairLifecycle],
     *,
     fill_summaries: Mapping[str, DbFillSummary] | None = None,
     order_summaries: Mapping[str, DbOrderSummary] | None = None,
     tail_telemetry: Mapping[PairKey, TailTelemetry] | None = None,
+    instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary] | None = None,
+    default_routes: Sequence[RuntimeRoute] = (),
     snapshot_at: datetime | None = None,
 ) -> tuple[LivingTailRow, ...]:
     """Build rows for head-filled pairs whose tail is still flying."""
@@ -1255,6 +1397,7 @@ def build_living_tail_rows(
     fill_summaries = fill_summaries or {}
     order_summaries = order_summaries or {}
     tail_telemetry = tail_telemetry or {}
+    instrument_summaries = instrument_summaries or {}
     rows: list[LivingTailRow] = []
     for lifecycle in sorted(
         (
@@ -1276,6 +1419,14 @@ def build_living_tail_rows(
             lifecycle.tail_exchange_order_id,
             order_summaries,
         )
+        route = (
+            _fill_summary_route(head_summary)
+            if head_summary is not None
+            else default_routes[0]
+            if len(default_routes) == 1
+            else None
+        )
+        instrument = instrument_summaries.get(route) if route is not None else None
         telemetry = tail_telemetry.get(lifecycle.key)
         head_fill = lifecycle.head_fill
         if head_fill is None:
@@ -1319,6 +1470,13 @@ def build_living_tail_rows(
                 tail_filled_quantity=(
                     tail_order.filled_quantity if tail_order is not None else None
                 ),
+                route=route,
+                entry_notional_usd=entry_notional_usd(
+                    head_price,
+                    quantity,
+                    route=route,
+                    instrument=instrument,
+                ),
             )
         )
     return tuple(rows)
@@ -1341,7 +1499,7 @@ def render_living_tail_table(
         "Qty",
         "Hliq",
         "Tstop",
-        "Dist logbps",
+        "Dist uBlk",
         "T status",
         "T filled",
     )
@@ -1366,7 +1524,7 @@ def render_living_tail_table(
     return _format_table(
         headers,
         body,
-        align_right={"Hfill", "Qty", "Tstop", "Dist logbps", "T filled"},
+        align_right={"Hfill", "Qty", "Tstop", "Dist uBlk", "T filled"},
     )
 
 
@@ -1396,7 +1554,11 @@ def build_latent_rows(
                 status=_latent_status(attempt),
                 gate=_latent_gate_display(attempt),
                 reference_price=attempt.reference_price,
-                head_price=attempt.head_price,
+                head_price=(
+                    attempt.head_price
+                    if attempt.head_price is not None
+                    else attempt.head_price_spec
+                ),
                 quantity=attempt.quantity,
                 order_type=attempt.order_type,
                 deadline_at=attempt.deadline_at,
@@ -1446,6 +1608,433 @@ def render_latent_table(
         body,
         align_right={"H price", "Qty"},
     )
+
+
+def build_pair_evolution_rows(
+    lifecycles: Mapping[PairKey, PairLifecycle],
+    latent_attempts: Mapping[PairKey, LatentAttempt],
+    report_rows: Sequence[ReportRow] = (),
+) -> tuple[PairEvolutionRow, ...]:
+    """Build initial and changed tOut/hPrice states by pair and attempt."""
+
+    reports_by_key = {row.key: row for row in report_rows}
+    attempts_by_name: dict[str, list[LatentAttempt]] = {}
+    for attempt in latent_attempts.values():
+        if attempt.parameters_observed:
+            attempts_by_name.setdefault(attempt.key.name, []).append(attempt)
+
+    rows: list[PairEvolutionRow] = []
+    for pair_name in sorted(attempts_by_name):
+        previous: tuple[Decimal | None, Decimal | None] | None = None
+        for attempt in sorted(
+            attempts_by_name[pair_name],
+            key=lambda item: item.key.attempt,
+        ):
+            current = (attempt.timeout_minutes, attempt.head_price_spec)
+            if previous is not None and current == previous:
+                continue
+            change = _pair_parameter_change(previous, current)
+            report_row = reports_by_key.get(attempt.key)
+            lifecycle = lifecycles.get(attempt.key)
+            rows.append(
+                PairEvolutionRow(
+                    key=attempt.key,
+                    change=change,
+                    timeout_minutes=attempt.timeout_minutes,
+                    head_price_spec=attempt.head_price_spec,
+                    terminal=_pair_evolution_terminal(
+                        attempt,
+                        lifecycle,
+                        report_row,
+                    ),
+                    head_fill_at=(
+                        report_row.head_fill_at
+                        if report_row is not None
+                        else lifecycle.head_fill.filled_at
+                        if lifecycle is not None and lifecycle.head_fill is not None
+                        else None
+                    ),
+                    tail_fill_at=(
+                        report_row.tail_fill_at if report_row is not None else None
+                    ),
+                    net_usd=report_row.net_usd if report_row is not None else None,
+                    roi_percent=(
+                        report_row.roi_percent if report_row is not None else None
+                    ),
+                )
+            )
+            previous = current
+    return tuple(rows)
+
+
+def build_parameter_regimes(
+    lifecycles: Mapping[PairKey, PairLifecycle],
+    latent_attempts: Mapping[PairKey, LatentAttempt],
+    report_rows: Sequence[ReportRow] = (),
+) -> tuple[ParameterRegime, ...]:
+    """Group all observed attempts into contiguous parameter regimes."""
+
+    reports_by_key = {row.key: row for row in report_rows}
+    attempts_by_name: dict[str, list[LatentAttempt]] = {}
+    for attempt in latent_attempts.values():
+        if attempt.parameters_observed:
+            attempts_by_name.setdefault(attempt.key.name, []).append(attempt)
+
+    regimes: list[ParameterRegime] = []
+    for pair_name in sorted(attempts_by_name):
+        current: list[PairEvolutionRow] = []
+        current_parameters: tuple[Decimal | None, Decimal | None] | None = None
+        for attempt in sorted(attempts_by_name[pair_name], key=lambda item: item.key.attempt):
+            parameters = (attempt.timeout_minutes, attempt.head_price_spec)
+            if current and parameters != current_parameters:
+                regimes.append(_parameter_regime(pair_name, current))
+                current = []
+            current_parameters = parameters
+            current.append(
+                _attempt_outcome_row(
+                    attempt,
+                    lifecycles.get(attempt.key),
+                    reports_by_key.get(attempt.key),
+                )
+            )
+        if current:
+            regimes.append(_parameter_regime(pair_name, current))
+    return tuple(regimes)
+
+
+def _attempt_outcome_row(
+    attempt: LatentAttempt,
+    lifecycle: PairLifecycle | None,
+    report_row: ReportRow | None,
+) -> PairEvolutionRow:
+    return PairEvolutionRow(
+        key=attempt.key,
+        change="",
+        timeout_minutes=attempt.timeout_minutes,
+        head_price_spec=attempt.head_price_spec,
+        terminal=_pair_evolution_terminal(attempt, lifecycle, report_row),
+        head_fill_at=(
+            report_row.head_fill_at
+            if report_row is not None
+            else lifecycle.head_fill.filled_at
+            if lifecycle is not None and lifecycle.head_fill is not None
+            else None
+        ),
+        tail_fill_at=report_row.tail_fill_at if report_row is not None else None,
+        net_usd=report_row.net_usd if report_row is not None else None,
+        roi_percent=report_row.roi_percent if report_row is not None else None,
+    )
+
+
+def _parameter_regime(
+    pair_name: str,
+    outcomes: Sequence[PairEvolutionRow],
+) -> ParameterRegime:
+    net_values = [row.net_usd for row in outcomes if row.net_usd is not None]
+    roi_values = [row.roi_percent for row in outcomes if row.roi_percent is not None]
+    wins = sum(1 for value in roi_values if value >= 0)
+    losses = sum(1 for value in roi_values if value < 0)
+    first = outcomes[0]
+    last = outcomes[-1]
+    return ParameterRegime(
+        pair_name=pair_name,
+        first_attempt=first.key.attempt,
+        last_attempt=last.key.attempt,
+        timeout_minutes=first.timeout_minutes,
+        head_price_spec=first.head_price_spec,
+        attempts=len(outcomes),
+        timeouts=sum(1 for row in outcomes if row.terminal == "tOut"),
+        closed=wins + losses,
+        wins=wins,
+        losses=losses,
+        total_net_usd=(sum(net_values, Decimal("0")) if net_values else None),
+        average_roi_percent=_average(roi_values),
+        final_state=last.terminal,
+        outcomes=tuple(outcomes),
+    )
+
+
+def build_financial_overview(
+    rows: Sequence[ReportRow],
+    living_rows: Sequence[LivingTailRow] = (),
+) -> FinancialOverview:
+    """Aggregate decision-facing realised finance for the run overview."""
+
+    net_values = [row.net_usd for row in rows if row.net_usd is not None]
+    gross_values = [row.gross_usd for row in rows if row.finance_quality != EvidenceQuality.UNAVAILABLE]
+    fee_values = [row.fees_usd for row in rows if row.fees_usd is not None]
+    roi_values = [row.roi_percent for row in rows if row.roi_percent is not None]
+    life_values = [Decimal(row.life_seconds) for row in rows if row.roi_percent is not None]
+    notional_values = [
+        row.entry_notional_usd
+        for row in rows
+        if row.entry_notional_usd is not None and row.net_usd is not None
+    ]
+    wins = sum(1 for value in net_values if value >= 0)
+    losses = sum(1 for value in net_values if value < 0)
+    gains = sum((value for value in net_values if value > 0), Decimal("0"))
+    losses_abs = -sum((value for value in net_values if value < 0), Decimal("0"))
+    average_roi = _average(roi_values)
+    average_life = _average(life_values)
+    total_net = sum(net_values, Decimal("0")) if net_values else None
+    total_notional = sum(notional_values, Decimal("0")) if notional_values else None
+    return FinancialOverview(
+        closed=len(rows),
+        wins=wins,
+        losses=losses,
+        gross_usd=sum(gross_values, Decimal("0")) if gross_values else None,
+        fees_usd=sum(fee_values, Decimal("0")) if fee_values else None,
+        net_usd=total_net,
+        win_rate_percent=(
+            Decimal(wins) / Decimal(wins + losses) * Decimal("100")
+            if wins + losses
+            else None
+        ),
+        profit_factor=(gains / losses_abs if losses_abs > 0 else None),
+        average_roi_percent=average_roi,
+        aggregate_roi_percent=(
+            total_net / total_notional * Decimal("100")
+            if total_net is not None and total_notional
+            else None
+        ),
+        roi_per_hour_percent=(
+            average_roi * Decimal("3600") / average_life
+            if average_roi is not None and average_life
+            else None
+        ),
+        max_drawdown_usd=_maximum_drawdown(net_values),
+        open_notional_usd=(
+            sum(
+                (
+                    row.entry_notional_usd
+                    for row in living_rows
+                    if row.entry_notional_usd is not None
+                ),
+                Decimal("0"),
+            )
+            if any(row.entry_notional_usd is not None for row in living_rows)
+            else None
+        ),
+        exact_rows=sum(1 for row in rows if row.finance_quality == EvidenceQuality.EXACT),
+        estimated_rows=sum(
+            1
+            for row in rows
+            if row.finance_quality in {EvidenceQuality.ESTIMATED, EvidenceQuality.ASSUMED}
+        ),
+        unavailable_rows=sum(
+            1 for row in rows if row.finance_quality == EvidenceQuality.UNAVAILABLE
+        ),
+    )
+
+
+def _maximum_drawdown(values: Sequence[Decimal]) -> Decimal | None:
+    if not values:
+        return None
+    cumulative = Decimal("0")
+    peak = Decimal("0")
+    drawdown = Decimal("0")
+    for value in values:
+        cumulative += value
+        peak = max(peak, cumulative)
+        drawdown = max(drawdown, peak - cumulative)
+    return drawdown
+
+
+def render_pair_evolution_table(
+    rows: Sequence[PairEvolutionRow],
+    *,
+    options: ReportOptions | None = None,
+) -> str:
+    """Render the compact tOut/hPrice evolution history as an Org table."""
+
+    options = options or ReportOptions()
+    headers = (
+        "Pair",
+        "Attempt",
+        "Change",
+        "tOut",
+        "hPrice",
+        "Terminal",
+        "H fill UTC",
+        "T fill UTC",
+        "Net USD",
+        "ROI %",
+    )
+    body = [
+        (
+            row.key.name,
+            str(row.key.attempt),
+            row.change,
+            _format_parameter_value(row.timeout_minutes),
+            _format_parameter_value(row.head_price_spec),
+            row.terminal,
+            _format_optional_time(row.head_fill_at),
+            _format_optional_time(row.tail_fill_at),
+            _format_signed_optional(row.net_usd, options.money_places),
+            _format_signed_optional(row.roi_percent, options.pct_places),
+        )
+        for row in rows
+    ]
+    return _format_table(
+        headers,
+        body,
+        align_right={"Attempt", "tOut", "hPrice", "Net USD", "ROI %"},
+    )
+
+
+def render_financial_overview_table(
+    overview: FinancialOverview,
+    *,
+    options: ReportOptions | None = None,
+) -> str:
+    """Render the compact decision-facing run finance summary."""
+
+    options = options or ReportOptions()
+    headers = (
+        "Closed",
+        "W/L",
+        "Win %",
+        "Gross USD",
+        "Fees USD",
+        "Net USD",
+        "Profit factor",
+        "Avg ROI %",
+        "Agg ROI %",
+        "ROI/h %",
+        "Max DD USD",
+        "Open USD",
+        "Evidence E/E/U",
+    )
+    body = (
+        (
+            str(overview.closed),
+            f"{overview.wins}/{overview.losses}",
+            _format_optional_decimal(overview.win_rate_percent, 2),
+            _format_signed_optional(overview.gross_usd, options.money_places),
+            _format_optional_decimal(overview.fees_usd, options.money_places),
+            _format_signed_optional(overview.net_usd, options.money_places),
+            _format_optional_decimal(overview.profit_factor, 3),
+            _format_signed_optional(overview.average_roi_percent, options.pct_places),
+            _format_signed_optional(overview.aggregate_roi_percent, options.pct_places),
+            _format_signed_optional(overview.roi_per_hour_percent, options.pct_places),
+            _format_optional_decimal(overview.max_drawdown_usd, options.money_places),
+            _format_optional_decimal(overview.open_notional_usd, options.money_places),
+            f"{overview.exact_rows}/{overview.estimated_rows}/{overview.unavailable_rows}",
+        ),
+    )
+    return _format_table(headers, body, align_right=set(headers) - {"W/L", "Evidence E/E/U"})
+
+
+def render_parameter_regime_table(
+    rows: Sequence[ParameterRegime],
+    *,
+    options: ReportOptions | None = None,
+) -> str:
+    """Render one compact row per contiguous parameter regime."""
+
+    options = options or ReportOptions()
+    headers = (
+        "Pair",
+        "Attempts",
+        "tOut",
+        "hPrice",
+        "N",
+        "tOuts",
+        "Closed",
+        "W/L",
+        "Net USD",
+        "Avg ROI %",
+        "Final",
+    )
+    body = [
+        (
+            row.pair_name,
+            _format_attempt_range(row.first_attempt, row.last_attempt),
+            _format_parameter_value(row.timeout_minutes),
+            _format_parameter_value(row.head_price_spec),
+            str(row.attempts),
+            str(row.timeouts),
+            str(row.closed),
+            f"{row.wins}/{row.losses}",
+            _format_signed_optional(row.total_net_usd, options.money_places),
+            _format_signed_optional(row.average_roi_percent, options.pct_places),
+            row.final_state,
+        )
+        for row in rows
+    ]
+    return _format_table(
+        headers,
+        body,
+        align_right={"tOut", "hPrice", "N", "tOuts", "Closed", "Net USD", "Avg ROI %"},
+    )
+
+
+def render_parameter_regime_details(
+    regimes: Sequence[ParameterRegime],
+    *,
+    options: ReportOptions | None = None,
+) -> str:
+    """Render foldable Org details for material attempts in each pair."""
+
+    options = options or ReportOptions()
+    sections: list[str] = []
+    by_pair: dict[str, list[PairEvolutionRow]] = {}
+    for regime in regimes:
+        material = [
+            outcome
+            for index, outcome in enumerate(regime.outcomes)
+            if index == 0
+            or index == len(regime.outcomes) - 1
+            or outcome.terminal != "tOut"
+        ]
+        by_pair.setdefault(regime.pair_name, []).extend(material)
+    for pair_name in sorted(by_pair):
+        sections.extend(
+            (
+                f"**** {pair_name}",
+                render_pair_evolution_table(by_pair[pair_name], options=options),
+            )
+        )
+    return "\n".join(sections)
+
+
+def _format_attempt_range(first: int, last: int) -> str:
+    return str(first) if first == last else f"{first}-{last}"
+
+
+def _pair_parameter_change(
+    previous: tuple[Decimal | None, Decimal | None] | None,
+    current: tuple[Decimal | None, Decimal | None],
+) -> str:
+    if previous is None:
+        return "initial"
+    timeout_changed = previous[0] != current[0]
+    head_price_changed = previous[1] != current[1]
+    if timeout_changed and head_price_changed:
+        return "both"
+    if timeout_changed:
+        return "tOut"
+    return "hPrice"
+
+
+def _pair_evolution_terminal(
+    attempt: LatentAttempt,
+    lifecycle: PairLifecycle | None,
+    report_row: ReportRow | None,
+) -> str:
+    if report_row is not None:
+        if report_row.roi_percent is None:
+            return "closed roi?"
+        return "roi>=0" if report_row.roi_percent >= 0 else "roi<0"
+    if lifecycle is not None and lifecycle.head_fill is not None:
+        return "living"
+    if attempt.timed_out:
+        return "tOut"
+    if not attempt.ended:
+        return "active"
+    if attempt.terminal_event == "COMMAND_FAILED":
+        return "failed"
+    return "cancelled"
 
 
 def build_volume_rows(
@@ -1532,6 +2121,8 @@ def build_volume_rows(
                     reference_price=reference_price,
                     instrument=instrument,
                 ),
+                closed=len(accumulator.life_seconds),
+                net_usd=accumulator.total_net_usd,
             )
         )
     return tuple(rows)
@@ -1548,9 +2139,11 @@ def render_volume_table(
     headers = (
         "Market",
         "Pair",
+        "Closed",
         "Fills",
-        "Qty",
-        "Bot USD Vol",
+        "Executed Qty",
+        "USD Turnover",
+        "Net USD",
         "Avg Life",
         "Avg ROI %",
         "Avg ROI/h %",
@@ -1561,9 +2154,11 @@ def render_volume_table(
         (
             row.market,
             row.pair_name,
+            str(row.closed),
             str(row.fills),
             _format_quantity(row.quantity),
             _format_decimal(row.bot_usd_volume, options.money_places),
+            _format_signed_optional(row.net_usd, options.money_places),
             _format_optional_life(row.average_life_seconds),
             _format_signed_optional(row.average_roi_percent, options.pct_places),
             _format_signed_optional(
@@ -1805,6 +2400,9 @@ def render_run_report(
     latent_rows: Sequence[LatentRow],
     volume_rows: Sequence[VolumeRow] = (),
     *,
+    evolution_rows: Sequence[PairEvolutionRow] = (),
+    regimes: Sequence[ParameterRegime] = (),
+    financial_overview: FinancialOverview | None = None,
     sizing_rows: Sequence[SizingRow] = (),
     sizing_notes: Sequence[str] = (),
     report_notes: Sequence[str] = (),
@@ -1826,9 +2424,13 @@ def render_run_report(
     sections = [
         _format_org_heading(timestamp, report_name=identity.name if identity else None),
         "** Overview",
+        (
+            render_financial_overview_table(financial_overview, options=options)
+            if financial_overview is not None
+            else ""
+        ),
         render_market_snapshot_table(market_snapshot, options=options),
         _render_optional_summary(terminated_rows, options=options),
-        "",
         "*** Volume by market/pair",
         _render_section_table(render_volume_table, volume_rows, options=options),
     ]
@@ -1852,6 +2454,38 @@ def render_run_report(
             render_terminated_counts_line(terminated_rows),
             "",
             _render_section_table(render_org_table, terminated_rows, options=options),
+        )
+    )
+    if options.show_pair_regimes:
+        sections.extend(
+            (
+                "",
+                "*** Pair parameter regimes",
+                (
+                    _render_section_table(
+                        render_parameter_regime_table,
+                        regimes,
+                        options=options,
+                    )
+                    if regimes
+                    else _render_section_table(
+                        render_pair_evolution_table,
+                        evolution_rows,
+                        options=options,
+                    )
+                ),
+            )
+        )
+        if regimes:
+            sections.extend(
+                (
+                    "",
+                    "*** Pair attempt details",
+                    render_parameter_regime_details(regimes, options=options),
+                )
+            )
+    sections.extend(
+        (
             "",
             "** Living tail-flying pairs",
             _render_section_table(render_living_tail_table, living_rows, options=options),
@@ -1871,7 +2505,7 @@ def render_run_report(
     return "\n".join(sections)
 
 
-def build_report_table(
+def build_run_report(
     log_path: str | Path,
     *,
     db_url: str | None = None,
@@ -1880,8 +2514,8 @@ def build_report_table(
     report_command: str | None = None,
     run_started_at: datetime | None = None,
     options: ReportOptions | None = None,
-) -> str:
-    """Build the full report table from a runtime log and optional DB URL."""
+) -> RunReport:
+    """Build the renderer-independent report from a runtime log and local DBs."""
 
     options = options or ReportOptions()
     log_path = Path(log_path)
@@ -1964,6 +2598,8 @@ def build_report_table(
         snapshot.lifecycles,
         fill_summaries=fill_summaries,
         order_summaries=order_summaries,
+        instrument_summaries=instrument_summaries,
+        default_routes=routes,
         require_db=not log_only,
         options=options,
     )
@@ -1981,9 +2617,16 @@ def build_report_table(
         fill_summaries=fill_summaries,
         order_summaries=order_summaries,
         tail_telemetry=snapshot.tail_telemetry,
+        instrument_summaries=instrument_summaries,
+        default_routes=routes,
         snapshot_at=snapshot.last_log_at,
     )
     latent_rows = build_latent_rows(snapshot.lifecycles, snapshot.latent_attempts)
+    regimes = build_parameter_regimes(
+        snapshot.lifecycles,
+        snapshot.latent_attempts,
+        terminated_rows,
+    )
     sizing_rows = build_sizing_rows(
         routes,
         quantity_diagnostics=snapshot.quantity_diagnostics,
@@ -1999,21 +2642,75 @@ def build_report_table(
         market_volumes=market_volumes,
         report_rows=terminated_rows,
     )
-    return render_run_report(
-        terminated_rows,
-        living_rows,
-        latent_rows,
-        volume_rows,
-        sizing_rows=sizing_rows,
-        sizing_notes=sizing_notes,
-        report_notes=report_notes,
-        market_snapshot=snapshot.market_snapshot,
-        report_at=snapshot.market_snapshot.recorded_at
+    report_at = (
+        snapshot.market_snapshot.recorded_at
         if snapshot.market_snapshot is not None
-        else snapshot.last_log_at,
+        else snapshot.last_log_at
+        or resolved_run_started_at
+    )
+    return RunReport(
         identity=identity,
+        report_at=report_at,
+        market_snapshot=snapshot.market_snapshot,
+        financial_overview=build_financial_overview(terminated_rows, living_rows),
+        regimes=regimes,
+        terminated_rows=terminated_rows,
+        living_rows=living_rows,
+        latent_rows=latent_rows,
+        volume_rows=volume_rows,
+        sizing_rows=sizing_rows,
+        sizing_notes=tuple(sizing_notes),
+        report_notes=tuple(report_notes),
+    )
+
+
+def render_org_report(
+    report: RunReport,
+    *,
+    options: ReportOptions | None = None,
+) -> str:
+    """Render one shared report model as the established Org interface."""
+
+    return render_run_report(
+        report.terminated_rows,
+        report.living_rows,
+        report.latent_rows,
+        report.volume_rows,
+        regimes=report.regimes,
+        financial_overview=report.financial_overview,
+        sizing_rows=report.sizing_rows,
+        sizing_notes=report.sizing_notes,
+        report_notes=report.report_notes,
+        market_snapshot=report.market_snapshot,
+        report_at=report.report_at,
+        identity=report.identity,
         options=options,
     )
+
+
+def build_report_table(
+    log_path: str | Path,
+    *,
+    db_url: str | None = None,
+    market_db_url: str | None = None,
+    log_only: bool = False,
+    report_command: str | None = None,
+    run_started_at: datetime | None = None,
+    options: ReportOptions | None = None,
+) -> str:
+    """Build and render the backwards-compatible Org report."""
+
+    options = options or ReportOptions()
+    report = build_run_report(
+        log_path,
+        db_url=db_url,
+        market_db_url=market_db_url,
+        log_only=log_only,
+        report_command=report_command,
+        run_started_at=run_started_at,
+        options=options,
+    )
+    return render_org_report(report, options=options)
 
 
 def build_report_identity(
@@ -2133,6 +2830,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Prepend the Org report to this file instead of stdout.",
     )
     parser.add_argument(
+        "--html-output",
+        help="Write a self-contained interactive HTML report to this path.",
+    )
+    parser.add_argument(
+        "--pair-regimes",
+        action="store_true",
+        help="Show pair parameter regimes and per-attempt details.",
+    )
+    parser.add_argument(
         "--strategy",
         help=(
             "Strategy file to copy under the report entry when --output is used. "
@@ -2168,17 +2874,20 @@ def main(
                 args.market_db_url,
                 env_file=args.env_file,
             )
-        table = build_report_table(
+        options = ReportOptions(
+            price_places=args.price_dp,
+            estimate_fees=args.estimate_fees,
+            show_pair_regimes=args.pair_regimes,
+        )
+        report = build_run_report(
             args.log_file,
             db_url=db_url,
             market_db_url=market_db_url,
             log_only=args.log_only,
             report_command=command_line,
-            options=ReportOptions(
-                price_places=args.price_dp,
-                estimate_fees=args.estimate_fees,
-            ),
+            options=options,
         )
+        table = render_org_report(report, options=options)
         if args.output:
             strategy_path = _resolve_strategy_copy_path(
                 explicit_path=args.strategy,
@@ -2189,6 +2898,16 @@ def main(
             _prepend_output(Path(args.output), table)
         else:
             print(table, file=out)
+        if args.html_output:
+            from kolabi.bot.run_report_html import render_html_report
+
+            _write_atomic(
+                Path(args.html_output),
+                render_html_report(
+                    report,
+                    show_pair_regimes=args.pair_regimes,
+                ),
+            )
     except ReportError as exc:
         print(f"kolabi-run-report: {exc}", file=err)
         return 2
@@ -2196,6 +2915,15 @@ def main(
         print(f"kolabi-run-report: {exc}", file=err)
         return 2
     return 0
+
+
+def _write_atomic(path: Path, content: str) -> None:
+    """Replace one generated artifact without exposing a partial file."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(content, encoding="utf-8")
+    temporary.replace(path)
 
 
 def _parse_pair_key(raw: str) -> PairKey | None:
@@ -2691,16 +3419,19 @@ def _parse_gate_wait(
     fields = body.split()
     if fields:
         attempt.status = fields[0]
-    if event == "GATE_WAIT-2" and len(fields) >= 8:
+    if event == "GATE_WAIT-2" and len(fields) >= 10:
         attempt.gate = f"{fields[0]} {fields[1]}"
         attempt.reference_price = _optional_positive_decimal(fields[2])
-        attempt.order_type = fields[6]
-        attempt.head_price = _optional_positive_decimal(fields[7])
-    elif event == "GATE_WAIT-1" and fields:
+        attempt.order_type = fields[7]
+        attempt.head_price_spec = _field_decimal(fields[8])
+        attempt.timeout_minutes = _field_decimal(fields[9])
+        attempt.parameters_observed = True
+    elif event == "GATE_WAIT-1" and len(fields) >= 5:
         attempt.gate = fields[0]
-        if len(fields) >= 4:
-            attempt.order_type = fields[2]
-            attempt.head_price = _optional_positive_decimal(fields[3])
+        attempt.order_type = fields[2]
+        attempt.head_price_spec = _field_decimal(fields[3])
+        attempt.timeout_minutes = _field_decimal(fields[4])
+        attempt.parameters_observed = True
     attempt.last_event_at = log_time
     attempt.last_event = event
 
@@ -2809,10 +3540,16 @@ def _mark_latent_ended(
     latent_attempts: dict[PairKey, LatentAttempt],
     key: PairKey,
     event: str,
+    body: str,
     log_time: datetime,
 ) -> None:
     attempt = _latent_attempt(latent_attempts, key, log_time, event)
     attempt.ended = True
+    if event in {"HEAD_TIMEOUT", "LATENT_TIMEOUT"} or (
+        event == "HEAD_CANCEL_SENT" and "head_timeout" in body.split()
+    ):
+        attempt.timed_out = True
+    attempt.terminal_event = event
     attempt.status = event.lower()
     attempt.last_event_at = log_time
     attempt.last_event = event
@@ -2835,6 +3572,8 @@ def _build_report_row(
     fill_summaries: Mapping[str, DbFillSummary],
     order_summaries: Mapping[str, DbOrderSummary],
     *,
+    instrument_summaries: Mapping[RuntimeRoute, InstrumentSummary],
+    default_routes: Sequence[RuntimeRoute],
     require_db: bool,
     options: ReportOptions,
 ) -> ReportRow:
@@ -2883,14 +3622,15 @@ def _build_report_row(
         else head_leg.quantity
     )
     side = _side_abbrev(head_leg.side, tail_leg.side)
-    gross = _gross_usd(head_leg.side, head_leg.price, tail_leg.price, quantity)
-    net, net_estimated = _net_usd_from_evidence(
-        gross,
+    route = _report_row_route(head_summary, tail_summary, default_routes)
+    finance = calculate_finance(
         head_leg,
         tail_leg,
+        quantity=quantity,
+        route=route,
+        instrument=instrument_summaries.get(route) if route is not None else None,
         options=options,
     )
-    roi = _roi_percent(net if net is not None else gross, head_leg.price, quantity)
     amend_logbps = None
     if (
         lifecycle.amend_count > 0
@@ -2936,12 +3676,20 @@ def _build_report_row(
         tail_amend_1_at=_tail_amend_time(lifecycle, 0),
         tail_amend_2_at=_tail_amend_time(lifecycle, 1),
         amend_logbps=amend_logbps,
-        gross_usd=gross,
-        net_usd=net,
-        net_estimated=net_estimated,
-        roi_percent=roi,
-        roi_per_hour_percent=_roi_per_hour_percent(roi, life_seconds),
+        gross_usd=finance.gross_usd or Decimal("0"),
+        net_usd=finance.net_usd,
+        net_estimated=finance.quality in {EvidenceQuality.ESTIMATED, EvidenceQuality.ASSUMED},
+        roi_percent=finance.roi_percent,
+        roi_per_hour_percent=_roi_per_hour_percent(finance.roi_percent, life_seconds),
         cumulative_net=None,
+        route=finance.route,
+        pnl_kind=finance.pnl_kind,
+        pnl_currency=finance.pnl_currency,
+        gross_native=finance.gross_native,
+        net_native=finance.net_native,
+        fees_usd=finance.fees_usd,
+        entry_notional_usd=finance.entry_notional_usd,
+        finance_quality=finance.quality,
     )
 
 
@@ -3236,6 +3984,8 @@ def _usd_notional(
     contract_size = instrument.contract_size if instrument is not None else Decimal("1")
     if contract_size <= 0:
         contract_size = Decimal("1")
+    if instrument is not None and pnl_kind(instrument.route, instrument) == PnlKind.INVERSE:
+        return quantity * contract_size
     return price * quantity * contract_size
 
 
@@ -3426,6 +4176,18 @@ def _opposite_side(side: str) -> str:
     if normalized == "sell":
         return "buy"
     return ""
+
+
+def _report_row_route(
+    head_summary: DbFillSummary | None,
+    tail_summary: DbFillSummary | None,
+    default_routes: Sequence[RuntimeRoute],
+) -> RuntimeRoute | None:
+    summary = head_summary or tail_summary
+    if summary is not None:
+        return _fill_summary_route(summary)
+    routes = tuple(dict.fromkeys(default_routes))
+    return routes[0] if len(routes) == 1 else None
 
 
 def _gross_usd(
@@ -3698,6 +4460,12 @@ def _format_quantity(value: Decimal) -> str:
     if value == integral:
         return str(int(integral))
     return format(value.normalize(), "f")
+
+
+def _format_parameter_value(value: Decimal | None) -> str:
+    if value is None:
+        return "-"
+    return _format_quantity(value)
 
 
 def _format_optional_quantity(value: Decimal | None) -> str:

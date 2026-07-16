@@ -1,6 +1,34 @@
 #+TITLE: kolaBiBot
 #+OPTIONS: toc:2 num:nil
 
+* <2026-07-16 jeu.> Three-second order submission target
+The current REST throttle is =0.1 s= minimum spacing with at most two concurrent operations. Measurements from 497 orders in =logs/krf_ada2.log= show a median =3.15 s= from gate readiness to =/sendorder= acceptance, but =5.60 s= to the current =HEAD_ACK=. The throttle is only part of the delay: gate-ready events wait a median =1.87 s= before =HEAD_SENT=, and =HEAD_ACK= waits another median =2.59 s= for a synchronous open-orders verification after Kraken has accepted the order.
+
+Plan:
+- For the next fresh run, test =--rest-min-interval 0.05= and =--rest-max-inflight 3=. Keep a bounded concurrency limit and monitor API-limit or transport failures.
+- Emit the placement acknowledgement as soon as =/sendorder= succeeds. Move open-order verification to asynchronous enrichment or private-feed confirmation and record a separate verified state.
+- Prioritise gate-ready head submissions in the runtime queue so public-market event fan-out does not delay exchange submission.
+- Add explicit timestamps for gate ready, REST launch, REST acceptance, and private/open-order confirmation; target gate-ready to REST acceptance below =3 s= at the median before tightening the tail latency target.
+- Do not change public indicator sampling from =6 s= to =3 s= until event fan-out is reduced or batched, because doubling public events could increase the gate-to-send queue delay.
+
+* <2026-07-16 jeu. 09:15> 08:10 ADA move and percentage/log-bps correspondence
+For the 08:10 move visible in =logs/krf_ada2.log=, the logged =last= endpoints are =0.1626= at 08:10:00 and =0.1611= at 08:10:40.
+
+- Simple percentage variation: =(0.1611 / 0.1626 - 1) * 100 = -0.922509%=.
+- Log-bps variation: =ln(0.1611 / 0.1626) * 10000 = -92.6791 log-bps=.
+- The approximate =-1.41%= variation measured in the UI corresponds to =ln(1 - 0.0141) * 10000 = -142.0035 log-bps=. The difference from the logged result means that the UI measurement uses a wider interval, different endpoints, or more precise chart values than the two logged =last= samples above.
+
+Percentage and log-bps are related by =log-bps = ln(1 + percentage / 100) * 10000=. Equal positive and negative percentage variations therefore have different absolute log-bps values.
+
+| Magnitude | Up variation | Up log-bps | Down variation | Down log-bps |
+|-----------+--------------+------------+----------------+--------------|
+|     0.50% |       +0.50% |        +50 |         -0.50% |          -50 |
+|     1.00% |       +1.00% |       +100 |         -1.00% |         -101 |
+|     1.50% |       +1.50% |       +149 |         -1.50% |         -151 |
+|     2.00% |       +2.00% |       +198 |         -2.00% |         -202 |
+|     2.50% |       +2.50% |       +247 |         -2.50% |         -253 |
+|     3.00% |       +3.00% |       +296 |         -3.00% |         -305 |
+
 * <2026-06-22 lun. 10:48> Gates
 P1 Finding (2026-06-22): executable_head_reference_price and head_price_reference_price now default unsuffixed head references to last for all markets. When last is unavailable (and mark also unavailable), they silently drop to mid (price_from_source), replacing the old side-aware book behavior (ask for BUY, bid for SELL). That can mis-score GATE_WAIT for relative gates (pD/pB) and keep latent heads from reaching ready.
 

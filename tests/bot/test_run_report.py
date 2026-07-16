@@ -7,13 +7,22 @@ from io import StringIO
 from pathlib import Path
 
 from kolabi.bot.run_report import (
+    DbFillSummary,
+    EvidenceQuality,
+    InstrumentSummary,
     PairKey,
+    PnlKind,
     ReportOptions,
+    RuntimeRoute,
     VolumeRow,
+    _VolumeAccumulator,
     build_latent_rows,
     build_living_tail_rows,
+    build_pair_evolution_rows,
+    build_parameter_regimes,
     build_report_rows,
     build_report_table,
+    build_run_report,
     fetch_fill_summaries,
     fetch_order_summaries,
     main,
@@ -23,11 +32,13 @@ from kolabi.bot.run_report import (
     render_living_tail_table,
     render_market_snapshot_table,
     render_org_table,
+    render_pair_evolution_table,
     render_run_report,
     render_terminated_counts_line,
     render_terminated_summary_table,
     render_volume_table,
 )
+from kolabi.bot.run_report_html import render_html_report
 from kolabi.shared.persistence import (
     AccountBalance,
     Base,
@@ -356,6 +367,31 @@ def test_render_log_only_table_aligns_pair_attempt() -> None:
     assert "| +0.002400 | +0.000398 | +0.0199 | +0.0753 |   +0.000398 |" in table
 
 
+def test_terminated_rows_are_sorted_by_head_fill_time() -> None:
+    log = "\n".join(
+        (
+            "2026-07-12 10:00:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (FIRST#1): closed--hooked 1 99 buy 1 100 "
+            "2026-07-12T10:00:00+00:00",
+            "2026-07-12 10:01:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (SECOND#1): closed--hooked 1 99 buy 1 100 "
+            "2026-07-12T10:01:00+00:00",
+            "2026-07-12 10:02:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (SECOND#1): closed--closed 1 101 101 sell 1 101 "
+            "2026-07-12T10:02:00+00:00",
+            "2026-07-12 10:03:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (FIRST#1): closed--closed 1 101 101 sell 1 101 "
+            "2026-07-12T10:03:00+00:00",
+        )
+    )
+
+    rows = build_report_rows(parse_log_text(log))
+
+    assert [row.key.name for row in rows] == ["FIRST", "SECOND"]
+    assert rows[0].head_fill_at < rows[1].head_fill_at
+    assert rows[0].tail_fill_at > rows[1].tail_fill_at
+
+
 def test_report_can_leave_net_blank_without_fee_estimates() -> None:
     options = ReportOptions(estimate_fees=False)
     rows = build_report_rows(parse_log_text(SAMPLE_LOG), options=options)
@@ -532,7 +568,9 @@ def test_fetch_fill_summaries_aggregates_local_db_rows(postgres_url_factory) -> 
 
     assert "| 0.16671 | 0.16685 |" in table
     assert "| M/T |" in table
-    assert "| +0.001680 | +0.000279 | +0.0139 | +0.0527 | +0.000279 |" in table
+    row = next(line for line in table.splitlines() if "MM_BUY #4" in line)
+    cells = [cell.strip() for cell in row.strip("|").split("|")]
+    assert cells[-5:] == ["+0.001680", "+0.000279", "+0.0139", "+0.0527", "+0.000279"]
 
 
 def test_exact_report_falls_back_to_filled_order_when_fill_row_is_missing(
@@ -854,9 +892,11 @@ def test_report_adds_volume_by_pair_and_market_from_local_dbs(
     assert [cell.strip() for cell in volume_line.strip("|").split("|")] == [
         "kraken:futures:PF_ADAUSD",
         "MM_BUY",
+        "1",
         "2",
         "24",
         "4.002720",
+        "+0.000279",
         "00:15:52",
         "+0.0139",
         "+0.0527",
@@ -1123,9 +1163,22 @@ def test_living_tail_rows_include_latest_metrics_and_db_order_state(postgres_url
     table = render_living_tail_table(rows)
 
     assert "Ref" not in table.splitlines()[0]
-    assert "Dist logbps" in table.splitlines()[0]
-    assert "| 06-18 15:23 | 03:26:57 | MM_BUY #1 | B/S  |" in table
-    assert "| 0.16247 |   6 | M    | 0.15940 |        +174 | untouched |        0 |" in table
+    assert "Dist uBlk" in table.splitlines()[0]
+    row = next(line for line in table.splitlines() if "MM_BUY #1" in line)
+    cells = [cell.strip() for cell in row.strip("|").split("|")]
+    assert cells == [
+        "06-18 15:23",
+        "03:26:57",
+        "MM_BUY #1",
+        "B/S",
+        "0.16247",
+        "6",
+        "M",
+        "0.15940",
+        "+174",
+        "untouched",
+        "0",
+    ]
     prices = render_market_snapshot_table(snapshot.market_snapshot)
     assert "| Latest prices |    Mark |    Last |  Spread | Max spread |" in prices
     assert (
@@ -1162,6 +1215,253 @@ def test_latest_latent_rows_exclude_failed_latest_attempts() -> None:
     assert "Ref" not in table.splitlines()[0]
     assert "UP_BUY2" not in table
     assert "| 06-18 19:00 | RB_SEL #1 | chain_wait | chain_wait |" in table
+
+
+def test_gate_wait_parses_tout_and_hprice_from_current_log_shape() -> None:
+    log = "\n".join(
+        (
+            "2026-07-10 10:00:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (PAIR_A#1): ready last 0.1671 - 0.1671 "
+            "0.0000..1000000000.00 pA L! 60.00 3.0",
+            "2026-07-10 10:00:01,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-1 (PAIR_B#1): chain_wait PAIR_A-tail-closed SL! 1.40 6.0",
+        )
+    )
+
+    attempts = parse_run_log_text(log).latent_attempts
+    ready = attempts[PairKey("PAIR_A", 1)]
+    waiting = attempts[PairKey("PAIR_B", 1)]
+
+    assert ready.order_type == "L!"
+    assert ready.head_price_spec == Decimal("60.00")
+    assert ready.timeout_minutes == Decimal("3.0")
+    assert waiting.order_type == "SL!"
+    assert waiting.head_price_spec == Decimal("1.40")
+    assert waiting.timeout_minutes == Decimal("6.0")
+    latent_rows = build_latent_rows(
+        parse_run_log_text(log).lifecycles,
+        attempts,
+    )
+    assert {row.key: row.head_price for row in latent_rows} == {
+        PairKey("PAIR_A", 1): Decimal("60.00"),
+        PairKey("PAIR_B", 1): Decimal("1.40"),
+    }
+
+
+def test_pair_evolution_rows_show_initial_changes_and_same_attempt_results() -> None:
+    log = "\n".join(
+        (
+            "2026-07-10 10:00:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (PAIR_A#1): ready last 100 - 100 0..1000 pA L! 60 3",
+            "2026-07-10 10:03:00,000 MainThread~30 /strategy_runtime.py@1@x/ "
+            "HEAD_TIMEOUT (PAIR_A#1): expired 180s H1 O1",
+            "2026-07-10 10:03:00,100 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_CANCEL_SENT (PAIR_A#1): O1 head_timeout",
+            "2026-07-10 10:03:01,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "HEAD_CANCELLED (PAIR_A#1): 0 H1 O1",
+            "2026-07-10 10:03:02,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (PAIR_A#2): ready last 100 - 100 0..1000 pA L! 55 3",
+            "2026-07-10 10:03:03,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (PAIR_A#2): closed--hooked 1 110 buy 1 100 "
+            "2026-07-10T10:03:03+00:00",
+            "2026-07-10 10:04:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (PAIR_A#2): closed--closed 1 110 110 sell 1 110 "
+            "2026-07-10T10:04:00+00:00",
+            "2026-07-10 10:04:01,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (PAIR_A#3): ready last 100 - 100 0..1000 pA L! 55 4",
+            "2026-07-10 10:04:02,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (PAIR_A#4): ready last 100 - 100 0..1000 pA L! 55 4",
+            "2026-07-10 10:04:03,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (PAIR_A#5): ready last 100 - 100 0..1000 pA L! 50 5",
+            "2026-07-10 10:04:04,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (PAIR_A#5): closed--hooked 1 90 buy 1 100 "
+            "2026-07-10T10:04:04+00:00",
+            "2026-07-10 10:05:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (PAIR_A#5): closed--closed 1 90 90 sell 1 90 "
+            "2026-07-10T10:05:00+00:00",
+        )
+    )
+
+    snapshot = parse_run_log_text(log)
+    reports = build_report_rows(snapshot.lifecycles, require_db=False)
+    rows = build_pair_evolution_rows(
+        snapshot.lifecycles,
+        snapshot.latent_attempts,
+        reports,
+    )
+
+    assert [(row.key.attempt, row.change, row.terminal) for row in rows] == [
+        (1, "initial", "tOut"),
+        (2, "hPrice", "roi>=0"),
+        (3, "tOut", "active"),
+        (5, "both", "roi<0"),
+    ]
+    table = render_pair_evolution_table(rows)
+    rendered = [
+        [cell.strip() for cell in line.strip("|").split("|")]
+        for line in table.splitlines()
+        if line.startswith("| PAIR_A")
+    ]
+    assert rendered[0][1:6] == ["1", "initial", "3", "60", "tOut"]
+    assert rendered[1][1:8] == [
+        "2",
+        "hPrice",
+        "3",
+        "55",
+        "roi>=0",
+        "07-10 10:03",
+        "07-10 10:04",
+    ]
+    assert rendered[3][1:6] == ["5", "both", "5", "50", "roi<0"]
+
+
+def test_volume_roi_per_hour_uses_average_roi_over_average_life() -> None:
+    accumulator = _VolumeAccumulator(
+        pair_name="PAIR_A",
+        route=RuntimeRoute("kraken", "futures", "PF_ADAUSD"),
+        life_seconds=[Decimal("7200"), Decimal("36")],
+        roi_percentages=[Decimal("1"), Decimal("-0.5")],
+    )
+
+    assert accumulator.average_roi_percent == Decimal("0.25")
+    assert accumulator.average_life_seconds == Decimal("3618")
+    assert accumulator.average_roi_per_hour_percent == (
+        Decimal("0.25") * Decimal("3600") / Decimal("3618")
+    )
+    assert accumulator.average_roi_per_hour_percent > 0
+
+
+def test_parameter_regimes_keep_unchanged_completed_attempts() -> None:
+    log = "\n".join(
+        (
+            "2026-07-10 10:00:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (PAIR_A#1): ready last 100 - 100 0..1000 pA L! 60 3",
+            "2026-07-10 10:03:00,000 MainThread~30 /strategy_runtime.py@1@x/ "
+            "HEAD_TIMEOUT (PAIR_A#1): expired 180s H1 O1",
+            "2026-07-10 10:03:01,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (PAIR_A#2): ready last 100 - 100 0..1000 pA L! 60 3",
+            "2026-07-10 10:03:02,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (PAIR_A#2): closed--hooked 1 110 buy 1 100 "
+            "2026-07-10T10:03:02+00:00",
+            "2026-07-10 10:04:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (PAIR_A#2): closed--closed 1 110 110 sell 1 110 "
+            "2026-07-10T10:04:00+00:00",
+            "2026-07-10 10:04:01,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "GATE_WAIT-2 (PAIR_A#3): ready last 100 - 100 0..1000 pA L! 55 3",
+        )
+    )
+    snapshot = parse_run_log_text(log)
+    reports = build_report_rows(snapshot.lifecycles)
+    regimes = build_parameter_regimes(
+        snapshot.lifecycles,
+        snapshot.latent_attempts,
+        reports,
+    )
+
+    assert [(row.first_attempt, row.last_attempt) for row in regimes] == [(1, 2), (3, 3)]
+    assert regimes[0].attempts == 2
+    assert regimes[0].timeouts == 1
+    assert regimes[0].closed == 1
+    assert regimes[0].outcomes[1].terminal == "roi>=0"
+
+
+def test_inverse_finance_uses_reciprocal_pnl_and_base_currency_fees() -> None:
+    log = "\n".join(
+        (
+            "2026-07-10 10:00:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (INV#1): closed--hooked 1000 90 buy 1000 100 "
+            "2026-07-10T10:00:00+00:00",
+            "2026-07-10 10:05:00,000 MainThread~20 /strategy_runtime.py@1@x/ "
+            "UPDATE (INV#1): closed--closed 1000 90 90 sell 1000 110 "
+            "2026-07-10T10:05:00+00:00",
+        )
+    )
+    route = RuntimeRoute("kraken", "futures", "PI_XBTUSD")
+    instrument = InstrumentSummary(
+        route=route,
+        environment="live",
+        instrument_type="futures_inverse",
+        tick_size=Decimal("0.5"),
+        contract_size=Decimal("1"),
+        min_quantity=Decimal("1"),
+        quantity_step=Decimal("1"),
+    )
+    head = DbFillSummary(
+        "H1",
+        "OH1",
+        "kraken",
+        "live",
+        "futures",
+        "PI_XBTUSD",
+        "buy",
+        1,
+        Decimal("1000"),
+        Decimal("100"),
+        Decimal("0.001"),
+        "BTC",
+        "maker",
+    )
+    tail = DbFillSummary(
+        "T1",
+        "OT1",
+        "kraken",
+        "live",
+        "futures",
+        "PI_XBTUSD",
+        "sell",
+        1,
+        Decimal("1000"),
+        Decimal("110"),
+        Decimal("0.001"),
+        "BTC",
+        "maker",
+    )
+    lifecycle = parse_log_text(log)[PairKey("INV", 1)]
+    lifecycle.head_client_id = "H1"
+    lifecycle.tail_client_id = "T1"
+    rows = build_report_rows(
+        {lifecycle.key: lifecycle},
+        fill_summaries={"H1": head, "T1": tail},
+        instrument_summaries={route: instrument},
+        default_routes=(route,),
+    )
+
+    row = rows[0]
+    expected_native = (Decimal("1") / Decimal("100") - Decimal("1") / Decimal("110")) * Decimal("1000")
+    assert row.pnl_kind == PnlKind.INVERSE
+    assert row.pnl_currency == "BTC"
+    assert row.gross_native == expected_native
+    assert row.fees_usd == Decimal("0.21")
+    assert row.net_usd == expected_native * Decimal("110") - Decimal("0.21")
+    assert row.finance_quality == EvidenceQuality.EXACT
+
+
+def test_html_report_contains_shared_regimes_and_finance_when_enabled(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "sample.log"
+    log_path.write_text(SAMPLE_LOG, encoding="utf-8")
+    report = build_run_report(log_path, log_only=True)
+    rendered = render_html_report(report, show_pair_regimes=True)
+
+    assert "<!doctype html>" in rendered
+    assert "Parameter regimes" in rendered
+    assert 'id="report-data"' in rendered
+    assert "Cumulative net USD equivalent" in rendered
+    assert "https://" not in rendered
+
+
+def test_html_report_hides_pair_regimes_by_default(tmp_path: Path) -> None:
+    log_path = tmp_path / "sample.log"
+    log_path.write_text(SAMPLE_LOG, encoding="utf-8")
+    report = build_run_report(log_path, log_only=True)
+
+    rendered = render_html_report(report)
+
+    assert '<section class="band" hidden><h2>Parameter regimes</h2>' in rendered
+    assert '<section class="band" hidden><h2>Attempt details</h2>' in rendered
+    assert '"regimes":[]' in rendered
+    assert '"attempts":[]' in rendered
 
 
 def test_gate_wait_price_populates_latest_price_snapshot() -> None:
@@ -1301,8 +1601,8 @@ def test_full_report_renders_three_sections_in_log_only_mode(tmp_path: Path) -> 
     assert lines[1].startswith("Run UTC: 2026-06-17 23:05:38 |")
     assert "Command: kolabi-run-report " in lines[1]
     assert lines[2] == "** Overview"
-    assert lines[3].startswith("| Latest prices |")
-    assert lines[5].startswith("| unavailable")
+    assert any(line.startswith("| Latest prices |") for line in lines[:12])
+    assert any(line.startswith("| unavailable") for line in lines[:16])
     assert "\n** Terminated pairs" in table
     assert table.count("Latest prices") == 1
     assert "Side: B/S=1 | Liq: ?/?=1" in table
@@ -1313,6 +1613,20 @@ def test_full_report_renders_three_sections_in_log_only_mode(tmp_path: Path) -> 
     assert "** Latest latent pairs\nNo rows." in table
     assert "*** Sizing diagnostics\nNo rows." in table
     assert "*** Volume by market/pair\nNo rows." in table
+    assert "*** Pair parameter regimes" not in table
+    assert "*** Pair attempt details" not in table
+
+    detailed = build_report_table(
+        log_path,
+        log_only=True,
+        options=ReportOptions(show_pair_regimes=True),
+    )
+    assert detailed.index("** Terminated pairs") < detailed.index(
+        "*** Pair parameter regimes"
+    )
+    assert detailed.index("*** Pair parameter regimes") < detailed.index(
+        "** Living tail-flying pairs"
+    )
 
 
 def test_full_report_name_is_stable_for_same_runtime(tmp_path: Path) -> None:
@@ -1399,6 +1713,56 @@ def test_cli_log_only_writes_stdout(tmp_path: Path) -> None:
         "| 06-17 23:05 | 00:00:01 |     | 06-17 23:05 | 06-17 23:21 | "
         "MM_BUY #4 |"
     ) in out.getvalue()
+    assert "Pair parameter regimes" not in out.getvalue()
+
+
+def test_cli_pair_regimes_flag_shows_regimes_and_details(tmp_path: Path) -> None:
+    log_path = tmp_path / "sample.log"
+    log_path.write_text(
+        "\n".join(
+            (
+                "2026-06-17 23:05:37,000 MainThread~20 "
+                "/strategy_runtime.py@1@x/ GATE_WAIT-2 (MM_BUY#4): "
+                "ready last 0.1667 - 0.1667 0..1000 pA L! 60 3",
+                SAMPLE_LOG,
+            )
+        ),
+        encoding="utf-8",
+    )
+    out = StringIO()
+    err = StringIO()
+
+    result = main(
+        ["--log-only", "--pair-regimes", str(log_path)],
+        stdout=out,
+        stderr=err,
+    )
+
+    assert result == 0
+    assert err.getvalue() == ""
+    assert "*** Pair parameter regimes" in out.getvalue()
+    assert "*** Pair attempt details" in out.getvalue()
+
+
+def test_cli_writes_standalone_html_alongside_org_stdout(tmp_path: Path) -> None:
+    log_path = tmp_path / "sample.log"
+    html_path = tmp_path / "report.html"
+    log_path.write_text(SAMPLE_LOG, encoding="utf-8")
+    out = StringIO()
+    err = StringIO()
+
+    result = main(
+        ["--log-only", str(log_path), "--html-output", str(html_path)],
+        stdout=out,
+        stderr=err,
+    )
+
+    assert result == 0
+    assert err.getvalue() == ""
+    assert out.getvalue().startswith("* <2026-06-17 mer. 23:21> ")
+    rendered = html_path.read_text(encoding="utf-8")
+    assert rendered.startswith("<!doctype html>")
+    assert '<section class="band" hidden><h2>Parameter regimes</h2>' in rendered
 
 
 def test_cli_output_prepends_report_without_erasing_existing_content(tmp_path: Path) -> None:
