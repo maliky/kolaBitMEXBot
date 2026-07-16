@@ -6,6 +6,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Callable, Iterable, Optional, Protocol, TypeVar, cast
 
@@ -23,6 +24,7 @@ from kolabi.bot.exchange_routes import (
 from kolabi.bot.exchange_routes import (
     pair_route as resolve_pair_route,
 )
+from kolabi.bot.ids import generate_run_marker
 from kolabi.bot.indicators import (
     DummyIndicatorClient,
     IndicatorClient,
@@ -84,14 +86,16 @@ from kolabi.shared.core.runtime_types import (
     AmendTailCommand,
     CancelCommand,
     CancelOrderCommandRequest,
-    DragonSong,
     ExchangePort,
+    HeadVisibilityResult,
+    OgunCommand,
     PlaceHeadCommand,
     PlaceOrderCommandRequest,
     PlaceTailCommand,
     PrivateOrderRecord,
     RuntimeCommandKind,
     Symbol,
+    VerifyHeadVisibilityCommand,
 )
 from kolabi.shared.exchanges import get_adapter
 from kolabi.shared.kraken_futures import (
@@ -107,7 +111,9 @@ from kolabi.shared.runtime_state import KrakenRuntimeStateClient, StrategyRuntim
 
 _LOGGER = logging.getLogger("kola")
 _T = TypeVar("_T")
-_KOLABI_ORDER_CLIENT_ID_RE = re.compile(r"^[HT][1-9][0-9]*[A-Za-z]+-\d{12}$")
+_KOLABI_ORDER_CLIENT_ID_RE = re.compile(
+    r"^[HT][1-9][0-9]*[A-Za-z]+-(?:[A-Z0-9]{4}-)?\d{12}$"
+)
 
 
 def _env_scope_key(account_scope: str) -> str:
@@ -457,8 +463,8 @@ class BotConfig:
     tail_verify_poll_seconds: float = 0.5
     tail_visibility_timeout_seconds: float = 30.0
     max_active_pairs: int = 4
-    rest_min_interval_seconds: float = 0.1
-    rest_max_inflight: int = 2
+    rest_min_interval_seconds: float = 0.05
+    rest_max_inflight: int = 3
     rest_audit_retention_minutes: int = DEFAULT_PRUNING.rest_audit.retention_minutes
     rest_audit_retention_limit: int = DEFAULT_PRUNING.rest_audit.retention_limit
     tail_telemetry_retention_minutes: int = (
@@ -477,6 +483,7 @@ class BotService:
     ) -> None:
         self.config = config
         self.logger = setup_logging(config.log_level)
+        self.run_marker = generate_run_marker()
         self.exchange_config: ExchangeConfig | None = None
         self._exchange_config_cache: dict[tuple[str, str, str], ExchangeConfig] = {}
         self.default_exchange = normalise_exchange_name(config.exchange)
@@ -1104,6 +1111,7 @@ class BotService:
             tail_visibility_timeout_seconds=self.config.tail_visibility_timeout_seconds,
             max_active_pairs=self.config.max_active_pairs,
             simulate=simulate,
+            run_marker=self.run_marker,
             instrument_rules_by_route=self._instrument_rules_by_route,
         )
         if dry_run:
@@ -1821,8 +1829,13 @@ class AdapterExchangePort(ExchangePort):
         self.verify_tail_on_place = verify_tail_on_place
 
     async def place_head(self, command: PlaceHeadCommand) -> OrderAck:
-        ack = await self._call_blocking(self._place, command.request)
-        return await self._verify_head_open_order(command.request, ack)
+        _LOGGER.info(
+            "HEAD_REST_LAUNCH (%s): %s %s",
+            command.pair_name,
+            command.request.clOrdID or "-",
+            datetime.now(timezone.utc).isoformat(),
+        )
+        return await self._call_blocking(self._place, command.request)
 
     async def place_tail(self, command: PlaceTailCommand) -> OrderAck:
         ack = await self._call_blocking(self._place, command.request)
@@ -1941,39 +1954,70 @@ class AdapterExchangePort(ExchangePort):
                 )
             await asyncio.sleep(self.verify_poll_seconds)
 
-    async def _verify_head_open_order(
+    async def verify_head_visibility(
         self,
-        request: PlaceOrderCommandRequest,
-        ack: OrderAck,
-    ) -> OrderAck:
+        command: VerifyHeadVisibilityCommand,
+    ) -> HeadVisibilityResult:
+        request = command.request
         if request.stopPx is not None or request.price is None or request.orderQty is None:
-            return ack
+            return HeadVisibilityResult(
+                pair_name=command.pair_name,
+                attempt_index=command.attempt_index,
+                checked_at=datetime.now(timezone.utc),
+                visible=False,
+                client_order_id=request.clOrdID,
+                exchange_order_id=command.exchange_order_id,
+            )
         if not hasattr(self.adapter, "live_open_orders"):
-            return ack
+            return HeadVisibilityResult(
+                pair_name=command.pair_name,
+                attempt_index=command.attempt_index,
+                checked_at=datetime.now(timezone.utc),
+                visible=False,
+                client_order_id=request.clOrdID,
+                exchange_order_id=command.exchange_order_id,
+                error="live_open_orders unavailable",
+            )
         reader = cast(OpenOrderReader, self.adapter)
         try:
             live_orders = await self._call_blocking(reader.live_open_orders)
         except Exception as exc:
-            _LOGGER.warning(
-                "HEAD_OPEN_ENRICH_SKIPPED (%s): clOrdID=%s orderID=%s error=%s",
-                request.pair_name,
-                request.clOrdID or "-",
-                ack.order_id,
-                _compact_admin_error(exc),
+            return HeadVisibilityResult(
+                pair_name=command.pair_name,
+                attempt_index=command.attempt_index,
+                checked_at=datetime.now(timezone.utc),
+                visible=False,
+                client_order_id=request.clOrdID,
+                exchange_order_id=command.exchange_order_id,
+                error=_compact_admin_error(exc),
             )
-            return ack
+        ack = OrderAck(
+            order_id=command.exchange_order_id or "",
+            status="",
+            client_order_id=request.clOrdID,
+        )
         match = _matching_head_open_order(live_orders, request, ack)
         if match is None:
-            return ack
+            return HeadVisibilityResult(
+                pair_name=command.pair_name,
+                attempt_index=command.attempt_index,
+                checked_at=datetime.now(timezone.utc),
+                visible=False,
+                client_order_id=request.clOrdID,
+                exchange_order_id=command.exchange_order_id,
+            )
         order_id = _order_value(match, "order_id", "orderID", "orderId", "id")
         client_id = _order_value(match, "client_order_id", "clOrdID", "cliOrdId", "cli_ord_id")
-        return replace(
-            ack,
-            order_id=order_id or ack.order_id,
-            client_order_id=client_id or ack.client_order_id or request.clOrdID,
+        return HeadVisibilityResult(
+            pair_name=command.pair_name,
+            attempt_index=command.attempt_index,
+            checked_at=datetime.now(timezone.utc),
+            visible=True,
+            exchange_order_id=order_id or command.exchange_order_id,
+            client_order_id=client_id or request.clOrdID,
             status=str(match.get("status") or ack.status),
             price=_decimal_or_none(match.get("price")) or ack.price,
-            orig_qty=_decimal_or_none(match.get("qty")) or ack.orig_qty,
+            quantity=_decimal_or_none(match.get("qty")) or ack.orig_qty,
         )
 
     def _amend_head(self, request: AmendOrderCommandRequest) -> OrderAck:
@@ -2038,7 +2082,7 @@ class SymbolRoutingExchangePort(ExchangePort):
         self.verify_tail_on_place = verify_tail_on_place
         self._ports: dict[ExchangeRoute, AdapterExchangePort] = {}
 
-    def _route(self, command: DragonSong) -> ExchangeRoute:
+    def _route(self, command: OgunCommand) -> ExchangeRoute:
         exchange = normalise_exchange_name(command.exchange or self.exchange)
         market_type = (command.market_type or self.market_type).strip().lower()
         if market_type not in SUPPORTED_MARKET_TYPES:
@@ -2071,7 +2115,7 @@ class SymbolRoutingExchangePort(ExchangePort):
             },
         )
 
-    def _port(self, command: DragonSong) -> AdapterExchangePort:
+    def _port(self, command: OgunCommand) -> AdapterExchangePort:
         route = self._route(command)
         existing = self._ports.get(route)
         if existing is not None:
@@ -2103,6 +2147,12 @@ class SymbolRoutingExchangePort(ExchangePort):
 
     async def cancel(self, command: CancelCommand) -> OrderAck:
         return await self._port(command).cancel(command)
+
+    async def verify_head_visibility(
+        self,
+        command: VerifyHeadVisibilityCommand,
+    ) -> HeadVisibilityResult:
+        return await self._port(command).verify_head_visibility(command)
 
 
 def _matching_tail_trigger_order(

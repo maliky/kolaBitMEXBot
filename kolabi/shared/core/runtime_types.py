@@ -494,6 +494,39 @@ DragonSong = PlaceHeadCommand | PlaceTailCommand | AmendHeadCommand | AmendTailC
 
 
 @dataclass(frozen=True)
+class VerifyHeadVisibilityCommand:
+    """Low-priority REST query used only to enrich head-order visibility."""
+
+    kind: RuntimeCommandKind
+    symbol: Symbol
+    pair_name: str
+    attempt_index: int
+    request: PlaceOrderCommandRequest
+    exchange_order_id: str | None = None
+    exchange: str = ""
+    market_type: str = "futures"
+
+
+@dataclass(frozen=True)
+class HeadVisibilityResult:
+    """One-shot REST visibility evidence; never a pair-lifecycle event."""
+
+    pair_name: str
+    attempt_index: int
+    checked_at: datetime
+    visible: bool
+    client_order_id: str | None = None
+    exchange_order_id: str | None = None
+    status: str | None = None
+    price: PriceLike | None = None
+    quantity: Quantity | None = None
+    error: str | None = None
+
+
+OgunCommand = DragonSong | VerifyHeadVisibilityCommand
+
+
+@dataclass(frozen=True)
 class RuntimeCommand:
     """Legacy permissive command carrier kept only for non-bot transitional code."""
 
@@ -541,3 +574,7 @@ class ExchangePort(Protocol):
     async def amend_head(self, command: AmendHeadCommand) -> OrderAck: ...
     async def amend_tail(self, command: AmendTailCommand) -> OrderAck: ...
     async def cancel(self, command: CancelCommand) -> OrderAck: ...
+    async def verify_head_visibility(
+        self,
+        command: VerifyHeadVisibilityCommand,
+    ) -> HeadVisibilityResult: ...

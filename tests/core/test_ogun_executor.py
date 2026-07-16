@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import pytest
 from kolabi.bot.ogun_executor import OgunExecutor, RestFlightPolicy, RetryPolicy
@@ -13,11 +14,13 @@ from kolabi.shared.core.runtime_types import (
     CancelCommand,
     CancelOrderCommandRequest,
     ExchangePort,
+    HeadVisibilityResult,
     PlaceHeadCommand,
     PlaceOrderCommandRequest,
     PlaceTailCommand,
     RuntimeCommandKind,
     Symbol,
+    VerifyHeadVisibilityCommand,
 )
 
 
@@ -55,6 +58,18 @@ class _FakePort(ExchangePort):
     async def cancel(self, command: CancelCommand) -> OrderAck:
         self.calls.append(_Call("cancel", command.pair_name))
         return OrderAck(order_id="5", status="Canceled")
+
+    async def verify_head_visibility(
+        self,
+        command: VerifyHeadVisibilityCommand,
+    ) -> HeadVisibilityResult:
+        self.calls.append(_Call("verify_head_visibility", command.pair_name))
+        return HeadVisibilityResult(
+            pair_name=command.pair_name,
+            attempt_index=command.attempt_index,
+            checked_at=datetime.now(timezone.utc),
+            visible=False,
+        )
 
 
 def _place_head(pair_name: str = "pair-a") -> PlaceHeadCommand:
@@ -126,6 +141,18 @@ def _cancel(pair_name: str = "pair-a") -> CancelCommand:
     )
 
 
+def _verify(pair_name: str = "pair-a") -> VerifyHeadVisibilityCommand:
+    head = _place_head(pair_name)
+    return VerifyHeadVisibilityCommand(
+        kind=RuntimeCommandKind.VALIDATE,
+        symbol=head.symbol,
+        pair_name=pair_name,
+        attempt_index=1,
+        request=head.request,
+        exchange_order_id=f"OID-{pair_name}",
+    )
+
+
 def test_dispatch_place_head() -> None:
     port = _FakePort()
     executor = OgunExecutor(port)
@@ -160,6 +187,14 @@ def test_dispatch_cancel() -> None:
     executor = OgunExecutor(port)
     asyncio.run(executor.execute(_cancel()))
     assert port.calls[0].name == "cancel"
+
+
+def test_dispatch_head_visibility_query() -> None:
+    port = _FakePort()
+    executor = OgunExecutor(port)
+    result = asyncio.run(executor.verify_head_visibility(_verify()))
+    assert result.visible is False
+    assert port.calls[0].name == "verify_head_visibility"
 
 
 def test_non_place_commands_still_retry_then_succeed() -> None:
@@ -273,12 +308,25 @@ def test_rest_flight_gate_prioritises_safety_commands_after_active_call() -> Non
         async def cancel(self, command: CancelCommand) -> OrderAck:
             return await self._record("cancel", command.pair_name)
 
+        async def verify_head_visibility(
+            self,
+            command: VerifyHeadVisibilityCommand,
+        ) -> HeadVisibilityResult:
+            await self._record("verify", command.pair_name)
+            return HeadVisibilityResult(
+                pair_name=command.pair_name,
+                attempt_index=command.attempt_index,
+                checked_at=datetime.now(timezone.utc),
+                visible=False,
+            )
+
     async def _run() -> list[str]:
         port = _PriorityPort()
         executor = OgunExecutor(port, flight_policy=RestFlightPolicy(max_inflight=1))
         first = asyncio.create_task(executor.execute(_place_head("first")))
         await asyncio.wait_for(port.first_started.wait(), timeout=0.5)
         queued = [
+            asyncio.create_task(executor.verify_head_visibility(_verify("verify"))),
             asyncio.create_task(executor.execute(_place_head("second"))),
             asyncio.create_task(executor.execute(_place_tail("tail"))),
             asyncio.create_task(executor.execute(_cancel("cancel"))),
@@ -293,6 +341,7 @@ def test_rest_flight_gate_prioritises_safety_commands_after_active_call() -> Non
         "cancel:cancel",
         "place_tail:tail",
         "place_head:second",
+        "verify:verify",
     ]
 
 

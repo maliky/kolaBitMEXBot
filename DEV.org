@@ -2,14 +2,17 @@
 #+OPTIONS: toc:2 num:nil
 
 * <2026-07-16 jeu.> Three-second order submission target
-The current REST throttle is =0.1 s= minimum spacing with at most two concurrent operations. Measurements from 497 orders in =logs/krf_ada2.log= show a median =3.15 s= from gate readiness to =/sendorder= acceptance, but =5.60 s= to the current =HEAD_ACK=. The throttle is only part of the delay: gate-ready events wait a median =1.87 s= before =HEAD_SENT=, and =HEAD_ACK= waits another median =2.59 s= for a synchronous open-orders verification after Kraken has accepted the order.
+The previous REST throttle was =0.1 s= minimum spacing with at most two concurrent operations. Measurements from 497 orders in =logs/krf_ada2.log= show a median =3.15 s= from gate readiness to =/sendorder= acceptance, but =5.60 s= to the previous =HEAD_ACK=. The throttle was only part of the delay: gate-ready events waited a median =1.87 s= before =HEAD_SENT=, and =HEAD_ACK= waited another median =2.59 s= for a synchronous open-orders verification after Kraken had accepted the order.
 
-Plan:
-- For the next fresh run, test =--rest-min-interval 0.05= and =--rest-max-inflight 3=. Keep a bounded concurrency limit and monitor API-limit or transport failures.
-- Emit the placement acknowledgement as soon as =/sendorder= succeeds. Move open-order verification to asynchronous enrichment or private-feed confirmation and record a separate verified state.
-- Prioritise gate-ready head submissions in the runtime queue so public-market event fan-out does not delay exchange submission.
-- Add explicit timestamps for gate ready, REST launch, REST acceptance, and private/open-order confirmation; target gate-ready to REST acceptance below =3 s= at the median before tightening the tail latency target.
-- Do not change public indicator sampling from =6 s= to =3 s= until event fan-out is reduced or batched, because doubling public events could increase the gate-to-send queue delay.
+Implemented on the =speedup= branch:
+- The live REST defaults are now =--rest-min-interval 0.05= and =--rest-max-inflight 3=. Cancellation remains highest priority, followed by tail placement/amendment, head amendment, head placement, then the visibility-only query.
+- Every bot service instance creates one four-character uppercase alphanumeric run marker. Generated head and tail client order ids reuse it, for example =H87classy-A1B2-260716102541= and =T87classy-A1B2-260716102542=, so concurrent runs can be distinguished without losing the pair-attempt prefix.
+- Public polling reads each route once per cycle, collects the resulting events, and enqueues =HEAD_HOOKED= before baseline and tail-market fan-out events. Gate observability also reuses one market read per route while retaining the existing signature and five-minute unchanged-status throttle.
+- Head placement returns =HEAD_ACK= immediately after =/sendorder= returns. The synchronous =live_open_orders= lookup is no longer on the placement critical path.
+- If no private head confirmation has arrived after one second, the runtime sends one typed, lowest-priority =live_open_orders= visibility query through Ogun. A visible result can enrich the lease ids, price, and quantity, but it never emits an EggMove, changes pair state, cancels an order, or fails the strategy. A missing result or lookup error is logged once and is otherwise inert.
+- Private order/fill evidence remains authoritative. =HEAD_CONFIRMED= records the first matching private event and suppresses a visibility query that has not launched yet. Removing synchronous verification means =HEAD_ACK= proves that the placement call returned an exchange acknowledgement, not that the order is already visible in the open-order book; operators must use =HEAD_CONFIRMED= for authoritative lifecycle evidence and =HEAD_REST_VISIBLE= only as diagnostic evidence.
+- Timing vocabulary is now =HEAD_GATE_READY= (market event and queue dequeue), =HEAD_REST_LAUNCH= (adapter call launch), =HEAD_ACK= (placement response), =HEAD_REST_VISIBLE= (fallback lookup result), and =HEAD_CONFIRMED= (first private confirmation). The target remains a median below =3 s= from =HEAD_GATE_READY= to =HEAD_ACK=.
+- Public indicator sampling remains =6 s=. It should not be reduced to =3 s= until a fresh run confirms that the prioritised fan-out and faster acknowledgement stay within REST limits.
 
 * <2026-07-16 jeu. 09:15> 08:10 ADA move and percentage/log-bps correspondence
 For the 08:10 move visible in =logs/krf_ada2.log=, the logged =last= endpoints are =0.1626= at 08:10:00 and =0.1611= at 08:10:40.

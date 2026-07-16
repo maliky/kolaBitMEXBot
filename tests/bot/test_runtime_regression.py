@@ -56,6 +56,7 @@ from kolabi.shared.core.runtime_types import (
     PrivateOrderRecord,
     RuntimeCommandKind,
     Symbol,
+    VerifyHeadVisibilityCommand,
 )
 from kolabi.shared.runtime_state import (
     KrakenRuntimeStateClient,
@@ -1431,20 +1432,21 @@ def test_adapter_exchange_port_forwards_execinst_once(monkeypatch) -> None:
     ]
 
 
-def test_adapter_exchange_port_keeps_head_ack_when_open_order_enrichment_fails(
+def test_adapter_exchange_port_returns_head_ack_before_open_order_lookup(
     monkeypatch,
-    caplog,
 ) -> None:
     class FakeAdapter:
         def __init__(self, **kwargs) -> None:
             self.kwargs = kwargs
             self.calls: list[dict[str, object]] = []
+            self.open_order_calls = 0
 
         def place_order(self, side: str, orderQty: object, **params: object) -> OrderAck:
             self.calls.append({"side": side, "orderQty": orderQty, **params})
             return OrderAck(order_id="OID-SPARSE", status="New")
 
         def live_open_orders(self) -> list[dict[str, object]]:
+            self.open_order_calls += 1
             raise TimeoutError("openorders lag")
 
     adapter_holder: dict[str, FakeAdapter] = {}
@@ -1480,12 +1482,50 @@ def test_adapter_exchange_port_keeps_head_ack_when_open_order_enrichment_fails(
         ),
     )
 
-    with caplog.at_level(logging.WARNING, logger="kola"):
-        ack = asyncio.run(port.place_head(command))
+    ack = asyncio.run(port.place_head(command))
 
     assert ack.order_id == "OID-SPARSE"
     assert ack.status == "New"
-    assert "HEAD_OPEN_ENRICH_SKIPPED (pair-a)" in caplog.text
+    assert adapter_holder["adapter"].open_order_calls == 0
+    result = asyncio.run(
+        port.verify_head_visibility(
+            VerifyHeadVisibilityCommand(
+                kind=RuntimeCommandKind.VALIDATE,
+                symbol=command.symbol,
+                pair_name=command.pair_name,
+                attempt_index=1,
+                request=command.request,
+                exchange_order_id=str(ack.order_id),
+            )
+        )
+    )
+    assert result.visible is False
+    assert result.error == "openorders lag"
+    assert adapter_holder["adapter"].open_order_calls == 1
+    adapter_holder["adapter"].live_open_orders = lambda: [
+        {
+            "client_order_id": "CID-1",
+            "order_id": "OID-LIVE",
+            "status": "open",
+            "side": "sell",
+            "qty": "11",
+            "price": "75000",
+        }
+    ]
+    visible = asyncio.run(
+        port.verify_head_visibility(
+            VerifyHeadVisibilityCommand(
+                kind=RuntimeCommandKind.VALIDATE,
+                symbol=command.symbol,
+                pair_name=command.pair_name,
+                attempt_index=1,
+                request=command.request,
+                exchange_order_id=str(ack.order_id),
+            )
+        )
+    )
+    assert visible.visible is True
+    assert visible.exchange_order_id == "OID-LIVE"
     assert adapter_holder["adapter"].calls == [
         {
             "side": "sell",

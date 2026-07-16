@@ -17,6 +17,7 @@ from kolabi.shared.core.runtime_types import (
     PlaceTailCommand,
     RuntimeCommandKind,
     Symbol,
+    VerifyHeadVisibilityCommand,
 )
 
 
@@ -207,7 +208,7 @@ def test_amend_head_keeps_new_price_as_limit_price(monkeypatch) -> None:
     assert _FakeAdapter.last == ("OID-H", {"price": 100.5})
 
 
-def test_place_head_enriches_ack_from_visible_open_order(monkeypatch) -> None:
+def test_head_visibility_query_enriches_sparse_placement_ack(monkeypatch) -> None:
     _HeadAdapter.open_orders = [
         {
             "order_id": "OID-H",
@@ -222,27 +223,41 @@ def test_place_head_enriches_ack_from_visible_open_order(monkeypatch) -> None:
     monkeypatch.setattr("kolabi.bot.service.get_adapter", lambda _exchange: _HeadAdapter)
     port = AdapterExchangePort(exchange="kraken", exchange_config=_config())
 
-    ack = asyncio.run(
-        port.place_head(
-            PlaceHeadCommand(
-                kind=RuntimeCommandKind.PLACE,
-                symbol=Symbol("PI_XBTUSD"),
-                pair_name="pair-a",
-                request=PlaceOrderCommandRequest(
-                    pair_name="pair-a",
-                    side="buy",
-                    ordType="Limit",
-                    orderQty=1.0,
-                    price=100.0,
-                    clOrdID="CID-H",
-                ),
+    command = PlaceHeadCommand(
+        kind=RuntimeCommandKind.PLACE,
+        symbol=Symbol("PI_XBTUSD"),
+        pair_name="pair-a",
+        request=PlaceOrderCommandRequest(
+            pair_name="pair-a",
+            side="buy",
+            ordType="Limit",
+            orderQty=1.0,
+            price=100.0,
+            clOrdID="CID-H",
+        ),
+    )
+    ack = asyncio.run(port.place_head(command))
+
+    assert ack.order_id == ""
+    assert ack.client_order_id is None
+    assert ack.status == "New"
+
+    visible = asyncio.run(
+        port.verify_head_visibility(
+            VerifyHeadVisibilityCommand(
+                kind=RuntimeCommandKind.VALIDATE,
+                symbol=command.symbol,
+                pair_name=command.pair_name,
+                attempt_index=1,
+                request=command.request,
             )
         )
     )
 
-    assert ack.order_id == "OID-H"
-    assert ack.client_order_id == "CID-H"
-    assert ack.status == "open"
+    assert visible.visible is True
+    assert visible.exchange_order_id == "OID-H"
+    assert visible.client_order_id == "CID-H"
+    assert visible.status == "open"
 
 
 def test_place_head_keeps_rest_ack_when_open_order_is_not_visible(monkeypatch) -> None:

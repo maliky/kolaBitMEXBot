@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 
 from kolabi.bot.domain import HeadSpec, OrderPairSpec, TailSpec, TimeWindow
-from kolabi.bot.ids import head_client_order_id, tail_client_order_id
+from kolabi.bot.ids import generate_run_marker, head_client_order_id, tail_client_order_id
 from kolabi.shared.core.runtime_types import Side
 
 
@@ -32,12 +32,14 @@ def test_head_client_order_id_is_readable_and_safe() -> None:
         _pair(),
         attempt_index=2,
         at=datetime(2026, 5, 25, 18, 0, 0, tzinfo=timezone.utc),
+        run_marker="A1B2",
     )
 
     assert value.startswith("H2")
     assert len(value) <= 64
     assert re.fullmatch(r"[A-Za-z0-9-]+", value) is not None
-    assert len(value.split("-")) == 2
+    assert len(value.split("-")) == 3
+    assert value.split("-")[-2] == "A1B2"
     assert value.split("-")[-1] == "260525180000"
 
 
@@ -46,10 +48,16 @@ def test_tail_client_order_id_is_readable_and_safe() -> None:
         _pair(),
         attempt_index=3,
         at=datetime(2026, 5, 25, 18, 0, 0, tzinfo=timezone.utc),
+        run_marker="A1B2",
     )
 
     assert value.startswith("T3")
     assert len(value) <= 64
     assert re.fullmatch(r"[A-Za-z0-9-]+", value) is not None
-    assert len(value.split("-")) == 2
+    assert len(value.split("-")) == 3
+    assert value.split("-")[-2] == "A1B2"
     assert value.split("-")[-1] == "260525180000"
+
+
+def test_run_marker_is_four_uppercase_letters_or_digits() -> None:
+    assert re.fullmatch(r"[A-Z0-9]{4}", generate_run_marker()) is not None

@@ -52,7 +52,7 @@ from kolabi.bot.dragon import (
     tail_submitted_from_ack,
 )
 from kolabi.bot.exchange_routes import ExchangeRoute, pair_route
-from kolabi.bot.ids import head_client_order_id, tail_client_order_id
+from kolabi.bot.ids import generate_run_marker, head_client_order_id, tail_client_order_id
 from kolabi.bot.price_units import signed_logbps_move
 from kolabi.bot.pricing import (
     executable_head_reference_price,
@@ -92,6 +92,7 @@ from kolabi.shared.core.runtime_types import (
     CancelCommand,
     CancelOrderCommandRequest,
     DragonSong,
+    HeadVisibilityResult,
     OrderDict,
     OrderQty,
     PlaceHeadCommand,
@@ -101,6 +102,7 @@ from kolabi.shared.core.runtime_types import (
     PrivateOrderRecord,
     RuntimeCommandKind,
     Symbol,
+    VerifyHeadVisibilityCommand,
     to_decimal,
 )
 
@@ -131,6 +133,11 @@ def _drop_closed_logger_handlers(logger: logging.Logger) -> None:
 
 class CommandExecutor(Protocol):
     async def execute(self, command: DragonSong) -> OrderAck: ...
+
+    async def verify_head_visibility(
+        self,
+        command: VerifyHeadVisibilityCommand,
+    ) -> HeadVisibilityResult: ...
 
 
 class RuntimeEventSource(Protocol):
@@ -389,6 +396,7 @@ class KrakenPublicTriggerSource:
 
     async def pump(self, runtime: RuntimeQueueLike) -> None:
         while runtime.running:
+            pending_events: list[EggMove] = []
             for route in _active_runtime_routes(runtime):
                 market = _fetch_market_state_for_route(self.client, route)
                 snapshot = MarketSnapshotFact(
@@ -439,7 +447,9 @@ class KrakenPublicTriggerSource:
                     if event_id in self._seen_event_ids:
                         continue
                     self._seen_event_ids.add(event_id)
-                    await runtime.enqueue(replace(move, event_id=event_id))
+                    pending_events.append(replace(move, event_id=event_id))
+            for event in sorted(pending_events, key=_public_event_priority):
+                await runtime.enqueue(event)
             if _runtime_sources_should_stop(runtime):
                 return
             await asyncio.sleep(self.poll_seconds)
@@ -856,8 +866,10 @@ class StrategyRuntime:
         market_type: str = "futures",
         account_scope: str = "default",
         tail_visibility_timeout_seconds: float = 30.0,
+        head_visibility_fallback_seconds: float = 1.0,
         max_active_pairs: int = 4,
         simulate: bool = False,
+        run_marker: str | None = None,
         instrument_rules_by_route: Mapping[ExchangeRoute, Mapping[str, object]] | None = None,
     ) -> None:
         self.strategy = strategy
@@ -874,8 +886,13 @@ class StrategyRuntime:
         self.market_type = market_type
         self.account_scope = account_scope
         self.tail_visibility_timeout_seconds = max(0.1, float(tail_visibility_timeout_seconds))
+        self.head_visibility_fallback_seconds = max(
+            0.0,
+            float(head_visibility_fallback_seconds),
+        )
         self.max_active_pairs = max(0, int(max_active_pairs))
         self.simulate = simulate
+        self.run_marker = run_marker or generate_run_marker()
         self.instrument_rules_by_route = dict(instrument_rules_by_route or {})
         launched_at = datetime.now(timezone.utc)
         self.state = StrategyState(
@@ -903,6 +920,8 @@ class StrategyRuntime:
         self._order_leases: dict[_CommandSlot, _OrderLease] = {}
         self._pending_tail_visibility: dict[_CommandSlot, _TailVisibilityWindow] = {}
         self._pending_tail_amends: dict[_CommandSlot, _TailAmendPending] = {}
+        self._head_visibility_tasks: dict[_CommandSlot, asyncio.Task[None]] = {}
+        self._head_private_confirmations: set[_CommandSlot] = set()
         self._last_gate_logs: dict[str, datetime] = {}
         self._last_gate_signatures: dict[str, tuple[str, ...]] = {}
         self._gate_log_interval_seconds = 300.0
@@ -988,11 +1007,18 @@ class StrategyRuntime:
             task.cancel()
         for entry in self._inflight_commands.values():
             entry.task.cancel()
+        for task in self._head_visibility_tasks.values():
+            task.cancel()
         if self._tasks:
             await asyncio.gather(*self._tasks, return_exceptions=True)
         if self._inflight_commands:
             await asyncio.gather(
                 *(entry.task for entry in self._inflight_commands.values()),
+                return_exceptions=True,
+            )
+        if self._head_visibility_tasks:
+            await asyncio.gather(
+                *self._head_visibility_tasks.values(),
                 return_exceptions=True,
             )
         self._tasks.clear()
@@ -1003,6 +1029,8 @@ class StrategyRuntime:
         self._latent_head_deadlines.clear()
         self._pending_tail_visibility.clear()
         self._pending_tail_amends.clear()
+        self._head_visibility_tasks.clear()
+        self._head_private_confirmations.clear()
 
     async def run(self) -> StrategyRunResult:
         await self.start()
@@ -1055,6 +1083,7 @@ class StrategyRuntime:
                     continue
                 if self._should_ignore_stale_runtime_cancel(event):
                     continue
+                self._log_head_gate_ready(event)
                 previous_pairs = dict(self.state.pairs)
                 previous_repeats = dict(self.chronos.pending_repeats)
                 self._record_private_event_for_leases(event)
@@ -1150,8 +1179,138 @@ class StrategyRuntime:
             await self.enqueue(failure)
             return
         self._record_live_ack(prepared, ack)
+        self._schedule_head_visibility_fallback(prepared, ack, slot)
         for followup in self._followup_events(prepared, ack, slot=slot):
             await self.enqueue(followup)
+
+    def _schedule_head_visibility_fallback(
+        self,
+        command: DragonSong,
+        ack: OrderAck,
+        slot: _CommandSlot,
+    ) -> None:
+        if (
+            self.simulate
+            or not isinstance(command, PlaceHeadCommand)
+            or _ack_is_rejected(ack)
+            or command.request.stopPx is not None
+            or command.request.price is None
+            or command.request.orderQty is None
+            or self.executor is None
+        ):
+            return
+        verifier = getattr(self.executor, "verify_head_visibility", None)
+        if not callable(verifier):
+            return
+        task = asyncio.create_task(
+            self._verify_head_visibility_after_delay(command, ack, slot)
+        )
+        self._head_visibility_tasks[slot] = task
+        task.add_done_callback(
+            lambda done, command_slot=slot: self._head_visibility_task_done(
+                command_slot,
+                done,
+            )
+        )
+
+    def _head_visibility_task_done(
+        self,
+        slot: _CommandSlot,
+        task: asyncio.Task[None],
+    ) -> None:
+        if self._head_visibility_tasks.get(slot) is task:
+            self._head_visibility_tasks.pop(slot, None)
+
+    async def _verify_head_visibility_after_delay(
+        self,
+        command: PlaceHeadCommand,
+        ack: OrderAck,
+        slot: _CommandSlot,
+    ) -> None:
+        try:
+            await asyncio.sleep(self.head_visibility_fallback_seconds)
+            if not self._head_visibility_fallback_pending(slot):
+                return
+            verifier = getattr(self.executor, "verify_head_visibility", None)
+            if not callable(verifier):
+                return
+            verify_command = VerifyHeadVisibilityCommand(
+                kind=RuntimeCommandKind.VALIDATE,
+                symbol=command.symbol,
+                pair_name=command.pair_name,
+                attempt_index=slot.attempt_index,
+                request=command.request,
+                exchange_order_id=str(ack.order_id) if ack.order_id else None,
+                exchange=command.exchange,
+                market_type=command.market_type,
+            )
+            result = await verifier(verify_command)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            result = HeadVisibilityResult(
+                pair_name=command.pair_name,
+                attempt_index=slot.attempt_index,
+                checked_at=datetime.now(timezone.utc),
+                visible=False,
+                client_order_id=command.request.clOrdID,
+                exchange_order_id=str(ack.order_id) if ack.order_id else None,
+                error=_compact_error(exc),
+            )
+        if slot in self._head_private_confirmations:
+            return
+        self._record_head_visibility_result(slot, result)
+
+    def _head_visibility_fallback_pending(self, slot: _CommandSlot) -> bool:
+        if slot in self._head_private_confirmations:
+            return False
+        pair_state = self.state.pairs.get(slot.pair_name)
+        if pair_state is None or pair_state.attempt_index != slot.attempt_index:
+            return False
+        lease = self._order_leases.get(slot)
+        if lease is None or lease.status in {_LEASE_CLOSED, _LEASE_CANCEL_REQUESTED}:
+            return False
+        return pair_state.head_state not in {HeadState.CLOSED, HeadState.FAILED}
+
+    def _record_head_visibility_result(
+        self,
+        slot: _CommandSlot,
+        result: HeadVisibilityResult,
+    ) -> None:
+        if result.attempt_index != slot.attempt_index or result.pair_name != slot.pair_name:
+            return
+        lease = self._order_leases.get(slot)
+        if lease is None:
+            return
+        if result.visible:
+            self._order_leases[slot] = replace(
+                lease,
+                client_order_id=result.client_order_id or lease.client_order_id,
+                exchange_order_id=result.exchange_order_id or lease.exchange_order_id,
+                price=_decimal_payload(result.price) or lease.price,
+                quantity=_decimal_payload(result.quantity) or lease.quantity,
+            )
+        status = "visible" if result.visible else "missing"
+        if result.error:
+            status = "error"
+        waited = max(
+            0.0,
+            (_as_utc_aware(result.checked_at) - lease.created_at).total_seconds(),
+        )
+        log = _LOGGER.info if result.visible else _LOGGER.warning
+        log(
+            "HEAD_REST_VISIBLE (%s#%s): %s",
+            slot.pair_name,
+            slot.attempt_index,
+            _runtime_fields(
+                status,
+                result.client_order_id or lease.client_order_id or "-",
+                result.exchange_order_id or lease.exchange_order_id or "-",
+                _as_utc_aware(result.checked_at).isoformat(),
+                f"{waited:.3f}s",
+                result.error or "-",
+            ),
+        )
 
     def _reap_command_tasks(self) -> None:
         done_slots: list[_CommandSlot] = []
@@ -1577,6 +1736,28 @@ class StrategyRuntime:
             self._last_pair_updates[pair_name] = update_signature
             _LOGGER.info(message, *message_args)
 
+    def _log_head_gate_ready(self, move: EggMove) -> None:
+        if move.kind != EggMoveKind.HEAD_HOOKED or move.pair_name is None:
+            return
+        pair_state = self.state.pairs.get(move.pair_name)
+        if pair_state is None:
+            return
+        dequeued_at = datetime.now(timezone.utc)
+        queue_seconds = max(
+            0.0,
+            (dequeued_at - _as_utc_aware(move.occurred_at)).total_seconds(),
+        )
+        _LOGGER.info(
+            "HEAD_GATE_READY (%s#%s): %s",
+            move.pair_name,
+            pair_state.attempt_index,
+            _runtime_fields(
+                _as_utc_aware(move.occurred_at).isoformat(),
+                dequeued_at.isoformat(),
+                f"{queue_seconds:.3f}s",
+            ),
+        )
+
     def _log_runtime_legend_once(self) -> None:
         if self._legend_logged:
             return
@@ -1634,8 +1815,12 @@ class StrategyRuntime:
             ("LATENT_TIMEOUT_ARMED", ("deadline",)),
             ("LATENT_TIMEOUT", ("waited", "reason")),
             ("HEAD_WAIT", ("active_pairs", "max_active_pairs")),
+            ("HEAD_GATE_READY", ("gate_at", "dequeued_at", "queue_wait")),
             ("HEAD_SENT", ("HCID", "side", "type", "qty", "price", "stop")),
-            ("HEAD_ACK", ("HCID", "HOID", "tOut_deadline")),
+            ("HEAD_REST_LAUNCH", ("HCID", "launch_at")),
+            ("HEAD_ACK", ("HCID", "HOID", "tOut_deadline", "ack_at", "REST_wait")),
+            ("HEAD_REST_VISIBLE", ("status", "HCID", "HOID", "checked_at", "waited")),
+            ("HEAD_CONFIRMED", ("status", "HCID", "HOID", "confirmed_at", "waited")),
             ("HEAD_TIMEOUT", ("status", "waited", "HCID", "HOID")),
             ("HEAD_VISIBILITY_TIMEOUT_ARMED", ("HCID", "HOID", "tOut_deadline")),
             ("HEAD_VISIBILITY_TIMEOUT", ("status", "waited", "HCID", "HOID")),
@@ -1666,6 +1851,7 @@ class StrategyRuntime:
         """Log latent head gates so quiet strategies are observable."""
         if self.public_state_reader is None:
             return
+        market_by_route: dict[ExchangeRoute, PublicMarketStateReader | Exception] = {}
         for pair_name, pair_state in self.state.pairs.items():
             if pair_state.head_state != HeadState.LATENT:
                 continue
@@ -1718,7 +1904,19 @@ class StrategyRuntime:
             route = _pair_route(pair_state, self)
             symbol = route.symbol
             try:
-                market = _fetch_market_state_for_route(self.public_state_reader, route)
+                cached_market = market_by_route.get(route)
+                if cached_market is None:
+                    try:
+                        cached_market = _fetch_market_state_for_route(
+                            self.public_state_reader,
+                            route,
+                        )
+                    except Exception as exc:
+                        cached_market = exc
+                    market_by_route[route] = cached_market
+                if isinstance(cached_market, Exception):
+                    raise cached_market
+                market = cached_market
                 source, reference = executable_head_reference_price(pair, market)
             except Exception as exc:
                 _LOGGER.warning(
@@ -1863,6 +2061,22 @@ class StrategyRuntime:
             return
         updated = self._lease_with_private_event(lease, move)
         self._order_leases[slot] = updated
+        if role == "head" and slot not in self._head_private_confirmations:
+            self._head_private_confirmations.add(slot)
+            confirmed_at = _as_utc_aware(move.occurred_at)
+            waited = max(0.0, (confirmed_at - lease.created_at).total_seconds())
+            _LOGGER.info(
+                "HEAD_CONFIRMED (%s#%s): %s",
+                updated.pair_name,
+                updated.attempt_index,
+                _runtime_fields(
+                    updated.status,
+                    updated.client_order_id or "-",
+                    updated.exchange_order_id or "-",
+                    confirmed_at.isoformat(),
+                    f"{waited:.3f}s",
+                ),
+            )
         if lease.status != updated.status:
             log = _LOGGER.info if updated.status == _LEASE_CLOSED else _LOGGER.debug
             log(
@@ -1979,16 +2193,30 @@ class StrategyRuntime:
         next_status = lease.status
         if lease.status == _LEASE_PENDING_PLACE and not _ack_is_rejected(ack):
             next_status = _LEASE_ACKED
+        ack_at = datetime.now(timezone.utc)
         updated = replace(
             lease,
             client_order_id=ack.client_order_id or lease.client_order_id,
             exchange_order_id=str(ack.order_id) if ack.order_id else lease.exchange_order_id,
             status=next_status,
-            last_seen_at=datetime.now(timezone.utc),
+            last_seen_at=ack_at,
         )
         self._order_leases[slot] = updated
         if role == "head" and isinstance(command, PlaceHeadCommand):
             self._arm_head_fill_deadline_from_ack(slot, command, ack, updated)
+            deadline = self._head_fill_deadlines.get(slot)
+            _LOGGER.info(
+                "HEAD_ACK (%s#%s): %s",
+                command.pair_name,
+                slot.attempt_index,
+                _runtime_fields(
+                    updated.client_order_id or "-",
+                    updated.exchange_order_id or "-",
+                    "-" if deadline is None else deadline.deadline_at.isoformat(),
+                    ack_at.isoformat(),
+                    f"{max(0.0, (ack_at - lease.created_at).total_seconds()):.3f}s",
+                ),
+            )
 
     def _arm_head_fill_deadline_from_ack(
         self,
@@ -2017,16 +2245,6 @@ class StrategyRuntime:
             deadline_at=started_at + timedelta(minutes=float(timeout_minutes)),
         )
         self._head_fill_deadlines[slot] = deadline
-        _LOGGER.info(
-            "HEAD_ACK (%s#%s): %s",
-            command.pair_name,
-            slot.attempt_index,
-            _runtime_fields(
-                deadline.client_order_id or "-",
-                deadline.exchange_order_id or "-",
-                deadline.deadline_at.isoformat(),
-            ),
-        )
 
     def _mark_cancel_requested_from_command(self, command: CancelCommand) -> None:
         cancel_id = command.request.clOrdID
@@ -2369,6 +2587,12 @@ class StrategyRuntime:
                 TailState.FAILED,
             }:
                 self._order_leases[slot] = replace(lease, status=_LEASE_CLOSED)
+        self._head_private_confirmations = {
+            slot
+            for slot in self._head_private_confirmations
+            if (pair_state := self.state.pairs.get(slot.pair_name)) is not None
+            and pair_state.attempt_index == slot.attempt_index
+        }
 
     def _prune_live_command_identities(self) -> None:
         stale: list[str] = []
@@ -2525,6 +2749,7 @@ class StrategyRuntime:
                 pair,
                 attempt_index=pair_state.attempt_index,
                 at=datetime.now(timezone.utc),
+                run_marker=self.run_marker,
             )
             request = replace(command.request, clOrdID=clordid)
             legacy_order = dict(command.legacy_order or {})
@@ -2540,6 +2765,7 @@ class StrategyRuntime:
                 pair_state.pair,
                 attempt_index=pair_state.attempt_index,
                 at=datetime.now(timezone.utc),
+                run_marker=self.run_marker,
             )
             request = replace(command.request, clOrdID=clordid)
             legacy_order = dict(command.legacy_order or {})
@@ -3456,6 +3682,14 @@ def _active_runtime_symbols(runtime: RuntimeQueueLike) -> tuple[str, ...]:
     if not symbols:
         return (runtime.symbol,)
     return tuple(sorted(symbols))
+
+
+def _public_event_priority(event: EggMove) -> int:
+    if event.kind == EggMoveKind.HEAD_HOOKED:
+        return 0
+    if event.kind == EggMoveKind.HEAD_TRIGGER_BASELINED:
+        return 1
+    return 2
 
 
 def _fetch_market_state_for_route(

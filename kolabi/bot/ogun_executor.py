@@ -21,8 +21,11 @@ from kolabi.shared.core.runtime_types import (
     CancelCommand,
     DragonSong,
     ExchangePort,
+    HeadVisibilityResult,
+    OgunCommand,
     PlaceHeadCommand,
     PlaceTailCommand,
+    VerifyHeadVisibilityCommand,
 )
 
 _T = TypeVar("_T")
@@ -44,7 +47,7 @@ class RestFlightPolicy:
 class _FlightTicket:
     priority: int
     sequence: int
-    command: DragonSong
+    command: OgunCommand
 
 
 class RestFlightGate:
@@ -64,7 +67,7 @@ class RestFlightGate:
 
     async def fly(
         self,
-        command: DragonSong,
+        command: OgunCommand,
         dispatch: Callable[[], Awaitable[_T]],
     ) -> _T:
         if not self.enabled:
@@ -80,7 +83,7 @@ class RestFlightGate:
     def enabled(self) -> bool:
         return self.policy.min_interval_seconds > 0 or self.policy.max_inflight > 0
 
-    async def _enqueue(self, command: DragonSong) -> _FlightTicket:
+    async def _enqueue(self, command: OgunCommand) -> _FlightTicket:
         async with self._condition:
             self._sequence += 1
             ticket = _FlightTicket(
@@ -162,6 +165,17 @@ class OgunExecutor:
     async def execute(self, command: DragonSong) -> OrderAck:
         return await self.flight_gate.fly(command, lambda: self._execute_with_retries(command))
 
+    async def verify_head_visibility(
+        self,
+        command: VerifyHeadVisibilityCommand,
+    ) -> HeadVisibilityResult:
+        """Run one low-priority visibility query without retrying it."""
+
+        return await self.flight_gate.fly(
+            command,
+            lambda: self.port.verify_head_visibility(command),
+        )
+
     async def _execute_with_retries(self, command: DragonSong) -> OrderAck:
         attempts = self._attempts_for(command)
         delay = max(0.0, self.retry_policy.base_delay_seconds)
@@ -195,7 +209,7 @@ class OgunExecutor:
         raise TypeError(f"Unsupported DragonSong type: {type(command)!r}")
 
 
-def _flight_priority(command: DragonSong) -> int:
+def _flight_priority(command: OgunCommand) -> int:
     if isinstance(command, CancelCommand):
         return 0
     if isinstance(command, (PlaceTailCommand, AmendTailCommand)):
@@ -204,4 +218,6 @@ def _flight_priority(command: DragonSong) -> int:
         return 2
     if isinstance(command, PlaceHeadCommand):
         return 3
+    if isinstance(command, VerifyHeadVisibilityCommand):
+        return 4
     assert_never(command)

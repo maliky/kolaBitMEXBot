@@ -19,6 +19,7 @@ from kolabi.bot.domain import (
     PairCycleState,
     Side,
     StrategySpec,
+    StrategyState,
     TailSpec,
     TailState,
     TimeWindow,
@@ -49,12 +50,14 @@ from kolabi.shared.core.runtime_types import (
     CancelCommand,
     CancelOrderCommandRequest,
     DragonSong,
+    HeadVisibilityResult,
     PlaceHeadCommand,
     PlaceOrderCommandRequest,
     PlaceTailCommand,
     PrivateOrderRecord,
     RuntimeCommandKind,
     Symbol,
+    VerifyHeadVisibilityCommand,
     to_decimal,
 )
 from kolabi.shared.runtime_state import KrakenRuntimeStateClient
@@ -505,6 +508,280 @@ def sample_strategy() -> tuple[OrderPairSpec, ...]:
             amount_type="qApD",
         ),
     )
+
+
+def test_runtime_reuses_four_character_marker_for_head_and_tail_ids() -> None:
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="marked", pairs=sample_strategy()),
+        symbol="PI_XBTUSD",
+        simulate=False,
+        run_marker="A1B2",
+    )
+    head = runtime._prepare_command(
+        PlaceHeadCommand(
+            kind=RuntimeCommandKind.PLACE,
+            symbol=Symbol("PI_XBTUSD"),
+            pair_name="pair-a",
+            request=PlaceOrderCommandRequest(
+                pair_name="pair-a",
+                side="buy",
+                ordType="Limit",
+                orderQty=1,
+                price=100,
+            ),
+        )
+    )
+    tail = runtime._prepare_command(
+        PlaceTailCommand(
+            kind=RuntimeCommandKind.PLACE,
+            symbol=Symbol("PI_XBTUSD"),
+            pair_name="pair-a",
+            request=PlaceOrderCommandRequest(
+                pair_name="pair-a",
+                side="sell",
+                ordType="Stop",
+                orderQty=1,
+                stopPx=99,
+            ),
+        )
+    )
+
+    assert head.request.clOrdID is not None
+    assert tail.request.clOrdID is not None
+    assert "-A1B2-" in head.request.clOrdID
+    assert "-A1B2-" in tail.request.clOrdID
+
+
+def test_head_visibility_fallback_enriches_lease_without_state_transition(caplog) -> None:
+    class Executor:
+        def __init__(self) -> None:
+            self.visibility_calls = 0
+
+        async def execute(self, command: DragonSong) -> OrderAck:
+            raise AssertionError("ordinary execution is not used by this test")
+
+        async def verify_head_visibility(
+            self,
+            command: VerifyHeadVisibilityCommand,
+        ) -> HeadVisibilityResult:
+            self.visibility_calls += 1
+            return HeadVisibilityResult(
+                pair_name=command.pair_name,
+                attempt_index=command.attempt_index,
+                checked_at=datetime.now(timezone.utc),
+                visible=True,
+                client_order_id=command.request.clOrdID,
+                exchange_order_id="OID-REST",
+                status="open",
+                price=Decimal("100"),
+                quantity=Decimal("1"),
+            )
+
+    async def exercise() -> tuple[StrategyRuntime, Executor]:
+        executor = Executor()
+        runtime = StrategyRuntime(
+            strategy=StrategySpec(name="visibility", pairs=sample_strategy()),
+            symbol="PI_XBTUSD",
+            executor=executor,
+            simulate=False,
+            head_visibility_fallback_seconds=0,
+            run_marker="A1B2",
+        )
+        pair_state = runtime.state.pairs["pair-a"]
+        runtime.state = replace(
+            runtime.state,
+            pairs={"pair-a": replace(pair_state, head_state=HeadState.HOOKED)},
+        )
+        runtime.chronos.state = runtime.state
+        command = runtime._prepare_command(
+            PlaceHeadCommand(
+                kind=RuntimeCommandKind.PLACE,
+                symbol=Symbol("PI_XBTUSD"),
+                pair_name="pair-a",
+                request=PlaceOrderCommandRequest(
+                    pair_name="pair-a",
+                    side="buy",
+                    ordType="Limit",
+                    orderQty=1,
+                    price=100,
+                ),
+            )
+        )
+        slot = runtime._command_slot(command)
+        runtime._on_command_dispatched(
+            slot,
+            command,
+            runtime._command_identity_from_command(command),
+        )
+        ack = OrderAck(
+            order_id="OID-ACK",
+            status="New",
+            client_order_id=command.request.clOrdID,
+        )
+        runtime._record_live_ack(command, ack)
+        runtime._schedule_head_visibility_fallback(command, ack, slot)
+        await asyncio.gather(*tuple(runtime._head_visibility_tasks.values()))
+        return runtime, executor
+
+    with caplog.at_level("INFO", logger="kola"):
+        runtime, executor = asyncio.run(exercise())
+
+    assert executor.visibility_calls == 1
+    assert runtime.state.pairs["pair-a"].head_state == HeadState.HOOKED
+    assert runtime._order_leases[_CommandSlot("pair-a", 1, "head")].exchange_order_id == "OID-REST"
+    assert "HEAD_REST_VISIBLE (pair-a#1): visible" in caplog.text
+
+
+def test_private_head_confirmation_suppresses_rest_visibility_fallback(caplog) -> None:
+    class Executor:
+        def __init__(self) -> None:
+            self.visibility_calls = 0
+
+        async def execute(self, command: DragonSong) -> OrderAck:
+            raise AssertionError("ordinary execution is not used by this test")
+
+        async def verify_head_visibility(
+            self,
+            command: VerifyHeadVisibilityCommand,
+        ) -> HeadVisibilityResult:
+            self.visibility_calls += 1
+            raise AssertionError("private confirmation should suppress REST lookup")
+
+    async def exercise() -> Executor:
+        executor = Executor()
+        runtime = StrategyRuntime(
+            strategy=StrategySpec(name="visibility", pairs=sample_strategy()),
+            symbol="PI_XBTUSD",
+            executor=executor,
+            simulate=False,
+            head_visibility_fallback_seconds=0.02,
+            run_marker="A1B2",
+        )
+        pair_state = runtime.state.pairs["pair-a"]
+        runtime.state = replace(
+            runtime.state,
+            pairs={"pair-a": replace(pair_state, head_state=HeadState.HOOKED)},
+        )
+        runtime.chronos.state = runtime.state
+        command = runtime._prepare_command(
+            PlaceHeadCommand(
+                kind=RuntimeCommandKind.PLACE,
+                symbol=Symbol("PI_XBTUSD"),
+                pair_name="pair-a",
+                request=PlaceOrderCommandRequest(
+                    pair_name="pair-a",
+                    side="buy",
+                    ordType="Limit",
+                    orderQty=1,
+                    price=100,
+                ),
+            )
+        )
+        slot = runtime._command_slot(command)
+        runtime._on_command_dispatched(
+            slot,
+            command,
+            runtime._command_identity_from_command(command),
+        )
+        ack = OrderAck(
+            order_id="OID-ACK",
+            status="New",
+            client_order_id=command.request.clOrdID,
+        )
+        runtime._record_live_ack(command, ack)
+        runtime._schedule_head_visibility_fallback(command, ack, slot)
+        runtime._record_private_event_for_leases(
+            EggMove(
+                kind=EggMoveKind.NOT_PLAYED_NOR_CANCELED,
+                occurred_at=datetime.now(timezone.utc),
+                symbol="PI_XBTUSD",
+                pair_name="pair-a",
+                role=OrderRole.HEAD,
+                reply={
+                    "clOrdID": command.request.clOrdID,
+                    "orderID": "OID-ACK",
+                    "ordStatus": "open",
+                    "side": "buy",
+                    "orderQty": 1,
+                    "price": 100,
+                },
+                is_private=True,
+            )
+        )
+        await asyncio.gather(*tuple(runtime._head_visibility_tasks.values()))
+        return executor
+
+    with caplog.at_level("INFO", logger="kola"):
+        executor = asyncio.run(exercise())
+
+    assert executor.visibility_calls == 0
+    assert "HEAD_CONFIRMED (pair-a#1):" in caplog.text
+    assert "HEAD_REST_VISIBLE (pair-a#1):" not in caplog.text
+
+
+def test_head_visibility_fallback_error_is_inert(caplog) -> None:
+    class Executor:
+        async def execute(self, command: DragonSong) -> OrderAck:
+            raise AssertionError("ordinary execution is not used by this test")
+
+        async def verify_head_visibility(
+            self,
+            command: VerifyHeadVisibilityCommand,
+        ) -> HeadVisibilityResult:
+            raise TimeoutError("openorders delayed")
+
+    async def exercise() -> StrategyRuntime:
+        runtime = StrategyRuntime(
+            strategy=StrategySpec(name="visibility", pairs=sample_strategy()),
+            symbol="PI_XBTUSD",
+            executor=Executor(),
+            simulate=False,
+            head_visibility_fallback_seconds=0,
+            run_marker="A1B2",
+        )
+        pair_state = runtime.state.pairs["pair-a"]
+        runtime.state = replace(
+            runtime.state,
+            pairs={"pair-a": replace(pair_state, head_state=HeadState.HOOKED)},
+        )
+        runtime.chronos.state = runtime.state
+        command = runtime._prepare_command(
+            PlaceHeadCommand(
+                kind=RuntimeCommandKind.PLACE,
+                symbol=Symbol("PI_XBTUSD"),
+                pair_name="pair-a",
+                request=PlaceOrderCommandRequest(
+                    pair_name="pair-a",
+                    side="buy",
+                    ordType="Limit",
+                    orderQty=1,
+                    price=100,
+                ),
+            )
+        )
+        slot = runtime._command_slot(command)
+        runtime._on_command_dispatched(
+            slot,
+            command,
+            runtime._command_identity_from_command(command),
+        )
+        ack = OrderAck(
+            order_id="OID-ACK",
+            status="New",
+            client_order_id=command.request.clOrdID,
+        )
+        runtime._record_live_ack(command, ack)
+        runtime._schedule_head_visibility_fallback(command, ack, slot)
+        await asyncio.gather(*tuple(runtime._head_visibility_tasks.values()))
+        return runtime
+
+    with caplog.at_level("WARNING", logger="kola"):
+        runtime = asyncio.run(exercise())
+
+    assert runtime.state.pairs["pair-a"].head_state == HeadState.HOOKED
+    assert runtime._order_leases[_CommandSlot("pair-a", 1, "head")].status == "ACKED"
+    assert "HEAD_REST_VISIBLE (pair-a#1): error" in caplog.text
+    assert "openorders delayed" in caplog.text
 
 
 def test_plan_strategy_once_uses_the_chronos_path() -> None:
@@ -1746,6 +2023,40 @@ def test_gate_wait_logs_unchanged_status_every_five_minutes(caplog) -> None:
     assert "src=" not in gate_waits[0]
 
 
+def test_gate_wait_reuses_one_market_read_for_pairs_on_same_route() -> None:
+    class Market:
+        best_bid = 99.5
+        best_ask = 100.0
+        mid_price = 99.75
+        last_price = 100.0
+        mark_price = None
+        index_price = None
+        tick_size = 0.5
+        recorded_at = "shared-gate"
+
+    class Reader:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def fetch_market_state(self, symbol=None):
+            self.calls += 1
+            return Market()
+
+    reader = Reader()
+    first = replace(sample_strategy()[0], name="pair-a")
+    second = replace(sample_strategy()[0], name="pair-b")
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(name="shared-gate", pairs=(first, second)),
+        symbol="PI_XBTUSD",
+        public_state_reader=reader,
+        simulate=False,
+    )
+
+    runtime._log_gate_waits(runtime.state.launched_at + timedelta(seconds=1))
+
+    assert reader.calls == 1
+
+
 def test_ready_repeat_logs_deadline_and_gate_before_dispatch(caplog) -> None:
     class Market:
         best_bid = Decimal("99.5")
@@ -2803,6 +3114,85 @@ def test_public_polling_emits_market_ticks_for_living_tails() -> None:
     assert runtime.events[0].kind == EggMoveKind.MARKET_TICK
     assert runtime.events[0].reply is not None
     assert runtime.events[0].reply["reference_price"] == 102.0
+
+
+def test_public_polling_enqueues_ready_heads_before_tail_market_fanout() -> None:
+    class Market:
+        best_bid = 100.0
+        best_ask = 100.5
+        mid_price = 100.25
+        last_price = 100.0
+        mark_price = None
+        index_price = None
+        tick_size = 0.5
+        spread = 0.5
+        recorded_at = "shared-poll"
+
+    class Client:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def fetch_market_state(self, symbol=None):
+            self.calls += 1
+            return Market()
+
+    class Runtime:
+        symbol = "PI_XBTUSD"
+        exchange = "kraken"
+        market_type = "futures"
+        running = True
+
+        def __init__(self) -> None:
+            tail_pair = replace(sample_strategy()[0], name="tail-first")
+            ready_pair = replace(sample_strategy()[0], name="ready-second")
+            launched_at = datetime.now(timezone.utc)
+            self.state = StrategyState(
+                launched_at=launched_at,
+                strategy_id="priority",
+                pairs={
+                    "tail-first": PairCycleState(
+                        pair=tail_pair,
+                        head_state=HeadState.LIVING,
+                        tail_state=TailState.LIVING,
+                        tail_trail=initial_tail_trail(
+                            tail_pair,
+                            Decimal("100"),
+                            launched_at,
+                        ),
+                    ),
+                    "ready-second": PairCycleState(pair=ready_pair),
+                },
+            )
+            self.events: list[EggMove] = []
+
+        @property
+        def all_pairs_terminal(self) -> bool:
+            return len(self.events) >= 2
+
+        @property
+        def should_keep_sources_alive(self) -> bool:
+            return False
+
+        async def enqueue(self, event: EggMove) -> None:
+            self.events.append(event)
+
+        def pair_state_for_record(
+            self,
+            record: object,
+        ) -> tuple[PairCycleState, OrderRole] | None:
+            return None
+
+    client = Client()
+    runtime = Runtime()
+    source = KrakenPublicTriggerSource(client, poll_seconds=0.0)
+
+    asyncio.run(source.pump(runtime))
+
+    assert [event.kind for event in runtime.events] == [
+        EggMoveKind.HEAD_HOOKED,
+        EggMoveKind.MARKET_TICK,
+    ]
+    assert client.calls == 1
 
 
 def test_public_polling_does_not_deduplicate_changed_tail_reference() -> None:
