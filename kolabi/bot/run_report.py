@@ -3551,7 +3551,7 @@ def _parse_gate_wait(
         attempt.timeout_minutes = _field_decimal(fields[9])
         attempt.parameters_observed = True
     elif event == "GATE_WAIT-1" and len(fields) >= 5:
-        attempt.gate = fields[0]
+        attempt.gate = f"{fields[0]} {fields[1]}"
         attempt.order_type = fields[2]
         attempt.head_price_spec = _field_decimal(fields[3])
         attempt.timeout_minutes = _field_decimal(fields[4])

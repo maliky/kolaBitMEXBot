@@ -34,6 +34,24 @@ Important runtime semantics:
 - Tail stops are grounded on private fill/order evidence, not on a guessed public price.
 - Tail updates are no-widen by design: the pure reducer should not emit a tail amend that worsens the protected stop.
 
+* Hook Dependencies
+
+The optional =hook= cell belongs to the dependent pair. A blank hook has no dependency. Existing single-target hooks remain valid: =BASE-tail-closed= waits for a successful close of =BASE=, =BASE-head-filled= waits for its played head, and the legacy bare form =BASE= also means =BASE-tail-closed=.
+
+Use =all(...)= when every listed lifecycle event must occur before the dependent pair can proceed, or =any(...)= when one listed event is sufficient. Targets are comma-separated and expressions cannot be nested:
+
+#+begin_example
+| name    | hook                                    |
+|---------+-----------------------------------------|
+| CHILD_A | BASE-tail-closed                        |
+| CHILD_B | all(BASE-head-filled,HEDGE-tail-closed) |
+| CHILD_C | any(BASE-tail-closed,HEDGE-tail-closed) |
+#+end_example
+
+Fan-out needs no special syntax: several dependent rows may use the same =BASE-tail-closed= target. Fan-in is expressed on one dependent row with =all(...)= or =any(...)=. For repeated pairs, dependency evidence is fresh per downstream attempt: ALL requires every target again, while ANY requires one new target. Events before the attempt was armed or outside the dependent pair's =tps_run= window do not count.
+
+Dependency expressions are compiled before runtime startup. Missing pairs, self-links, duplicate targets, malformed expressions, and dependency cycles fail preflight before feeds or exchange execution start. Pair names and lifecycle suffixes are case-sensitive; the =all= and =any= keywords are case-insensitive.
+
 * Price, Quantity, And Tail Units
 
 The active Org strategy grammar puts the type prefix on each non-empty value:

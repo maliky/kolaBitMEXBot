@@ -1,5 +1,8 @@
 # Org strategy table. File extension is kept for existing commands.
 # Optional rFunc column: append it to name a pure Python repeat adjustment from ignored orders/rfunc.py, or KOLABI_STRATEGY_RFUNC; leave blank for fixed repeats.
+# A source can fan out by being named in several dependent hook cells.
+# A dependent can fan in with all(NAME-head-filled,NAME-tail-closed) or any(...).
+# Every target must name another row in this table; dependency cycles fail startup.
 | exchg | symbol | name | tps_run | essais | tOut | pause | cool | side | oType | hDelta | qty | tType | tDelta | pGate | hPrice | tPrice | tUblk | wUblk | hook |
 |---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---|
 | BTX | XBTUSD | XBTC_SEL | 0 1440 | 1 | 6 |  |  | sell | L |  | A1 | S- |  | D- + | D6 | D20 |  |  |  |

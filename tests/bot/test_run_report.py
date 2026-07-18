@@ -1273,8 +1273,11 @@ def test_latest_latent_rows_exclude_failed_latest_attempts() -> None:
     table = render_latent_table(rows)
 
     assert "Ref" not in table.splitlines()[0]
-    assert "UP_BUY2" not in table
-    assert "| 06-18 19:00 | RB_SEL #1 | chain_wait | chain_wait |" in table
+    assert "| UP_BUY2 #213 |" not in table
+    assert (
+        "| 06-18 19:00 | RB_SEL #1 | chain_wait | "
+        "chain_wait UP_BUY2-tail-closed |"
+    ) in table
 
 
 def test_gate_wait_parses_tout_and_hprice_from_current_log_shape() -> None:
@@ -1298,6 +1301,7 @@ def test_gate_wait_parses_tout_and_hprice_from_current_log_shape() -> None:
     assert waiting.order_type == "SL!"
     assert waiting.head_price_spec == Decimal("1.40")
     assert waiting.timeout_minutes == Decimal("6.0")
+    assert waiting.gate == "chain_wait PAIR_A-tail-closed"
     latent_rows = build_latent_rows(
         parse_run_log_text(log).lifecycles,
         attempts,
@@ -1306,6 +1310,18 @@ def test_gate_wait_parses_tout_and_hprice_from_current_log_shape() -> None:
         PairKey("PAIR_A", 1): Decimal("60.00"),
         PairKey("PAIR_B", 1): Decimal("1.40"),
     }
+
+
+def test_gate_wait_preserves_multi_dependency_progress() -> None:
+    log = (
+        "2026-07-10 10:00:01,000 MainThread~20 /strategy_runtime.py@1@x/ "
+        "GATE_WAIT-1 (PAIR_C#1): chain_wait "
+        "all:1/2:pending=PAIR_B-tail-closed L! 1.40 6.0"
+    )
+
+    waiting = parse_run_log_text(log).latent_attempts[PairKey("PAIR_C", 1)]
+
+    assert waiting.gate == "chain_wait all:1/2:pending=PAIR_B-tail-closed"
 
 
 def test_pair_evolution_rows_show_initial_changes_and_same_attempt_results() -> None:
