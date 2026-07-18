@@ -15,11 +15,19 @@ from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from typing import Iterable
 
+from kolabi.bot.dependencies import (
+    DependencyGraph,
+    compile_dependency_graph,
+    dependency_satisfied,
+    parse_hook_expression,
+)
 from kolabi.bot.domain import (
-    ChainDependencyToken,
     EggMove,
     EggMoveKind,
     HeadState,
+    HookEvidence,
+    HookTarget,
+    HookTargetKind,
     OrderPairSpec,
     OrderRole,
     PairCycleState,
@@ -63,22 +71,12 @@ class PendingRepeat:
     terminal_event: EggMove | None = None
 
 
-class HookTargetKind(StrEnum):
-    HEAD_FILLED = "head_filled"
-    PAIR_CLOSED = "pair_closed"
-
-
-@dataclass(frozen=True)
-class HookTarget:
-    origin_pair_name: str
-    kind: HookTargetKind
-
-
 @dataclass
 class Chronos:
     """Supervise typed strategy events and forward typed runtime commands."""
 
     state: StrategyState
+    dependency_graph: DependencyGraph | None = None
     pending_timeout: timedelta = timedelta(seconds=30)
     notices: list[ChronosNotice] = field(default_factory=list)
     pending: dict[str, PendingEggMove] = field(default_factory=dict)
@@ -86,6 +84,12 @@ class Chronos:
     _seen_event_keys: set[tuple[str, str]] = field(default_factory=set)
     _seen_fallback_keys: set[tuple[str, str, int]] = field(default_factory=set)
     _seen_command_keys: set[tuple[str, str, str | None]] = field(default_factory=set)
+
+    def __post_init__(self) -> None:
+        if self.dependency_graph is None:
+            self.dependency_graph = compile_dependency_graph(
+                pair_state.pair for pair_state in self.state.pairs.values()
+            )
 
     def process_events(
         self,
@@ -221,6 +225,7 @@ class Chronos:
                     next_attempt=pending.next_attempt,
                     next_pair=pending.next_pair,
                     terminal_event=pending.terminal_event,
+                    activated_at=current_time,
                 )
             )
         return self._dedupe_commands(emitted)
@@ -285,7 +290,7 @@ class Chronos:
         return tuple(per_pair.values())
 
     def _activate_dependent_pairs(self, event: EggMove) -> tuple[DragonSong, ...]:
-        """Release dependent pairs after a fresh matching origin event."""
+        """Collect fresh dependency evidence from one private origin event."""
         origin_pair = resolve_pair_name(self.state, event) or event.pair_name
         if origin_pair is None:
             return ()
@@ -294,33 +299,46 @@ class Chronos:
         origin_state = self.state.pairs.get(origin_pair)
         if origin_state is None:
             return ()
+        dependency_graph = self.dependency_graph
+        if dependency_graph is None:
+            return ()
         replacements: dict[str, PairCycleState] = {}
-        for pair_name, pair_state in self.state.pairs.items():
-            if pair_name == origin_pair:
-                continue
-            if pair_state.head_state != HeadState.LATENT:
-                continue
-            if pair_state.dependency_token is not None:
-                continue
-            target = parse_hook_target(pair_state.pair.hook_name)
-            if target is None or target.origin_pair_name != origin_pair:
-                continue
+        for kind in HookTargetKind:
+            target = HookTarget(origin_pair_name=origin_pair, kind=kind)
             if not hook_target_satisfied(target, event, origin_state):
                 continue
-            if not pair_window_is_open(
-                pair_state.pair,
-                launched_at=self.state.launched_at,
-                now=event.occurred_at,
-            ):
-                continue
-            replacements[pair_name] = replace(
-                pair_state,
-                dependency_token=ChainDependencyToken(
-                    origin_pair_name=origin_pair,
-                    origin_attempt_index=origin_state.attempt_index,
-                    closed_at=event.occurred_at,
-                ),
-            )
+            for pair_name in dependency_graph.dependents_by_target.get(target, ()):
+                pair_state = replacements.get(pair_name, self.state.pairs[pair_name])
+                expression = dependency_graph.by_dependent[pair_name]
+                if pair_state.head_state != HeadState.LATENT:
+                    continue
+                if dependency_satisfied(expression, pair_state.dependency_evidence):
+                    continue
+                armed_at = pair_state.dependency_armed_at or self.state.launched_at
+                if event.occurred_at < armed_at:
+                    continue
+                if not pair_window_is_open(
+                    pair_state.pair,
+                    launched_at=self.state.launched_at,
+                    now=event.occurred_at,
+                ):
+                    continue
+                if any(
+                    evidence.target == target
+                    for evidence in pair_state.dependency_evidence
+                ):
+                    continue
+                replacements[pair_name] = replace(
+                    pair_state,
+                    dependency_evidence=(
+                        *pair_state.dependency_evidence,
+                        HookEvidence(
+                            target=target,
+                            origin_attempt_index=origin_state.attempt_index,
+                            satisfied_at=event.occurred_at,
+                        ),
+                    ),
+                )
         if replacements:
             self.state = replace(
                 self.state,
@@ -372,6 +390,7 @@ class Chronos:
             next_attempt=next_attempt,
             next_pair=next_pair,
             terminal_event=event,
+            activated_at=current_time,
         )
         return ()
 
@@ -382,6 +401,7 @@ class Chronos:
         next_attempt: int,
         next_pair: OrderPairSpec | None = None,
         terminal_event: EggMove | None = None,
+        activated_at: datetime,
     ) -> tuple[DragonSong, ...]:
         pair_state = self.state.pairs.get(pair_name)
         if pair_state is None:
@@ -409,7 +429,8 @@ class Chronos:
             head_order_price=None,
             head_order_stop_price=None,
             head_order_quantity=None,
-            dependency_token=None,
+            dependency_armed_at=activated_at,
+            dependency_evidence=(),
             played_quantity=None,
             latest_commands=None,
             last_processed_private_event_id=None,
@@ -588,28 +609,12 @@ def _tail_fill_closed_repeat_event(pair_state: PairCycleState, event: EggMove) -
 
 
 def pair_dependency_satisfied(state: StrategyState, pair_state: PairCycleState) -> bool:
-    """Return true when a pair has no hook or has consumed a fresh close token."""
-    hook_name = (pair_state.pair.hook_name or "").strip()
-    if not hook_name:
+    """Return true when a pair has no hook or its expression is satisfied."""
+    expression = parse_hook_expression(pair_state.pair.hook_name)
+    if expression is None:
         return True
     del state
-    return pair_state.dependency_token is not None
-
-
-def parse_hook_target(raw: str | None) -> HookTarget | None:
-    """Parse one strategy hook dependency into a typed activation target."""
-
-    hook_name = (raw or "").strip()
-    if not hook_name:
-        return None
-    if hook_name.endswith("-head-filled"):
-        origin_name = hook_name[: -len("-head-filled")]
-        return None if not origin_name else HookTarget(origin_name, HookTargetKind.HEAD_FILLED)
-    for suffix in ("-tail-closed", "-closed"):
-        if hook_name.endswith(suffix):
-            origin_name = hook_name[: -len(suffix)]
-            return None if not origin_name else HookTarget(origin_name, HookTargetKind.PAIR_CLOSED)
-    return HookTarget(hook_name, HookTargetKind.PAIR_CLOSED)
+    return dependency_satisfied(expression, pair_state.dependency_evidence)
 
 
 def hook_target_satisfied(

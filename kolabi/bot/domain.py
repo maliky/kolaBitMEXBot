@@ -72,6 +72,20 @@ class PairIntentKind(StrEnum):
     AMEND_TAIL = "amend_tail"
 
 
+class HookMode(StrEnum):
+    """Boolean mode used by a strategy pair dependency expression."""
+
+    ALL = "all"
+    ANY = "any"
+
+
+class HookTargetKind(StrEnum):
+    """Lifecycle conditions that can release a dependent pair."""
+
+    HEAD_FILLED = "head_filled"
+    PAIR_CLOSED = "pair_closed"
+
+
 class OrderMove(StrEnum):
     """Canonical transition vocabulary for lifecycle events."""
 
@@ -292,12 +306,28 @@ class TailTrailState:
 
 
 @dataclass(frozen=True)
-class ChainDependencyToken:
-    """Fresh origin-close edge consumed by one chained pair attempt."""
+class HookTarget:
+    """One upstream pair lifecycle condition."""
 
     origin_pair_name: str
+    kind: HookTargetKind
+
+
+@dataclass(frozen=True)
+class HookExpression:
+    """Typed ALL/ANY dependency expression declared by a strategy pair."""
+
+    mode: HookMode
+    targets: tuple[HookTarget, ...]
+
+
+@dataclass(frozen=True)
+class HookEvidence:
+    """Fresh evidence collected for one downstream pair attempt."""
+
+    target: HookTarget
     origin_attempt_index: int
-    closed_at: datetime
+    satisfied_at: datetime
 
 
 @dataclass(frozen=True)
@@ -315,7 +345,8 @@ class PairCycleState:
     head_order_price: Decimal | None = None
     head_order_stop_price: Decimal | None = None
     head_order_quantity: Decimal | None = None
-    dependency_token: ChainDependencyToken | None = None
+    dependency_armed_at: datetime | None = None
+    dependency_evidence: tuple[HookEvidence, ...] = ()
     played_quantity: Decimal | None = None
     latest_commands: Mapping[str, tuple[str, ...]] | None = None
     pair_id: str | None = None

@@ -8,11 +8,13 @@ from typing import Any, cast
 
 from kolabi.bot.chronos import PendingRepeat
 from kolabi.bot.domain import (
-    ChainDependencyToken,
     EggMove,
     EggMoveKind,
     HeadSpec,
     HeadState,
+    HookEvidence,
+    HookTarget,
+    HookTargetKind,
     OrderIdentity,
     OrderPairSpec,
     OrderRole,
@@ -62,6 +64,18 @@ from kolabi.shared.core.runtime_types import (
 )
 from kolabi.shared.runtime_state import KrakenRuntimeStateClient
 from kolabi.tree.account import AccountStateStore, AccountStreamConfig
+
+
+def _close_evidence(
+    origin_pair_name: str,
+    origin_attempt_index: int,
+    satisfied_at: datetime,
+) -> HookEvidence:
+    return HookEvidence(
+        target=HookTarget(origin_pair_name, HookTargetKind.PAIR_CLOSED),
+        origin_attempt_index=origin_attempt_index,
+        satisfied_at=satisfied_at,
+    )
 
 
 class _RecordingLiveExecutor:
@@ -1959,10 +1973,12 @@ def test_chained_latent_head_timeout_waits_for_dependency_before_clock_starts() 
 
     chained_ready = replace(
         runtime.state.pairs["chained"],
-        dependency_token=ChainDependencyToken(
-            origin_pair_name="origin",
-            origin_attempt_index=1,
-            closed_at=first_check,
+        dependency_evidence=(
+            _close_evidence(
+                "origin",
+                1,
+                first_check,
+            ),
         ),
     )
     runtime.state = replace(
@@ -1977,6 +1993,70 @@ def test_chained_latent_head_timeout_waits_for_dependency_before_clock_starts() 
     deadline = runtime._latent_head_deadlines[("chained", 1)]
     assert deadline.started_at == dependency_ready_at
     assert deadline.deadline_at == dependency_ready_at + timedelta(minutes=0.001)
+
+
+def test_chain_ready_log_waits_for_complete_all_expression(caplog) -> None:
+    origin_a = replace(sample_strategy()[0], name="origin-a")
+    origin_b = replace(sample_strategy()[0], name="origin-b")
+    chained = replace(
+        sample_strategy()[0],
+        name="chained",
+        hook_name="all(origin-a-tail-closed,origin-b-tail-closed)",
+    )
+    runtime = StrategyRuntime(
+        strategy=StrategySpec(
+            name="all-chain-log",
+            pairs=(origin_a, origin_b, chained),
+        ),
+        symbol="PI_XBTUSD",
+        simulate=False,
+    )
+    dependency_graph = runtime.chronos.dependency_graph
+    assert dependency_graph is not None
+    expression = dependency_graph.by_dependent["chained"]
+    first_at = runtime.state.launched_at + timedelta(minutes=1)
+    second_at = runtime.state.launched_at + timedelta(minutes=2)
+    initial_pairs = runtime.state.pairs
+    partial = replace(
+        initial_pairs["chained"],
+        dependency_evidence=(
+            HookEvidence(
+                target=expression.targets[0],
+                origin_attempt_index=1,
+                satisfied_at=first_at,
+            ),
+        ),
+    )
+    runtime.state = replace(
+        runtime.state,
+        pairs={**initial_pairs, "chained": partial},
+    )
+
+    runtime._log_chain_releases(initial_pairs)
+
+    assert "CHAIN_READY (chained#1)" not in caplog.text
+
+    partial_pairs = runtime.state.pairs
+    ready = replace(
+        partial,
+        dependency_evidence=(
+            *partial.dependency_evidence,
+            HookEvidence(
+                target=expression.targets[1],
+                origin_attempt_index=1,
+                satisfied_at=second_at,
+            ),
+        ),
+    )
+    runtime.state = replace(
+        runtime.state,
+        pairs={**partial_pairs, "chained": ready},
+    )
+
+    with caplog.at_level("INFO"):
+        runtime._log_chain_releases(partial_pairs)
+
+    assert "CHAIN_READY (chained#1): all:" in caplog.text
     assert runtime.event_queue.empty()
 
 
@@ -3673,10 +3753,12 @@ def test_public_polling_waits_for_bare_hook_dependency_before_baseline() -> None
             ),
             "repS-lk": replace(
                 runtime.state.pairs["repS-lk"],
-                dependency_token=ChainDependencyToken(
-                    origin_pair_name="repS",
-                    origin_attempt_index=1,
-                    closed_at=datetime.now(timezone.utc),
+                dependency_evidence=(
+                    _close_evidence(
+                        "repS",
+                        1,
+                        datetime.now(timezone.utc),
+                    ),
                 ),
             ),
         },
@@ -3736,7 +3818,7 @@ def test_public_polling_hooks_cross_exchange_chained_child_on_child_route() -> N
             is_private=True,
         )
     )
-    assert runtime.chronos.state.pairs["binance-child"].dependency_token is not None
+    assert runtime.chronos.state.pairs["binance-child"].dependency_evidence
 
     class Market:
         best_bid = 100.0

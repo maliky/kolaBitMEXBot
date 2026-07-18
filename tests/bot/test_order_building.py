@@ -199,7 +199,7 @@ def test_post_only_zero_distance_limit_tail_materialises_marketable_price(
                 "qty": "A3",
                 "tPrice": "D0",
                 "pGate": "D- +",
-                "hook": "PARENT-tail-closed",
+                "hook": "",
                 "exchg": "BINS",
             },
         )

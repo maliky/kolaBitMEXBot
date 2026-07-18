@@ -12,11 +12,13 @@ from kolabi.bot.chronos import (
     pair_dependency_satisfied,
 )
 from kolabi.bot.domain import (
-    ChainDependencyToken,
     EggMove,
     EggMoveKind,
     HeadSpec,
     HeadState,
+    HookEvidence,
+    HookTarget,
+    HookTargetKind,
     OrderIdentity,
     OrderPairSpec,
     OrderRole,
@@ -84,6 +86,18 @@ def sample_state() -> StrategyState:
             "pair-b": submitted_b,
             "pair-c": PairCycleState(pair=sample_pair("pair-c")),
         },
+    )
+
+
+def close_evidence(
+    origin_pair_name: str,
+    origin_attempt_index: int,
+    satisfied_at: datetime,
+) -> HookEvidence:
+    return HookEvidence(
+        target=HookTarget(origin_pair_name, HookTargetKind.PAIR_CLOSED),
+        origin_attempt_index=origin_attempt_index,
+        satisfied_at=satisfied_at,
     )
 
 
@@ -481,6 +495,331 @@ def test_head_filled_hook_ignores_tail_close_event() -> None:
     assert pair_dependency_satisfied(chronos.state, chronos.state.pairs["pair-y"]) is False
 
 
+def test_all_hook_waits_for_fresh_evidence_from_every_target() -> None:
+    launched_at = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+    dependent = replace(
+        sample_pair("dependent"),
+        hook_name="all(origin-a-tail-closed, origin-b-tail-closed)",
+    )
+    state = StrategyState(
+        launched_at=launched_at,
+        strategy_id="strategy-all-chain",
+        pairs={
+            "origin-a": PairCycleState(
+                pair=sample_pair("origin-a"),
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+            ),
+            "origin-b": PairCycleState(
+                pair=sample_pair("origin-b"),
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+            ),
+            "dependent": PairCycleState(
+                pair=dependent,
+                dependency_armed_at=launched_at,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=launched_at + timedelta(minutes=1),
+            symbol="PI_XBTUSD",
+            pair_name="origin-a",
+            event_id="origin-a-closed",
+            is_private=True,
+        )
+    )
+
+    dependent_state = chronos.state.pairs["dependent"]
+    assert len(dependent_state.dependency_evidence) == 1
+    assert not pair_dependency_satisfied(chronos.state, dependent_state)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=launched_at + timedelta(minutes=2),
+            symbol="PI_XBTUSD",
+            pair_name="origin-b",
+            event_id="origin-b-closed",
+            is_private=True,
+        )
+    )
+
+    dependent_state = chronos.state.pairs["dependent"]
+    assert len(dependent_state.dependency_evidence) == 2
+    assert pair_dependency_satisfied(chronos.state, dependent_state)
+
+
+def test_any_hook_releases_on_first_fresh_target() -> None:
+    launched_at = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+    dependent = replace(
+        sample_pair("dependent"),
+        hook_name="any(origin-a-tail-closed,origin-b-head-filled)",
+    )
+    state = StrategyState(
+        launched_at=launched_at,
+        strategy_id="strategy-any-chain",
+        pairs={
+            "origin-a": PairCycleState(
+                pair=sample_pair("origin-a"),
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+            ),
+            "origin-b": PairCycleState(pair=sample_pair("origin-b")),
+            "dependent": PairCycleState(
+                pair=dependent,
+                dependency_armed_at=launched_at,
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=launched_at + timedelta(minutes=1),
+            symbol="PI_XBTUSD",
+            pair_name="origin-a",
+            event_id="origin-a-closed",
+            is_private=True,
+        )
+    )
+
+    dependent_state = chronos.state.pairs["dependent"]
+    assert len(dependent_state.dependency_evidence) == 1
+    assert pair_dependency_satisfied(chronos.state, dependent_state)
+
+
+def test_one_origin_event_can_release_multiple_dependent_pairs() -> None:
+    launched_at = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+    origin = sample_pair("origin")
+    child_a = replace(sample_pair("child-a"), hook_name="origin-tail-closed")
+    child_b = replace(sample_pair("child-b"), hook_name="origin-tail-closed")
+    state = StrategyState(
+        launched_at=launched_at,
+        strategy_id="strategy-fan-out",
+        pairs={
+            "origin": PairCycleState(
+                pair=origin,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+            ),
+            "child-a": PairCycleState(pair=child_a),
+            "child-b": PairCycleState(pair=child_b),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=launched_at + timedelta(minutes=1),
+            symbol="PI_XBTUSD",
+            pair_name="origin",
+            event_id="origin-closed",
+            is_private=True,
+        )
+    )
+
+    assert pair_dependency_satisfied(chronos.state, chronos.state.pairs["child-a"])
+    assert pair_dependency_satisfied(chronos.state, chronos.state.pairs["child-b"])
+
+
+def test_dependency_event_before_attempt_epoch_is_ignored() -> None:
+    launched_at = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+    origin = sample_pair("origin")
+    dependent = replace(sample_pair("dependent"), hook_name="origin")
+    state = StrategyState(
+        launched_at=launched_at,
+        strategy_id="strategy-stale-chain",
+        pairs={
+            "origin": PairCycleState(
+                pair=origin,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+            ),
+            "dependent": PairCycleState(
+                pair=dependent,
+                attempt_index=2,
+                dependency_armed_at=launched_at + timedelta(minutes=2),
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=launched_at + timedelta(minutes=1),
+            symbol="PI_XBTUSD",
+            pair_name="origin",
+            event_id="delayed-origin-close",
+            is_private=True,
+        ),
+        now=launched_at + timedelta(minutes=3),
+    )
+
+    assert chronos.state.pairs["dependent"].dependency_evidence == ()
+
+
+def test_all_hook_repeat_requires_every_target_again() -> None:
+    launched_at = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+    ready_at = launched_at + timedelta(minutes=2)
+    dependent = replace(
+        sample_pair("dependent"),
+        hook_name="all(origin-a,origin-b)",
+        try_num=2,
+    )
+    state = StrategyState(
+        launched_at=launched_at,
+        strategy_id="strategy-repeat-all-chain",
+        pairs={
+            "origin-a": PairCycleState(
+                pair=sample_pair("origin-a"),
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+            ),
+            "origin-b": PairCycleState(
+                pair=sample_pair("origin-b"),
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+            ),
+            "dependent": PairCycleState(
+                pair=dependent,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+                dependency_evidence=(
+                    close_evidence("origin-a", 1, launched_at + timedelta(seconds=30)),
+                    close_evidence("origin-b", 1, launched_at + timedelta(minutes=1)),
+                ),
+            ),
+        },
+    )
+    chronos = Chronos(state=state)
+    chronos.pending_repeats["dependent"] = PendingRepeat(
+        pair_name="dependent",
+        ready_at=ready_at,
+        next_attempt=2,
+    )
+
+    chronos.activate_ready_repeats(symbol="PI_XBTUSD", now=ready_at)
+
+    dependent_state = chronos.state.pairs["dependent"]
+    assert dependent_state.attempt_index == 2
+    assert dependent_state.dependency_evidence == ()
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=launched_at + timedelta(minutes=3),
+            symbol="PI_XBTUSD",
+            pair_name="origin-a",
+            event_id="origin-a-repeat-close",
+            is_private=True,
+        )
+    )
+    dependent_state = chronos.state.pairs["dependent"]
+    assert not pair_dependency_satisfied(chronos.state, dependent_state)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=launched_at + timedelta(minutes=4),
+            symbol="PI_XBTUSD",
+            pair_name="origin-b",
+            event_id="origin-b-repeat-close",
+            is_private=True,
+        )
+    )
+
+    assert pair_dependency_satisfied(
+        chronos.state,
+        chronos.state.pairs["dependent"],
+    )
+
+
+def test_dependency_event_before_dependent_window_is_ignored() -> None:
+    launched_at = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+    origin = sample_pair("origin")
+    dependent = replace(
+        sample_pair("dependent"),
+        hook_name="origin",
+        window=TimeWindow(start_minutes=2.0, end_minutes=10.0),
+    )
+    state = StrategyState(
+        launched_at=launched_at,
+        strategy_id="strategy-window-chain",
+        pairs={
+            "origin": PairCycleState(
+                pair=origin,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+            ),
+            "dependent": PairCycleState(pair=dependent),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=launched_at + timedelta(minutes=1),
+            symbol="PI_XBTUSD",
+            pair_name="origin",
+            event_id="origin-close-before-window",
+            is_private=True,
+        )
+    )
+
+    assert chronos.state.pairs["dependent"].dependency_evidence == ()
+
+
+def test_public_origin_event_cannot_satisfy_dependency() -> None:
+    launched_at = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+    origin = sample_pair("origin")
+    dependent = replace(sample_pair("dependent"), hook_name="origin")
+    state = StrategyState(
+        launched_at=launched_at,
+        strategy_id="strategy-public-chain",
+        pairs={
+            "origin": PairCycleState(
+                pair=origin,
+                head_state=HeadState.CLOSED,
+                tail_state=TailState.CLOSED,
+                played_quantity=Decimal("1"),
+            ),
+            "dependent": PairCycleState(pair=dependent),
+        },
+    )
+    chronos = Chronos(state=state)
+
+    chronos.process_event(
+        EggMove(
+            kind=EggMoveKind.PLAYED_AND_CANCELED,
+            occurred_at=launched_at + timedelta(minutes=1),
+            symbol="PI_XBTUSD",
+            pair_name="origin",
+            event_id="public-origin-close",
+            is_private=False,
+        )
+    )
+
+    assert chronos.state.pairs["dependent"].dependency_evidence == ()
+
+
 def test_chain_release_ignores_origin_close_while_dependent_is_living() -> None:
     origin = replace(sample_pair("main"), try_num=4)
     chained = replace(sample_pair("chain"), hook_name="main", try_num=4)
@@ -501,10 +840,12 @@ def test_chain_release_ignores_origin_close_while_dependent_is_living() -> None:
                 tail_state=TailState.LIVING,
                 played_quantity=Decimal("1"),
                 attempt_index=1,
-                dependency_token=ChainDependencyToken(
-                    origin_pair_name="main",
-                    origin_attempt_index=1,
-                    closed_at=datetime(2026, 5, 21, 12, 3, tzinfo=timezone.utc),
+                dependency_evidence=(
+                    close_evidence(
+                        "main",
+                        1,
+                        datetime(2026, 5, 21, 12, 3, tzinfo=timezone.utc),
+                    ),
                 ),
             ),
         },
@@ -525,8 +866,8 @@ def test_chain_release_ignores_origin_close_while_dependent_is_living() -> None:
     assert commands == ()
     chain_state = chronos.state.pairs["chain"]
     assert chain_state.attempt_index == 1
-    assert chain_state.dependency_token is not None
-    assert chain_state.dependency_token.origin_attempt_index == 1
+    assert len(chain_state.dependency_evidence) == 1
+    assert chain_state.dependency_evidence[0].origin_attempt_index == 1
     assert chain_state.head_state == HeadState.CLOSED
     assert chain_state.tail_state == TailState.LIVING
 
@@ -553,10 +894,12 @@ def test_chain_release_drops_origin_close_during_dependent_pause() -> None:
                 tail_state=TailState.CLOSED,
                 played_quantity=Decimal("1"),
                 attempt_index=1,
-                dependency_token=ChainDependencyToken(
-                    origin_pair_name="main",
-                    origin_attempt_index=1,
-                    closed_at=datetime(2026, 5, 21, 12, 3, tzinfo=timezone.utc),
+                dependency_evidence=(
+                    close_evidence(
+                        "main",
+                        1,
+                        datetime(2026, 5, 21, 12, 3, tzinfo=timezone.utc),
+                    ),
                 ),
             ),
         },
@@ -578,9 +921,9 @@ def test_chain_release_drops_origin_close_during_dependent_pause() -> None:
             is_private=True,
         )
     )
-    token = chronos.state.pairs["chain"].dependency_token
-    assert token is not None
-    assert token.origin_attempt_index == 1
+    evidence = chronos.state.pairs["chain"].dependency_evidence
+    assert len(evidence) == 1
+    assert evidence[0].origin_attempt_index == 1
 
     ready_commands = chronos.activate_ready_repeats(
         symbol="PI_XBTUSD",
@@ -588,7 +931,7 @@ def test_chain_release_drops_origin_close_during_dependent_pause() -> None:
     )
     assert ready_commands == ()
     assert chronos.state.pairs["chain"].attempt_index == 2
-    assert chronos.state.pairs["chain"].dependency_token is None
+    assert chronos.state.pairs["chain"].dependency_evidence == ()
 
     chronos.state = replace(
         chronos.state,
@@ -610,10 +953,10 @@ def test_chain_release_drops_origin_close_during_dependent_pause() -> None:
 
     chain_state = chronos.state.pairs["chain"]
     assert chain_state.attempt_index == 2
-    assert chain_state.dependency_token is not None
-    assert chain_state.dependency_token.origin_pair_name == "main"
-    assert chain_state.dependency_token.origin_attempt_index == 3
-    assert chain_state.dependency_token.closed_at == datetime(
+    assert len(chain_state.dependency_evidence) == 1
+    assert chain_state.dependency_evidence[0].target.origin_pair_name == "main"
+    assert chain_state.dependency_evidence[0].origin_attempt_index == 3
+    assert chain_state.dependency_evidence[0].satisfied_at == datetime(
         2026,
         5,
         21,

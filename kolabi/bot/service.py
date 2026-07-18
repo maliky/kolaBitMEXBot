@@ -12,6 +12,7 @@ from typing import Any, Callable, Iterable, Optional, Protocol, TypeVar, cast
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from kolabi.bot.dependencies import compile_dependency_graph
 from kolabi.bot.domain import OrderIdentity, OrderPairSpec, StrategySpec
 from kolabi.bot.exchange_routes import (
     DEFAULT_MARKET_TYPE,
@@ -1033,6 +1034,7 @@ class BotService:
     ) -> StrategyRunResult:
         """Execute the active typed runtime path in the foreground."""
         strategy = self._materialize_strategy_symbols(strategy)
+        compile_dependency_graph(strategy.pairs)
         self._required_symbols = _strategy_symbols(strategy) or (self.config.symbol,)
         self._required_routes = _strategy_routes(
             strategy,

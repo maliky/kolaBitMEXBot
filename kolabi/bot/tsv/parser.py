@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Iterable, Mapping, TypedDict
 
+from kolabi.bot.dependencies import compile_dependency_graph
 from kolabi.bot.domain import (
     HeadSpec,
     OrderPairSpec,
@@ -68,7 +69,9 @@ def read_strategy_file(path: str | Path) -> StrategySpec:
         pair_name = str(row["name"])
         typed_row = normalize_typed_strategy_row(row)
         pairs.append(order_pair_from_typed_values(name=pair_name, **typed_row))
-    return StrategySpec(name=strategy_path.stem, pairs=tuple(pairs))
+    return _validated_strategy(
+        StrategySpec(name=strategy_path.stem, pairs=tuple(pairs))
+    )
 
 
 def order_pair_from_typed_values(
@@ -169,7 +172,7 @@ def order_pair_from_typed_values(
 
 def strategy_from_pairs(name: str, pairs: Iterable[OrderPairSpec]) -> StrategySpec:
     """Construit une StrategySpec a partir de paires deja canoniques."""
-    return StrategySpec(name=name, pairs=tuple(pairs))
+    return _validated_strategy(StrategySpec(name=name, pairs=tuple(pairs)))
 
 
 def strategy_from_run_once_args(args: object) -> StrategySpec:
@@ -198,7 +201,12 @@ def strategy_from_run_once_args(args: object) -> StrategySpec:
     }
     typed_row = normalize_typed_strategy_row(row)
     pair = order_pair_from_typed_values(name=str(getattr(args, "name")), **typed_row)
-    return StrategySpec(name=pair.name, pairs=(pair,))
+    return _validated_strategy(StrategySpec(name=pair.name, pairs=(pair,)))
+
+
+def _validated_strategy(strategy: StrategySpec) -> StrategySpec:
+    compile_dependency_graph(strategy.pairs)
+    return strategy
 
 
 def strategy_to_pretty_dict(strategy: StrategySpec) -> dict[str, object]:

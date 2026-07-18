@@ -29,6 +29,12 @@ from kolabi.bot.chronos import (
     pair_dependency_satisfied,
     resolve_pair_name,
 )
+from kolabi.bot.dependencies import (
+    compile_dependency_graph,
+    dependency_satisfied,
+    format_dependency_release,
+    format_dependency_wait,
+)
 from kolabi.bot.domain import (
     EggMove,
     EggMoveKind,
@@ -872,6 +878,7 @@ class StrategyRuntime:
         run_marker: str | None = None,
         instrument_rules_by_route: Mapping[ExchangeRoute, Mapping[str, object]] | None = None,
     ) -> None:
+        dependency_graph = compile_dependency_graph(strategy.pairs)
         self.strategy = strategy
         self.symbol = symbol
         self.executor = executor
@@ -897,10 +904,16 @@ class StrategyRuntime:
         launched_at = datetime.now(timezone.utc)
         self.state = StrategyState(
             launched_at=launched_at,
-            pairs={pair.name: self._pair_state(pair) for pair in strategy.pairs},
+            pairs={
+                pair.name: self._pair_state(pair, launched_at=launched_at)
+                for pair in strategy.pairs
+            },
             strategy_id=strategy.name,
         )
-        self.chronos = Chronos(state=self.state)
+        self.chronos = Chronos(
+            state=self.state,
+            dependency_graph=dependency_graph,
+        )
         self.event_queue: asyncio.Queue[EggMove] = asyncio.Queue()
         self.commands: list[DragonSong] = []
         self.running = False
@@ -926,10 +939,10 @@ class StrategyRuntime:
         self._last_gate_signatures: dict[str, tuple[str, ...]] = {}
         self._gate_log_interval_seconds = 300.0
 
-    def _pair_state(self, pair):
+    def _pair_state(self, pair, *, launched_at: datetime):
         from kolabi.bot.domain import PairCycleState
 
-        return PairCycleState(pair=pair)
+        return PairCycleState(pair=pair, dependency_armed_at=launched_at)
 
     @property
     def all_pairs_terminal(self) -> bool:
@@ -1842,7 +1855,7 @@ class StrategyRuntime:
             ("REPEAT_WAIT", ("ready_at",)),
             ("REPEAT_READY", ("status", "window", "baseline")),
             ("REPEAT_START", ("commands",)),
-            ("CHAIN_READY", ("origin", "status", "closed_at")),
+            ("CHAIN_READY", ("evidence", "status", "satisfied_at")),
         )
         for name, fields in legends:
             _LOGGER.info("LEGEND--%s: %s", name, _legend_fields(*fields))
@@ -1857,15 +1870,29 @@ class StrategyRuntime:
                 continue
             pair = pair_state.pair
             if pair.hook_name and not pair_dependency_satisfied(self.state, pair_state):
+                dependency_graph = self.chronos.dependency_graph
+                expression = (
+                    None
+                    if dependency_graph is None
+                    else dependency_graph.by_dependent.get(pair_name)
+                )
+                dependency_status = (
+                    pair.hook_name
+                    if expression is None
+                    else format_dependency_wait(
+                        expression,
+                        pair_state.dependency_evidence,
+                    )
+                )
                 self._emit_gate_wait(
                     pair_name=pair_name,
                     pair_state=pair_state,
                     now=now,
-                    signature=("chain_wait", pair.hook_name),
+                    signature=("chain_wait", dependency_status),
                     label="GATE_WAIT-1",
                     values=(
                         "chain_wait",
-                        pair.hook_name,
+                        dependency_status,
                         pair.head.order_type,
                         _fmt_compact_price(
                             None
@@ -3449,21 +3476,34 @@ class StrategyRuntime:
             )
 
     def _log_chain_releases(self, previous_pairs: Mapping[str, PairCycleState]) -> None:
+        dependency_graph = self.chronos.dependency_graph
+        if dependency_graph is None:
+            return
         for pair_name, current in self.state.pairs.items():
             previous = previous_pairs.get(pair_name)
             if previous is None:
                 continue
-            token = current.dependency_token
-            if token is None or previous.dependency_token == token:
+            expression = dependency_graph.by_dependent.get(pair_name)
+            if expression is None:
                 continue
+            if not dependency_satisfied(expression, current.dependency_evidence):
+                continue
+            if dependency_satisfied(expression, previous.dependency_evidence):
+                continue
+            satisfied_at = max(
+                evidence.satisfied_at for evidence in current.dependency_evidence
+            )
             _LOGGER.info(
                 "CHAIN_READY (%s#%s): %s",
                 pair_name,
                 current.attempt_index,
                 _runtime_fields(
-                    f"{token.origin_pair_name}#{token.origin_attempt_index}",
+                    format_dependency_release(
+                        expression,
+                        current.dependency_evidence,
+                    ),
                     "waiting_for_price_gate",
-                    token.closed_at.isoformat(),
+                    satisfied_at.isoformat(),
                 ),
             )
 
